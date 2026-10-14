@@ -17,13 +17,19 @@ public sealed class Publisher
     readonly ProjectConfig _cfg;
     readonly string _steamCmd;
     readonly string _account;
+    readonly string _tempRoot;
+
+    /// <summary>Every staging folder is named with this prefix inside the temp folder.</summary>
+    public const string StagePrefix = "steamcmd_helper_";
+    public static readonly TimeSpan StaleAfter = TimeSpan.FromDays(7);
 
     public event Action<string>? Log;
     public event Action<string, int>? Stage;
 
-    public Publisher(string repo, ProjectConfig cfg, string steamCmd, string account)
+    public Publisher(string repo, ProjectConfig cfg, string steamCmd, string account, string? tempRoot = null)
     {
         _repo = repo; _cfg = cfg; _steamCmd = steamCmd; _account = account;
+        _tempRoot = tempRoot ?? Path.GetTempPath();
     }
 
     void Say(string s) => Log?.Invoke(s);
@@ -36,84 +42,120 @@ public sealed class Publisher
         var (_, notes) = ModScanner.ReadChangelog(clPath, _cfg);
         if (notes.Length > 7900) notes = notes.Substring(0, 7900) + "\n[i]...see the full changelog on the project page.[/i]";
 
-        var stageRoot = Path.Combine(Path.GetTempPath(), "steamcmd_helper_" + Guid.NewGuid().ToString("N"));
+        SweepStale(_tempRoot, StaleAfter);
+        var stageRoot = Path.Combine(_tempRoot, StagePrefix + Guid.NewGuid().ToString("N"));
         var stage = Path.Combine(stageRoot, m.Folder);
         Directory.CreateDirectory(stageRoot);
 
-        At("Packaging...", 10);
-        await PackageAsync(m, stageRoot, stage, ct);
-
-        var files = Directory.GetFiles(stage, "*", SearchOption.AllDirectories);
-        var mb = Math.Round(files.Sum(f => new FileInfo(f).Length) / 1048576.0, 2);
-
-        var extra = "";
-        if (!m.OnSteam)
+        // The package is removed on every way out (success, dry run, a check failing, packaging throwing,
+        // cancellation) except a failed upload, where it is kept so the build file can be inspected.
+        var keep = false;
+        try
         {
-            var preview = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Preview));
-            var desc = ReadDescription(m);
-            if (desc.Length < 20) return Fail(stageRoot, $"No description found. Add {_cfg.SteamDescriptionFile}.");
-            extra = $"""
+            At("Packaging...", 10);
+            await PackageAsync(m, stageRoot, stage, ct);
 
-                "title"           "{Esc(m.Name)}"
-                "description"     "{Esc(desc)}"
-                "previewfile"     "{preview}"
-                "visibility"      "2"
-            """;
-        }
+            var files = Directory.GetFiles(stage, "*", SearchOption.AllDirectories);
+            var mb = Math.Round(files.Sum(f => new FileInfo(f).Length) / 1048576.0, 2);
 
-        var vdf = $$"""
-            "workshopitem"
+            var extra = "";
+            if (!m.OnSteam)
             {
-                "appid"           "{{_cfg.AppId}}"
-                "publishedfileid" "{{m.WorkshopId ?? "0"}}"
-                "contentfolder"   "{{stage}}"{{extra}}
-                "changenote"      "{{Esc(notes)}}"
+                var preview = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Preview));
+                var desc = ReadDescription(m);
+                if (desc.Length < 20) return new PublishResult(false, $"No description found. Add {_cfg.SteamDescriptionFile}.");
+                extra = $"""
+
+                    "title"           "{Esc(m.Name)}"
+                    "description"     "{Esc(desc)}"
+                    "previewfile"     "{preview}"
+                    "visibility"      "2"
+                """;
             }
-            """;
-        var vdfPath = Path.Combine(stageRoot, m.Folder + ".vdf");
-        await File.WriteAllTextAsync(vdfPath, vdf, new UTF8Encoding(false), ct);
 
-        Say($"{(m.OnSteam ? "Workshop id " + m.WorkshopId : "New private item")} | version {m.Version} | {files.Length} files, {mb} MB | notes {notes.Length} chars");
-        At("Package ready", 20);
+            var vdf = $$"""
+                "workshopitem"
+                {
+                    "appid"           "{{_cfg.AppId}}"
+                    "publishedfileid" "{{m.WorkshopId ?? "0"}}"
+                    "contentfolder"   "{{stage}}"{{extra}}
+                    "changenote"      "{{Esc(notes)}}"
+                }
+                """;
+            var vdfPath = Path.Combine(stageRoot, m.Folder + ".vdf");
+            await File.WriteAllTextAsync(vdfPath, vdf, new UTF8Encoding(false), ct);
 
-        if (!upload)
-        {
-            Say("Dry run: nothing uploaded. Package and build file are in " + stageRoot);
-            return new PublishResult(true, "Dry run OK");
-        }
+            Say($"{(m.OnSteam ? "Workshop id " + m.WorkshopId : "New private item")} | version {m.Version} | {files.Length} files, {mb} MB | notes {notes.Length} chars");
+            At("Package ready", 20);
 
-        var failed = false;
-        var exit = await RunProcAsync(_steamCmd,
-            new[] { "+login", _account, "+workshop_build_item", vdfPath, "+quit" },
-            Path.GetDirectoryName(_steamCmd) ?? "",
-            line =>
+            if (!upload)
             {
-                Say(line);
-                if (Regex.IsMatch(line, @"\bERROR\b|\bFAILED\b", RegexOptions.IgnoreCase)) failed = true;
-                MapStage(line);
-            }, ct);
+                Say("Dry run: nothing uploaded. The package was built and checked, then removed.");
+                return new PublishResult(true, "Dry run OK");
+            }
 
-        if (exit != 0 || failed)
-            return Fail(stageRoot, $"SteamCMD reported a problem (exit code {exit})." + (m.OnSteam ? "" : " If this was a create, check your Steam profile before trying again."), keepFiles: true);
+            var output = new List<string>();
+            var exit = await RunProcAsync(_steamCmd,
+                new[] { "+login", _account, "+workshop_build_item", vdfPath, "+quit" },
+                Path.GetDirectoryName(_steamCmd) ?? "",
+                line =>
+                {
+                    Say(line);
+                    lock (output) output.Add(line);
+                    MapStage(line);
+                }, ct);
 
-        string? newId = null;
-        if (!m.OnSteam)
-        {
-            var mm = Regex.Match(await File.ReadAllTextAsync(vdfPath, ct), "\"publishedfileid\"\\s+\"(\\d+)\"");
-            if (mm.Success && mm.Groups[1].Value != "0") newId = mm.Groups[1].Value;
-            if (newId == null)
-                return Fail(stageRoot, "Upload finished but the new Workshop id could not be found. Check your Steam profile (the item is private), put its number in " + _cfg.WorkshopIdFile + ", and do NOT create it again.", keepFiles: true);
+            string? vdfAfter = null;
+            try { vdfAfter = await File.ReadAllTextAsync(vdfPath, ct); } catch (IOException) { }
+            UploadOutcome outcome;
+            lock (output) outcome = SteamCmdOutput.Evaluate(output, exit, m.WorkshopId, vdfAfter);
 
-            var idFile = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.WorkshopIdFile));
-            Directory.CreateDirectory(Path.GetDirectoryName(idFile)!);
-            await File.WriteAllTextAsync(idFile, newId, new UTF8Encoding(false), ct);
-            Say($"Created {m.Name} {m.Version} as PRIVATE item {newId}. Saved to {_cfg.WorkshopIdFile} (commit it).");
+            // Save a new item's id as soon as Steam hands one out, even if the run then failed: creating it
+            // again would make a duplicate Workshop item.
+            var newId = m.OnSteam ? null : outcome.PublishedFileId;
+            if (newId != null) await SaveIdAsync(m, newId, ct);
+
+            if (!outcome.Ok)
+            {
+                keep = true;
+                Say("Package and build file kept for inspection in " + stageRoot);
+                var msg = outcome.Reason;
+                if (!m.OnSteam)
+                    msg += newId != null
+                        ? $" Steam did create item {newId} and its id was saved to {_cfg.WorkshopIdFile}: do NOT create it again."
+                        : $" Check your Steam profile before trying again (a new item is private); if it was created, put its number in {_cfg.WorkshopIdFile} and do NOT create it again.";
+                return new PublishResult(false, msg, newId);
+            }
+
+            if (newId != null) Say($"Created {m.Name} {m.Version} as PRIVATE item {newId}. Saved to {_cfg.WorkshopIdFile} (commit it).");
+            else Say($"Uploaded {m.Name} {m.Version}");
+
+            At("Uploaded", 100);
+            return new PublishResult(true, outcome.Reason, newId);
         }
-        else Say($"Uploaded {m.Name} {m.Version}");
+        finally
+        {
+            if (!keep) TryDelete(stageRoot);
+        }
+    }
 
-        TryDelete(stageRoot);
-        At("Uploaded", 100);
-        return new PublishResult(true, m.OnSteam ? "Uploaded" : "Created", newId);
+    async Task SaveIdAsync(ModInfo m, string id, CancellationToken ct)
+    {
+        var idFile = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.WorkshopIdFile));
+        Directory.CreateDirectory(Path.GetDirectoryName(idFile)!);
+        await File.WriteAllTextAsync(idFile, id, new UTF8Encoding(false), ct);
+    }
+
+    /// <summary>Removes staging folders older than <paramref name="age"/> left behind by failed uploads or a crash.</summary>
+    public static void SweepStale(string tempRoot, TimeSpan age)
+    {
+        try
+        {
+            var cutoff = DateTime.UtcNow - age;
+            foreach (var d in Directory.GetDirectories(tempRoot, StagePrefix + "*"))
+                if (Directory.GetLastWriteTimeUtc(d) < cutoff) TryDelete(d);
+        }
+        catch { }
     }
 
     // ------------------------------------------------------------ packaging
@@ -185,12 +227,6 @@ public sealed class Publisher
     /// <summary>Escapes text for a Valve .vdf quoted value.</summary>
     public static string Esc(string s) =>
         s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r\n", "\n").Replace("\n", "\\n");
-
-    static PublishResult Fail(string stageRoot, string message, bool keepFiles = false)
-    {
-        if (!keepFiles) TryDelete(stageRoot);
-        return new PublishResult(false, message);
-    }
 
     static void TryDelete(string dir) { try { Directory.Delete(dir, true); } catch { } }
 

@@ -73,19 +73,47 @@ public static class SteamLogin
         await p.WaitForExitAsync(ct);
     }
 
+    public const string DownloadUrl = "https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip";
+
     public static async Task InstallAsync(string steamCmd, Action<string> log, CancellationToken ct)
     {
         var dir = Path.GetDirectoryName(steamCmd)!;
         Directory.CreateDirectory(dir);
-        var zip = Path.Combine(dir, "steamcmd.zip");
+
         log("Downloading SteamCMD from Valve...");
+        byte[] bytes;
+        long? length;
         using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) })
+        using (var resp = await http.GetAsync(DownloadUrl, ct))
         {
-            var bytes = await http.GetByteArrayAsync("https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip", ct);
-            await File.WriteAllBytesAsync(zip, bytes, ct);
+            resp.EnsureSuccessStatusCode();
+            length = resp.Content.Headers.ContentLength;
+            bytes = await resp.Content.ReadAsByteArrayAsync(ct);
         }
-        ZipFile.ExtractToDirectory(zip, dir, true);
-        File.Delete(zip);
+
+        log("Checking the download...");
+        SteamCmdIntegrity.VerifyDownload(bytes, length);
+
+        // Unpack beside the install first so nothing lands in the SteamCMD folder until the exe's signature checks out.
+        var staging = Path.Combine(dir, ".download_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(staging);
+            using (var zip = new ZipArchive(new MemoryStream(bytes, writable: false), ZipArchiveMode.Read))
+                zip.ExtractToDirectory(staging, true);
+            SteamCmdIntegrity.VerifyValveSignature(Path.Combine(staging, SteamCmdIntegrity.ExeName));
+            foreach (var f in Directory.GetFiles(staging, "*", SearchOption.AllDirectories))
+            {
+                var dest = Path.Combine(dir, Path.GetRelativePath(staging, f));
+                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                File.Copy(f, dest, true);
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(staging, true); } catch { }
+        }
+
         log("Running SteamCMD once so it can update itself (about a minute)...");
         var psi = new ProcessStartInfo(steamCmd, "+quit")
         {
