@@ -13,6 +13,14 @@
   upload keeps its folder for inspection; such folders are swept after 7 days.
 - Unit tests in `tests/SteamCmdHelper.Tests` (`dotnet test`, runs on any OS).
 
+## 1.2.0
+
+- Works for any Steam game: Steam app ID box (game name looked up from Steam) and Generic / RimWorld layout presets.
+- Mod metadata can come from XML, JSON or plain-text/Lua files; mods can sit in a sub-folder; changelog and version are optional.
+- Layouts are auto-detected when there is no `.steamhelper.json` (RimWorld or Generic).
+- Layout field names changed (`NameXPath` -> `NameKey` etc.); old 1.1.0 files are still read.
+- `--repo` option for the headless checks.
+
 ## 1.1.0
 
 - Works for any Steam game: configurable app id and folder layout via `.steamhelper.json` (Edit layout file button).

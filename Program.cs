@@ -13,6 +13,8 @@ static class Program
         if (i >= 0 || j >= 0)
         {
             var settings = AppSettings.Load();
+            var r = Array.IndexOf(args, "--repo");
+            if (r >= 0 && r + 1 < args.Length) settings.RepoPath = args[r + 1]; // headless override, not saved
             var cfg = ProjectConfig.Load(settings.RepoPath);
             var sb = new System.Text.StringBuilder();
             var mods = ModScanner.Scan(settings.RepoPath, cfg);
