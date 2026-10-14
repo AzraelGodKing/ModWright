@@ -123,8 +123,13 @@ public static class Theme
                 if (t.Multiline) Native(t, OnScrollHandle);
                 break;
             case ComboBox cb:
+                // Flat style alone leaves a drop-down list's box white; draw the items ourselves.
                 cb.FlatStyle = FlatStyle.Flat;
                 cb.BackColor = p.Input; cb.ForeColor = p.Text;
+                cb.DrawMode = DrawMode.OwnerDrawFixed;
+                cb.ItemHeight = cb.Font.Height + 4;
+                cb.DrawItem -= DrawComboItem; cb.DrawItem += DrawComboItem;
+                cb.Invalidate();
                 break;
             case ListView lv:
                 lv.BackColor = p.Input; lv.ForeColor = p.Text;
@@ -194,6 +199,18 @@ public static class Theme
         using (var pen = new Pen(p.Border)) e.Graphics.DrawRectangle(pen, e.Bounds.X, e.Bounds.Y, e.Bounds.Width - 1, e.Bounds.Height - 1);
         TextRenderer.DrawText(e.Graphics, e.ToolTipText, e.Font, e.Bounds, p.Text,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
+    }
+
+    static void DrawComboItem(object? s, DrawItemEventArgs e)
+    {
+        if (s is not ComboBox cb) return;
+        var p = Current;
+        var highlighted = (e.State & DrawItemState.Selected) != 0 && (e.State & DrawItemState.ComboBoxEdit) == 0;
+        using (var bg = new SolidBrush(highlighted ? p.Accent : p.Input)) e.Graphics.FillRectangle(bg, e.Bounds);
+        var text = e.Index >= 0 ? cb.GetItemText(cb.Items[e.Index]) : "";
+        var color = highlighted ? p.AccentText : cb.Enabled ? p.Text : p.Muted;
+        TextRenderer.DrawText(e.Graphics, text, cb.Font, Rectangle.Inflate(e.Bounds, -3, 0), color,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
 
     // ------------------------------------------------------------ list view
