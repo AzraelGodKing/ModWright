@@ -8,6 +8,9 @@ First release.
   and for RimWorld the Add Changenote rules (version from `About/Manifest.xml` or `About/About.xml`, and an entry for it
   in `About/Changelog.txt`, which becomes the change note) block an upload. Everything else is a warning. Mods without
   an id file show Workshop ID `0` (a new item).
+- Mod list columns: Uploaded version (read from the item's newest Steam change note, else this PC's last upload),
+  Version to upload (double-click to edit; written to About/Manifest.xml and About.xml), Workshop ID, Preview (✔ / ✖
+  for Steam's 1 MB limit) and a short Status (Ready, Fix, Ready to create). Details are in each row's tooltip.
 - Mod list with name, version, Workshop id and pre-upload checks; Steam login detection with a one-time login
   window in SteamCMD (this app never sees your password); dry run, create-new-item option, progress bars and a live log.
 - Works for any Steam game: Steam app ID box (game name looked up from Steam) and layouts that describe how the mods
