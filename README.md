@@ -37,7 +37,7 @@ the release workflow checks both, runs the tests and publishes the release with 
 
 ## Using it
 
-1. **Mods repo**: pick the folder that holds your mods (one sub-folder per mod).
+1. **Mods repo**: press **Browse...** (or double-click the path) and pick the folder that holds your mods (one sub-folder per mod). The path cannot be typed in, so it cannot be mistyped.
 2. **Steam account**: type your Steam login name. The status line says whether a saved login exists.
    **Install SteamCMD** downloads it to `%LocalAppData%\SteamCmdHelper\steamcmd` (or uses
    `<repo>\_tools\steamcmd` if that exists).

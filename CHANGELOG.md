@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The mods repo path can only be changed with **Browse...** (or by double-clicking it); it can no longer be typed in.
 - Upload success is now confirmed, not guessed: SteamCMD must exit 0, print no failure line (`ERROR!`, `...FAILED`,
   `Failed to update/upload/commit`), print `Success.`, and for a new item return its Workshop id. Harmless lines that
   merely contain "error" or "failed" (a file named `Error.png`, SteamCMD's SDL notice) no longer fail an upload.
