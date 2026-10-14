@@ -8,7 +8,7 @@ namespace SteamCmdHelper.Tests;
 public sealed class PublisherVdfTests : IDisposable
 {
     readonly TempRepo _repo = new();
-    readonly ProjectConfig _cfg = new() { UseGitArchive = false };
+    readonly ProjectConfig _cfg = TestConfig.RimWorld(c => c.UseGitArchive = false);
 
     public void Dispose() => _repo.Dispose();
 
