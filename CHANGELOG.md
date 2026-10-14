@@ -13,6 +13,10 @@
   upload keeps its folder for inspection; such folders are swept after 7 days.
 - Unit tests in `tests/SteamCmdHelper.Tests` (`dotnet test`, runs on any OS).
 
+## 1.5.1
+
+- The **?** button now opens a pre-filled issue in Linear (team AZR) instead of GitHub. Only people signed in to that Linear workspace can create it; **Copy text instead** works for everyone.
+
 ## 1.5.0
 
 - Added a **?** button that opens a pre-filled GitHub issue to request a layout for another game (issue form in `.github/ISSUE_TEMPLATE`).

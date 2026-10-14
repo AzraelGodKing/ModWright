@@ -81,7 +81,7 @@ public sealed class MainForm : Form
         _help = Btn("?", (_, _) => OpenRequest());
         _help.AutoSize = false; _help.Size = new Size(30, 28); _help.Padding = Padding.Empty;
         _help.Font = new Font(Font, FontStyle.Bold);
-        new ToolTip().SetToolTip(_help, "Request a layout for another game (opens a GitHub issue)");
+        new ToolTip().SetToolTip(_help, "Request a layout for another game (opens a Linear issue)");
         root.Controls.Add(Row(Lbl("Mods repo"), _repo, _browse, _branch, _help), 0, 0);
         _preset.Items.AddRange(ProjectConfig.PresetNames.Cast<object>().Append("Custom").ToArray());
         _preset.Width = 150;
@@ -127,7 +127,7 @@ public sealed class MainForm : Form
 
     // ---------------------------------------------------------------- game / layout
 
-    /// <summary>The "?" button: ask for a layout for another game via a pre-filled GitHub issue.</summary>
+    /// <summary>The "?" button: ask for a layout for another game via a pre-filled Linear issue.</summary>
     void OpenRequest()
     {
         // Show one mod's file names (never contents) so the request says what a mod looks like.
