@@ -20,7 +20,7 @@ public sealed class RequestForm : Form
     readonly TextBox _game = new() { Dock = DockStyle.Fill };
     readonly TextBox _appId = new() { Width = 120 };
     readonly TextBox _layout = new() { Dock = DockStyle.Fill, Multiline = true, ScrollBars = ScrollBars.Vertical, AcceptsReturn = true, Font = new Font("Consolas", 9f) };
-    readonly Label _note = new() { AutoSize = true, ForeColor = Color.DimGray, MaximumSize = new Size(560, 0) };
+    readonly Label _note = new Label { AutoSize = true, MaximumSize = new Size(560, 0) }.Role(ThemeRole.Muted);
 
     public RequestForm(string gameName, string appId, string layoutName, string modFileNames)
     {
@@ -66,9 +66,9 @@ public sealed class RequestForm : Form
 
         root.Controls.Add(new Label
         {
-            AutoSize = true, MaximumSize = new Size(560, 0), ForeColor = Color.DimGray, Margin = new Padding(0, 0, 0, 4),
+            AutoSize = true, MaximumSize = new Size(560, 0), Margin = new Padding(0, 0, 0, 4),
             Text = "The app ID is the number in the game's store URL, e.g. store.steampowered.com/app/294100/ is 294100."
-        }, 0, 2);
+        }.Role(ThemeRole.Muted), 0, 2);
 
         root.Controls.Add(_layout, 0, 3);
 
@@ -76,7 +76,7 @@ public sealed class RequestForm : Form
                          : "Only the text in the box above goes into the issue, and only after you create it in Linear. Edit or delete anything you don't want to share.";
         root.Controls.Add(_note, 0, 4);
 
-        var open = new Button { Text = direct ? "Send request" : "Open Linear issue", AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
+        var open = new Button { Text = direct ? "Send request" : "Open Linear issue", AutoSize = true, Padding = new Padding(8, 2, 8, 2) }.Role(ThemeRole.Accent);
         var copy = new Button { Text = "Copy text instead", AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
         var cancel = new Button { Text = "Cancel", AutoSize = true, Padding = new Padding(8, 2, 8, 2), DialogResult = DialogResult.Cancel };
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
@@ -87,6 +87,7 @@ public sealed class RequestForm : Form
         Controls.Add(root);
         CancelButton = cancel;
         AcceptButton = null;
+        Theme.Apply(this);
 
         open.Click += async (_, _) => { if (direct) await SendRequestAsync(layoutName, open); else OpenIssue(layoutName); };
         copy.Click += (_, _) =>

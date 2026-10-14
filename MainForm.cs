@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Text;
 
 namespace SteamCmdHelper;
@@ -9,32 +10,41 @@ public sealed class MainForm : Form
     ProjectConfig _cfg = new();
 
     readonly TextBox _repo = new() { Tag = "fill", ReadOnly = true, TabStop = false, Cursor = Cursors.Hand };
-    readonly TextBox _account = new() { Width = 200 };
-    readonly Label _branch = new() { AutoSize = true, AutoEllipsis = true, MaximumSize = new Size(240, 0) };
+    readonly TextBox _account = new() { Width = 220 };
+    readonly Label _branch = new Label { AutoSize = true, AutoEllipsis = true, MaximumSize = new Size(240, 0) }.Role(ThemeRole.Muted);
     readonly TextBox _appId = new() { Width = 90 };
-    readonly ComboBox _preset = new() { Width = 110, DropDownStyle = ComboBoxStyle.DropDownList };
-    readonly Label _game = new() { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill", ForeColor = Color.DimGray };
+    readonly ComboBox _preset = new() { Width = 150, DropDownStyle = ComboBoxStyle.DropDownList };
+    readonly Label _game = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Keep);
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(8) };
     readonly ToolTip _tip = new();
-    readonly Label _login = new() { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" };
+    readonly Label _login = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Keep);
+    readonly LinkLabel _loginLink = new LinkLabel { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill", LinkBehavior = LinkBehavior.HoverUnderline }.Role(ThemeRole.Keep);
+    readonly Label _steamCmdPath = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Muted);
+    readonly RadioButton _themeDark = new() { AutoSize = true, Text = "Dark" };
+    readonly RadioButton _themeLight = new() { AutoSize = true, Text = "Light" };
     readonly ListView _list = new();
-    readonly ProgressBar _modBar = new() { Minimum = 0, Maximum = 100, Height = 16, Dock = DockStyle.Top };
-    readonly ProgressBar _overall = new() { Minimum = 0, Maximum = 100, Height = 16, Dock = DockStyle.Top };
-    readonly Label _current = new() { AutoSize = true, Text = "Idle" };
-    readonly Label _stage = new() { AutoSize = true, ForeColor = Color.DimGray };
+    readonly FlatProgressBar _modBar = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 6) };
+    readonly FlatProgressBar _overall = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 2) };
+    readonly Label _current = new() { AutoSize = true, Text = "Idle", Tag = "fill" };
+    readonly Label _stage = new Label { AutoSize = true }.Role(ThemeRole.Muted);
     readonly CheckBox _dry = new() { AutoSize = true, Text = "Dry run (check everything, upload nothing)" };
     readonly CheckBox _allowCreate = new() { AutoSize = true, Text = "Allow creating new items (private) for mods not on Steam yet" };
-    readonly RichTextBox _log = new() { Dock = DockStyle.Fill, ReadOnly = true, BackColor = Color.FromArgb(24, 24, 28), ForeColor = Color.Gainsboro, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None };
+    readonly RichTextBox _log = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None }.Role(ThemeRole.Log);
 
     Button _help = null!, _browse = null!, _refresh = null!, _go = null!, _cancel = null!, _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!;
+    NavButton _navUpload = null!, _navOptions = null!;
+    Control _uploadPage = null!, _optionsPage = null!;
+    Tone _loginTone = Tone.Muted;
 
     List<ModInfo> _mods = new();
     CancellationTokenSource? _cts;
     bool _busy, _populating;
     int _idx, _count;
 
-    public MainForm()
+    /// <param name="theme">Overrides the saved theme without saving it (used by --shot).</param>
+    public MainForm(string? theme = null)
     {
+        Theme.Set(theme ?? _s.Theme);
         BuildUi();
         _repo.Text = _s.RepoPath;
         _account.Text = _s.Account;
@@ -53,9 +63,10 @@ public sealed class MainForm : Form
     void BuildUi()
     {
         Text = "SteamCMD Helper - Workshop uploads";
-        Width = 1000; Height = 800; MinimumSize = new Size(840, 660);
+        Width = 1000; Height = 800; MinimumSize = new Size(840, 640);
         Font = new Font("Segoe UI", 9.5f);
         StartPosition = FormStartPosition.CenterScreen;
+        Theme.Style(_tip);
 
         _browse = Btn("Browse...", (_, _) => BrowseRepo());
         _editLayout = Btn("Edit layout file...", (_, _) => EditLayout());
@@ -63,30 +74,83 @@ public sealed class MainForm : Form
         _doLogin = Btn("Log in...", async (_, _) => { SaveFields(); await LoginFlowAsync(); });
         _install = Btn("Install SteamCMD", async (_, _) => await InstallAsync());
         _refresh = Btn("Refresh", (_, _) => RefreshAll());
-        _go = Btn("Upload selected", async (_, _) => await GoAsync());
+        _go = Btn("Upload selected", async (_, _) => await GoAsync()).Role(ThemeRole.Accent);
         _go.Font = new Font(Font, FontStyle.Bold);
+        _go.Padding = new Padding(14, 4, 14, 4);
         _cancel = Btn("Cancel", (_, _) => Cancel());
         _cancel.Enabled = false;
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 8, Padding = new Padding(12) };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 170));
+        _uploadPage = BuildUploadPage();
+        _optionsPage = BuildOptionsPage();
+        var pages = new Panel { Dock = DockStyle.Fill };
+        pages.Controls.Add(_uploadPage);
+        pages.Controls.Add(_optionsPage);
+
+        // Fill first, then the top bar, so docking puts the bar above the pages.
+        Controls.Add(pages);
+        Controls.Add(new Panel { Dock = DockStyle.Top, Height = 1 }.Role(ThemeRole.Divider));
+        Controls.Add(BuildHeader());
+        ShowPage(_uploadPage);
+
+        Theme.Apply(this);
+
+        _repo.DoubleClick += (_, _) => { if (!_busy) BrowseRepo(); };
+        _account.Leave += (_, _) => { SaveFields(); UpdateLoginHint(); };
+        _allowCreate.CheckedChanged += (_, _) => { if (!_populating) { SaveFields(); RefreshAll(); } };
+        _appId.Leave += async (_, _) => await ApplyAppIdAsync();
+        _appId.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await ApplyAppIdAsync(); } };
+        _preset.SelectionChangeCommitted += (_, _) => ApplyPresetChoice();
+        _themeDark.CheckedChanged += (_, _) => { if (_themeDark.Checked) SetTheme(Theme.DarkName); };
+        _themeLight.CheckedChanged += (_, _) => { if (_themeLight.Checked) SetTheme(Theme.LightName); };
+        _loginLink.LinkClicked += (_, _) => ShowPage(_optionsPage);
+    }
+
+    /// <summary>The top bar: app name on the left, the Upload / Options tabs and the "?" button on the right.</summary>
+    Control BuildHeader()
+    {
+        var bar = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 5, RowCount = 1, Padding = new Padding(16, 8, 12, 0) }.Role(ThemeRole.Header);
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+        var title = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 0, 0, 6), Anchor = AnchorStyles.Left };
+        title.Controls.Add(new Label { Text = "SteamCMD Helper", AutoSize = true, Font = new Font("Segoe UI Semibold", 13f), Margin = new Padding(0, 0, 8, 0) });
+        title.Controls.Add(new Label { Text = "Steam Workshop uploads", AutoSize = true, Margin = new Padding(0, 7, 0, 0) }.Role(ThemeRole.Muted));
+        bar.Controls.Add(title, 0, 0);
+
+        _navUpload = new NavButton { Text = "&Upload" };
+        _navOptions = new NavButton { Text = "&Options" };
+        _navUpload.Click += (_, _) => ShowPage(_uploadPage);
+        _navOptions.Click += (_, _) => ShowPage(_optionsPage);
+        _navUpload.Anchor = _navOptions.Anchor = AnchorStyles.Bottom;
+        bar.Controls.Add(_navUpload, 2, 0);
+        bar.Controls.Add(_navOptions, 3, 0);
 
         _help = Btn("?", (_, _) => OpenRequest());
         _help.AutoSize = false; _help.Size = new Size(30, 28); _help.Padding = Padding.Empty;
         _help.Font = new Font(Font, FontStyle.Bold);
-        new ToolTip().SetToolTip(_help, "Request a layout for another game (opens a Linear issue)");
-        root.Controls.Add(Row(Lbl("Mods repo"), _repo, _browse, _branch, _help), 0, 0);
+        _help.Margin = new Padding(12, 0, 0, 6);
+        _help.Anchor = AnchorStyles.None;
+        _tip.SetToolTip(_help, "Request a layout for another game");
+        bar.Controls.Add(_help, 4, 0);
+        return bar;
+    }
+
+    Control BuildUploadPage()
+    {
+        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(14, 12, 14, 12) };
+        page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        page.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        page.RowStyles.Add(new RowStyle(SizeType.Absolute, 170));
+
         _preset.Items.AddRange(ProjectConfig.PresetNames.Cast<object>().Append("Custom").ToArray());
-        _preset.Width = 150;
-        root.Controls.Add(Row(Lbl("Steam app ID"), _appId, Lbl("Layout"), _preset, _editLayout, _game), 0, 1);
-        root.Controls.Add(Row(Lbl("Steam account"), _account, _login, _checkLogin, _doLogin, _install), 0, 2);
+        page.Controls.Add(Card("Project", null,
+            Row(Lbl("Mods repo"), _repo, _browse, _branch),
+            Row(Lbl("Steam app ID"), _appId, Lbl("Layout"), _preset, _editLayout, _game)), 0, 0);
 
         _list.View = View.Details;
         _list.CheckBoxes = true;
@@ -103,32 +167,95 @@ public sealed class MainForm : Form
         _list.ItemCheck += OnItemCheck;
         _list.ItemChecked += (_, _) => UpdateGoButton();
         _list.MouseDoubleClick += OnListDoubleClick;
-        root.Controls.Add(_list, 0, 3);
+        _list.Resize += (_, _) => StretchLastColumn();
+        _list.ColumnWidthChanged += (_, e) => { if (e.ColumnIndex < _list.Columns.Count - 1) StretchLastColumn(); };
+        var mods = Card("Mods", new Control[] { _refresh }, _list);
+        mods.AutoSize = false; mods.Dock = DockStyle.Fill;
+        page.Controls.Add(mods, 0, 1);
 
-        var prog = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = new Padding(0, 8, 0, 4) };
-        prog.Controls.Add(_current);
-        prog.Controls.Add(_modBar);
-        prog.Controls.Add(_stage);
-        prog.Controls.Add(new Label { Text = "Overall", AutoSize = true, Margin = new Padding(3, 6, 3, 0) });
-        prog.Controls.Add(_overall);
-        root.Controls.Add(prog, 0, 4);
+        var progress = Card(null, null,
+            Row(_current, _stage),
+            _modBar,
+            Lbl("Overall").Role(ThemeRole.Muted),
+            _overall,
+            Row(_allowCreate, _dry));
+        page.Controls.Add(progress, 0, 2);
 
-        root.Controls.Add(Row(_allowCreate, _dry), 0, 5);
-        root.Controls.Add(Row(new Label { Tag = "fill", Text = "" }, _refresh, _cancel, _go), 0, 6);
+        _tip.SetToolTip(_loginLink, "Steam login settings are on the Options tab");
+        var actions = Row(_loginLink, _cancel, _go);
+        actions.Margin = new Padding(0, 2, 0, 8);
+        page.Controls.Add(actions, 0, 3);
 
-        _log.Margin = new Padding(0, 6, 0, 0);
-        root.Controls.Add(_log, 0, 7);
-
-        Controls.Add(root);
-
-        _repo.DoubleClick += (_, _) => { if (!_busy) BrowseRepo(); };
-        _account.Leave += (_, _) => { SaveFields(); UpdateLoginHint(); };
-        _allowCreate.CheckedChanged += (_, _) => { if (!_populating) { SaveFields(); RefreshAll(); } };
-        _appId.Leave += async (_, _) => await ApplyAppIdAsync();
-        _appId.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await ApplyAppIdAsync(); } };
-        _preset.SelectionChangeCommitted += (_, _) => ApplyPresetChoice();
+        var log = Card(null, null, _log);
+        log.AutoSize = false; log.Dock = DockStyle.Fill;
+        log.Padding = new Padding(1); // a thin frame; the log has its own console background
+        log.Margin = Padding.Empty;
+        page.Controls.Add(log, 0, 4);
+        return page;
     }
 
+    Control BuildOptionsPage()
+    {
+        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(14, 12, 14, 12), AutoScroll = true };
+        for (var i = 0; i < 3; i++) page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        page.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        _themeDark.Checked = Theme.Current.Dark;
+        _themeLight.Checked = !Theme.Current.Dark;
+        page.Controls.Add(Card("Appearance", null,
+            Row(Lbl("Theme"), _themeDark, _themeLight),
+            Hint("Saved for your Windows user and applied straight away.")), 0, 0);
+
+        page.Controls.Add(Card("Steam account", null,
+            Row(Lbl("Account name"), _account, _checkLogin, _doLogin),
+            Row(Lbl("Status"), _login),
+            Row(Lbl("SteamCMD"), _steamCmdPath, _install),
+            Hint("You log in once in SteamCMD's own window and Steam keeps the login. This program never sees your password.")), 0, 1);
+
+        var version = (typeof(MainForm).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "").Split('+')[0];
+        page.Controls.Add(Card("About", null,
+            Hint($"SteamCMD Helper {version}. Settings are stored in %LocalAppData%\\SteamCmdHelper\\settings.json.")), 0, 2);
+        return page;
+    }
+
+    public void ShowOptions() => ShowPage(_optionsPage);
+
+    void ShowPage(Control page)
+    {
+        if (page == _optionsPage) SaveFields();
+        _uploadPage.Visible = page == _uploadPage;
+        _optionsPage.Visible = page == _optionsPage;
+        _navUpload.Selected = page == _uploadPage;
+        _navOptions.Selected = page == _optionsPage;
+    }
+
+    /// <summary>Switches the theme live and saves the choice.</summary>
+    void SetTheme(string name)
+    {
+        if (_populating || Theme.Current.Name == name) return;
+        Theme.Set(name);
+        _s.Theme = Theme.Current.Name;
+        _s.Save();
+        SuspendLayout();
+        Theme.Apply(this);
+        _navUpload.Selected = _uploadPage.Visible;
+        _navOptions.Selected = _optionsPage.Visible;
+        foreach (ListViewItem it in _list.Items) if (it.Tag is ModInfo m) ColorRow(it, m);
+        SetLogin(_login.Text, _loginTone);
+        ShowGame();
+        ResumeLayout(true);
+        Invalidate(true);
+    }
+
+    /// <summary>Makes the Status column take the rest of the list's width, so there is no empty header strip.</summary>
+    void StretchLastColumn()
+    {
+        if (_list.Columns.Count == 0) return;
+        var last = _list.Columns[^1];
+        var others = _list.Columns.Cast<ColumnHeader>().Where(c => c != last).Sum(c => c.Width);
+        var w = Math.Max(120, _list.ClientSize.Width - others);
+        if (last.Width != w) last.Width = w;
+    }
     // ---------------------------------------------------------------- game / layout
 
     /// <summary>The "?" button: ask for a layout for another game via a pre-filled Linear issue.</summary>
@@ -205,13 +332,13 @@ public sealed class MainForm : Form
         if (!_cfg.AppIdValid)
         {
             _game.Text = "Enter the game's Steam app ID (the number in its store URL) before uploading.";
-            _game.ForeColor = Color.DarkOrange;
+            _game.ForeColor = Theme.Of(Tone.Warn);
         }
         else
         {
             _game.Text = $"{(_cfg.GameName.Length > 0 ? _cfg.GameName : "App " + _cfg.AppId)}  -  layout: {_cfg.Source}"
                          + (_cfg.IsBuiltIn ? " (locked; choose Custom to make your own)" : "");
-            _game.ForeColor = Color.DimGray;
+            _game.ForeColor = Theme.Of(Tone.Muted);
         }
         _tip.SetToolTip(_game, _game.Text); // full text when it is cut off with "..."
         ApplyLocks();
@@ -225,6 +352,29 @@ public sealed class MainForm : Form
     }
 
     static Label Lbl(string t) => new() { Text = t, AutoSize = true };
+
+    static Label Hint(string t) => new Label { Text = t, AutoSize = true, MaximumSize = new Size(760, 0), Margin = new Padding(0, 2, 0, 2) }.Role(ThemeRole.Muted);
+
+    /// <summary>A raised panel with an optional title (and controls to the right of it) over its rows.</summary>
+    static TableLayoutPanel Card(string? title, Control[]? titleExtras, params Control[] rows)
+    {
+        var card = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Padding = new Padding(12, 10, 12, 8), Margin = new Padding(0, 0, 0, 10) }.Role(ThemeRole.Surface);
+        if (title != null)
+        {
+            var head = new Label { Text = title, AutoSize = true, Font = new Font("Segoe UI Semibold", 10.5f), Tag = "fill" }.Role(ThemeRole.Title);
+            var r = Row(new Control[] { head }.Concat(titleExtras ?? Array.Empty<Control>()).ToArray());
+            r.Margin = new Padding(0, 0, 0, 4);
+            card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            card.Controls.Add(r);
+        }
+        foreach (var c in rows)
+        {
+            var fill = c.Dock == DockStyle.Fill;
+            card.RowStyles.Add(fill ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.AutoSize));
+            card.Controls.Add(c);
+        }
+        return card;
+    }
 
     static Button Btn(string text, EventHandler h)
     {
@@ -296,15 +446,13 @@ public sealed class MainForm : Form
             it.SubItems.Add(!m.OnSteam ? "-" : uploaded.TryGetValue(m.WorkshopId!, out var up) ? up : "...");
             it.SubItems.Add(m.Version.Length > 0 ? m.Version : "?");
             it.SubItems.Add(m.WorkshopId ?? "0"); // 0 = not on Steam yet, so uploading creates it
-            var preview = it.SubItems.Add(m.PreviewOk == null ? "-" : m.PreviewOk == true ? "✔" : "✖");
-            preview.ForeColor = m.PreviewOk == false ? Color.Firebrick : Color.ForestGreen;
+            it.SubItems.Add(m.PreviewOk == null ? "-" : m.PreviewOk == true ? "✔" : "✖");
             it.SubItems.Add(m.StatusLabel);
             it.ToolTipText = RowTip(m);
             it.Tag = m;
             var usable = m.Ready && (m.OnSteam || _s.AllowCreate);
             it.Checked = usable && m.OnSteam;
-            var color = !m.Ready ? Color.Firebrick : (!m.OnSteam && !_s.AllowCreate) ? Color.Gray : SystemColors.WindowText;
-            foreach (ListViewItem.ListViewSubItem s in it.SubItems) if (s != preview) s.ForeColor = color;
+            ColorRow(it, m);
             _list.Items.Add(it);
             if (!m.Ready) Append($"{m.Name}: fix {string.Join("; ", m.Problems)}", Color.Orange);
         }
@@ -318,9 +466,22 @@ public sealed class MainForm : Form
 
         UpdateLoginHint();
         UpdateGoButton();
+        StretchLastColumn();
     }
 
-    const int UploadedCol = 1, VersionCol = 2;
+    const int UploadedCol = 1, VersionCol = 2, PreviewCol = 4;
+
+    /// <summary>Row text colour: red when it needs fixing, dimmed when it can't be picked, the preview mark green or red.</summary>
+    void ColorRow(ListViewItem it, ModInfo m)
+    {
+        var tone = !m.Ready ? Tone.Error : (!m.OnSteam && !_s.AllowCreate) ? Tone.Muted : Tone.Normal;
+        for (var i = 0; i < it.SubItems.Count; i++)
+        {
+            var sub = it.SubItems[i];
+            sub.BackColor = _list.BackColor;
+            sub.ForeColor = Theme.Of(i == PreviewCol && m.PreviewOk != null ? (m.PreviewOk == true ? Tone.Ok : Tone.Error) : tone);
+        }
+    }
 
     static string RowTip(ModInfo m)
     {
@@ -372,6 +533,8 @@ public sealed class MainForm : Form
         var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(273, 72), Width = 75 };
         f.Controls.AddRange(new Control[] { l, t, ok, cancel });
         f.AcceptButton = ok; f.CancelButton = cancel;
+        ok.Role(ThemeRole.Accent);
+        Theme.Apply(f);
         return f.ShowDialog(this) == DialogResult.OK ? t.Text : null;
     }
 
@@ -395,23 +558,35 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Enabled = busy;
         UpdateGoButton();
     }
 
-    void SetLogin(string text, Color c) { _login.Text = text; _login.ForeColor = c; _tip.SetToolTip(_login, text); }
+    /// <summary>Shows the login state on the Options tab and, as a link to it, next to the Upload button.</summary>
+    void SetLogin(string text, Tone tone)
+    {
+        _loginTone = tone;
+        _login.Text = text;
+        _login.ForeColor = Theme.Of(tone);
+        _loginLink.Text = text;
+        _loginLink.LinkColor = _loginLink.VisitedLinkColor = Theme.Of(tone);
+        _tip.SetToolTip(_login, text);
+    }
 
     void UpdateLoginHint()
     {
         var steam = _s.EffectiveSteamCmd;
-        _install.Visible = !SteamLogin.SteamCmdInstalled(steam);
-        if (!SteamLogin.SteamCmdInstalled(steam)) SetLogin("SteamCMD is not installed - click Install SteamCMD", Color.Firebrick);
-        else if (string.IsNullOrWhiteSpace(_s.Account)) SetLogin("Type your Steam account name", Color.DarkOrange);
-        else if (SteamLogin.LooksCached(steam, _s.Account)) SetLogin($"Saved login found for {_s.Account} (click Check login to confirm)", Color.DarkGoldenrod);
-        else SetLogin($"No saved login for {_s.Account} - you'll be asked to log in once", Color.DarkOrange);
+        var installed = SteamLogin.SteamCmdInstalled(steam);
+        _install.Visible = !installed;
+        _steamCmdPath.Text = installed ? steam : "Not installed. Install SteamCMD puts it in " + Path.GetDirectoryName(steam);
+        _tip.SetToolTip(_steamCmdPath, steam);
+        if (!installed) SetLogin("SteamCMD is not installed yet", Tone.Error);
+        else if (string.IsNullOrWhiteSpace(_s.Account)) SetLogin("No Steam account set", Tone.Warn);
+        else if (SteamLogin.LooksCached(steam, _s.Account)) SetLogin($"Saved login found for {_s.Account} (not checked yet)", Tone.Info);
+        else SetLogin($"No saved login for {_s.Account} - you'll be asked to log in once", Tone.Warn);
     }
 
     // ---------------------------------------------------------------- log
@@ -420,7 +595,7 @@ public sealed class MainForm : Form
     {
         if (InvokeRequired) { BeginInvoke(() => Append(line, color)); return; }
         _log.SelectionStart = _log.TextLength;
-        _log.SelectionColor = color ?? Color.Gainsboro;
+        _log.SelectionColor = color ?? Theme.LogText;
         _log.AppendText(line + "\n");
         _log.SelectionColor = _log.ForeColor;
         _log.ScrollToCaret();
@@ -440,28 +615,28 @@ public sealed class MainForm : Form
     {
         var steam = _s.EffectiveSteamCmd;
         if (!SteamLogin.SteamCmdInstalled(steam)) { UpdateLoginHint(); return false; }
-        if (string.IsNullOrWhiteSpace(_s.Account)) { UpdateLoginHint(); if (announce) MessageBox.Show(this, "Type your Steam account name first.", Text); return false; }
+        if (string.IsNullOrWhiteSpace(_s.Account)) { UpdateLoginHint(); if (announce) { ShowPage(_optionsPage); MessageBox.Show(this, "Type your Steam account name first.", Text); } return false; }
 
-        SetLogin("Checking login...", Color.DimGray);
+        SetLogin("Checking login...", Tone.Muted);
         var wasBusy = _busy;
         if (!wasBusy) SetBusy(true);
         try
         {
             var (ok, _) = await SteamLogin.VerifyAsync(steam, _s.Account, CancellationToken.None);
-            if (ok) SetLogin($"Logged in as {_s.Account}", Color.SeaGreen);
-            else SetLogin($"Not logged in as {_s.Account}", Color.Firebrick);
+            if (ok) SetLogin($"Logged in as {_s.Account}", Tone.Ok);
+            else SetLogin($"Not logged in as {_s.Account}", Tone.Error);
             if (announce || !ok) Append(ok ? $"Steam login OK for {_s.Account}." : $"Steam login check failed for {_s.Account} (no saved login, wrong name, or no connection).", ok ? Color.LightGreen : Color.Orange);
             return ok;
         }
-        catch (Exception e) { SetLogin("Login check failed", Color.Firebrick); Append("Login check error: " + e.Message, Color.Tomato); return false; }
+        catch (Exception e) { SetLogin("Login check failed", Tone.Error); Append("Login check error: " + e.Message, Color.Tomato); return false; }
         finally { if (!wasBusy) SetBusy(false); }
     }
 
     /// <summary>Checks the saved login; if there isn't one, opens SteamCMD so you can log in, waits, then checks again.</summary>
     async Task<bool> LoginFlowAsync()
     {
-        if (string.IsNullOrWhiteSpace(_s.Account)) { MessageBox.Show(this, "Type your Steam account name first.", Text); return false; }
-        if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { MessageBox.Show(this, "SteamCMD is not installed yet. Click Install SteamCMD.", Text); return false; }
+        if (string.IsNullOrWhiteSpace(_s.Account)) { ShowPage(_optionsPage); MessageBox.Show(this, "Type your Steam account name on the Options tab first.", Text); _account.Focus(); return false; }
+        if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { ShowPage(_optionsPage); MessageBox.Show(this, "SteamCMD is not installed yet. Click Install SteamCMD on the Options tab.", Text); return false; }
 
         if (await VerifyLoginAsync(false)) return true;
 
@@ -472,7 +647,7 @@ public sealed class MainForm : Form
 
         var wasBusy = _busy;
         if (!wasBusy) SetBusy(true);
-        SetLogin("Waiting for you to finish logging in...", Color.DimGray);
+        SetLogin("Waiting for you to finish logging in...", Tone.Muted);
         try { await SteamLogin.InteractiveLoginAsync(_s.EffectiveSteamCmd, _s.Account, CancellationToken.None); }
         catch (Exception e) { Append("Could not open SteamCMD: " + e.Message, Color.Tomato); }
         finally { if (!wasBusy) SetBusy(false); }
@@ -497,7 +672,7 @@ public sealed class MainForm : Form
         var picked = Selected().ToList();
         if (picked.Count == 0) return;
         if (!_cfg.AppIdValid) { MessageBox.Show(this, "Enter the game's Steam app ID first (the number in its store page URL).", Text); _appId.Focus(); return; }
-        if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { MessageBox.Show(this, "SteamCMD is not installed yet. Click Install SteamCMD.", Text); return; }
+        if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { ShowPage(_optionsPage); MessageBox.Show(this, "SteamCMD is not installed yet. Click Install SteamCMD on the Options tab.", Text); return; }
 
         var dry = _dry.Checked;
         var sb = new StringBuilder();
