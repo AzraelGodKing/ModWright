@@ -5,14 +5,17 @@ using System.Text;
 namespace SteamCmdHelper;
 
 /// <summary>
-/// "Request a game layout": collects a few details and opens a pre-filled GitHub issue in the browser.
-/// Nothing is sent from here; the person reviews the issue on GitHub and submits it themselves.
+/// "Request a game layout": collects a few details and opens a pre-filled Linear issue in the browser.
+/// Nothing is sent from here; the person reviews the issue in Linear and creates it themselves.
+/// Only people signed in to the Linear workspace can create it.
 /// </summary>
 public sealed class RequestForm : Form
 {
-    public const string IssuesUrl = "https://github.com/AzraelGodKing/SteamCMDHelper/issues/new";
-    public const string TemplateFile = "game-layout-request.yml";
-    const int MaxUrl = 7000; // browsers and GitHub reject much longer URLs
+    /// <summary>Linear's "new issue" link; query parameters pre-fill the issue (title, description, team).</summary>
+    public const string NewIssueUrl = "https://linear.new";
+    /// <summary>Linear team key the requests go to.</summary>
+    public const string TeamKey = "AZR";
+    const int MaxUrl = 7000; // browsers reject much longer URLs
 
     readonly TextBox _game = new() { Dock = DockStyle.Fill };
     readonly TextBox _appId = new() { Width = 120 };
@@ -45,7 +48,7 @@ public sealed class RequestForm : Form
         root.Controls.Add(new Label
         {
             AutoSize = true, MaximumSize = new Size(560, 0),
-            Text = "Want this tool to support another game? Fill this in and it opens a GitHub issue for you to review and submit (you need a free GitHub account). Nothing is sent from this window."
+            Text = "Want this tool to support another game? Fill this in and it opens a new issue in Linear for you to review and create (you must be signed in to the AzraelGodKing Linear workspace). Nothing is sent from this window."
         }, 0, 0);
 
         var top = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 4, Margin = new Padding(0, 8, 0, 4) };
@@ -67,10 +70,10 @@ public sealed class RequestForm : Form
 
         root.Controls.Add(_layout, 0, 3);
 
-        _note.Text = "Only the text in the box above is sent, and only after you press Submit on GitHub. Edit or delete anything you don't want to share.";
+        _note.Text = "Only the text in the box above goes into the issue, and only after you create it in Linear. Edit or delete anything you don't want to share.";
         root.Controls.Add(_note, 0, 4);
 
-        var open = new Button { Text = "Open GitHub issue", AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
+        var open = new Button { Text = "Open Linear issue", AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
         var copy = new Button { Text = "Copy text instead", AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
         var cancel = new Button { Text = "Cancel", AutoSize = true, Padding = new Padding(8, 2, 8, 2), DialogResult = DialogResult.Cancel };
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
@@ -85,7 +88,7 @@ public sealed class RequestForm : Form
         open.Click += (_, _) => OpenIssue(layoutName);
         copy.Click += (_, _) =>
         {
-            try { Clipboard.SetText(BuildBody(layoutName)); MessageBox.Show(this, "Copied. Paste it into a new issue at github.com/AzraelGodKing/SteamCMDHelper/issues.", Text); }
+            try { Clipboard.SetText(BuildBody(layoutName)); MessageBox.Show(this, "Copied. Paste it into a new issue in Linear.", Text); }
             catch (Exception e) { MessageBox.Show(this, "Could not copy: " + e.Message, Text); }
         };
     }
@@ -108,26 +111,26 @@ public sealed class RequestForm : Form
         try
         {
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-            if (cut) MessageBox.Show(this, "The file list was long, so it was trimmed. Add the rest in the GitHub form if it matters.", Text);
+            if (cut) MessageBox.Show(this, "The file list was long, so it was trimmed. Add the rest in the Linear issue if it matters.", Text);
             DialogResult = DialogResult.OK;
         }
         catch (Exception e)
         {
             try { Clipboard.SetText(BuildBody(layoutName)); } catch { }
-            MessageBox.Show(this, "Could not open the browser (" + e.Message + "). The text was copied; paste it into a new issue at github.com/AzraelGodKing/SteamCMDHelper/issues.", Text);
+            MessageBox.Show(this, "Could not open the browser (" + e.Message + "). The text was copied; paste it into a new issue in Linear.", Text);
         }
     }
 
     /// <summary>The pre-filled "new issue" address. The text is trimmed until the whole address fits (cut = true when that happened).</summary>
     public static (string url, bool cut) BuildIssueUrl(string game, string app, string layoutName, string layout)
     {
-        string Url(string layoutText) =>
-            IssuesUrl + "?template=" + TemplateFile
-            + "&title=" + Uri.EscapeDataString("Game layout request: " + game)
-            + "&game=" + Uri.EscapeDataString(game)
-            + "&appid=" + Uri.EscapeDataString(app)
-            + "&helper=" + Uri.EscapeDataString($"{Version} (layout: {layoutName})")
-            + "&layout=" + Uri.EscapeDataString(layoutText);
+        string Url(string layoutText)
+        {
+            var description = $"**Game:** {game}\n**Steam app ID:** {app}\n**Helper:** {Version} (layout: {layoutName})\n\n### What does one mod look like?\n\n{layoutText}";
+            return NewIssueUrl + "?team=" + TeamKey
+                + "&title=" + Uri.EscapeDataString("Game layout request: " + game)
+                + "&description=" + Uri.EscapeDataString(description.Replace("\r\n", "\n"));
+        }
 
         var url = Url(layout);
         var cut = false;
@@ -135,11 +138,10 @@ public sealed class RequestForm : Form
         {
             layout = layout.Substring(0, (int)(layout.Length * 0.8));
             cut = true;
-            url = Url(layout + "\r\n\r\n[trimmed: paste the rest of the file list here]");
+            url = Url(layout + "\n\n[trimmed: paste the rest of the file list here]");
         }
         return (url, cut);
     }
-
     /// <summary>Relative file names (no contents) of one mod folder, to show in the form. Capped so the form stays readable.</summary>
     public static string ListFileNames(string modDir, int max = 40)
     {

@@ -108,7 +108,7 @@ see the game's Workshop documentation for what a mod folder must contain.
 
 ## Requesting another game
 
-The **?** button (top right, always visible) opens a short form for asking for a built-in layout for another game. It fills in the game name, app ID, your helper version and the file names (never contents) of one mod folder, then opens a pre-filled GitHub issue in your browser. Nothing is sent until you press Submit on GitHub, and you can edit or delete anything first. **Copy text instead** copies the text if you do not use GitHub.
+The **?** button (top right, always visible) opens a short form for asking for a built-in layout for another game. It fills in the game name, app ID, your helper version and the file names (never contents) of one mod folder, then opens a pre-filled new issue in **Linear** (team `AZR`) in your browser. Nothing is created until you press Create in Linear, and you can edit or delete anything first. **Copy text instead** copies the text. Only people signed in to the Linear workspace can create the issue, so if you share the program, change `TeamKey` / `NewIssueUrl` in `RequestForm.cs` to your own (or tell people to use **Copy text instead** and send it to you).
 
 ## Safety
 
