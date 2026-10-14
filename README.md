@@ -66,3 +66,6 @@ Without a file, the RimWorld layout is assumed. For another game, press **Edit l
 - SteamCMD keeps the login cache in its own folder; keep it out of git.
 - Uploads publish immediately to subscribers. Use Dry run first when unsure.
 - Headless checks: `SteamCmdHelper.exe --selftest out.txt`, `SteamCmdHelper.exe --package <ModFolder> out.txt`.
+## License
+
+MIT, see [LICENSE](LICENSE).
