@@ -8,7 +8,7 @@ public sealed class MainForm : Form
     readonly AppSettings _s = AppSettings.Load();
     ProjectConfig _cfg = new();
 
-    readonly TextBox _repo = new() { Tag = "fill" };
+    readonly TextBox _repo = new() { Tag = "fill", ReadOnly = true, TabStop = false, Cursor = Cursors.Hand };
     readonly TextBox _account = new() { Width = 200 };
     readonly Label _branch = new() { AutoSize = true };
     readonly Label _game = new() { AutoSize = true, Tag = "fill", ForeColor = Color.DimGray };
@@ -107,7 +107,7 @@ public sealed class MainForm : Form
 
         Controls.Add(root);
 
-        _repo.Leave += (_, _) => { if (_repo.Text.Trim() != _s.RepoPath) { SaveFields(); RefreshAll(); } };
+        _repo.DoubleClick += (_, _) => { if (!_busy) BrowseRepo(); };
         _account.Leave += (_, _) => { SaveFields(); UpdateLoginHint(); };
         _allowCreate.CheckedChanged += (_, _) => { if (!_populating) { SaveFields(); RefreshAll(); } };
     }
