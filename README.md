@@ -41,8 +41,8 @@ the release workflow checks both, runs the tests and publishes the release with 
 1. **Mods repo**: press **Browse...** (or double-click the path) and pick the folder that holds your mods (one sub-folder per mod). The path cannot be typed in, so it cannot be mistyped.
 2. **Steam app ID**: the number in the game's store URL (`store.steampowered.com/app/294100/...` = RimWorld).
    The game name is looked up from Steam to confirm it. RimWorld-shaped repos are detected automatically.
-3. **Layout**: pick **Generic** (every sub-folder is a mod) or **RimWorld**, or press **Edit layout file...** for a custom layout (below).
-   App ID and layout are saved in `.steamhelper.json` in the repo root.
+3. **Layout**: pick a built-in layout (**Generic**, **RimWorld**, **Golf With Your Friends**). Built-in layouts are part of the program and are **locked**: they cannot be edited, and the layout fixes the app ID. For anything else pick **Custom**, then **Edit layout file...** (below).
+   The choice is saved in `.steamhelper.json` in the repo root; for a built-in layout that file holds only its name (and your app ID for Generic).
 4. **Steam account**: type your Steam login name. The status line says whether a saved login exists.
    **Install SteamCMD** downloads it to `%LocalAppData%\SteamCmdHelper\steamcmd` (or uses
    `<repo>\_tools\steamcmd` if that exists).
@@ -59,7 +59,9 @@ built, etc.). A warning means uncommitted tracked changes (git packaging uses `H
 Tick **Allow creating new items**. They are created private, with the title, description and preview image
 from your layout. The new id is saved to the id file; commit it.
 
-## Layout file: `.steamhelper.json`
+## Custom layouts: `.steamhelper.json`
+
+Only a **Custom** layout is stored in full in the file and can be edited (the file says `"Preset": "Custom"`). Choosing Custom from a built-in layout copies that layout's fields as a starting point. A built-in layout named in the file is always read from the program, whatever else the file says.
 
 The **Generic** layout expects, inside each mod folder: `CHANGELOG.md` (the Workshop change note),
 `workshop_id.txt` (the item id, written for you on create), `preview.png` and `steam_description.txt`
