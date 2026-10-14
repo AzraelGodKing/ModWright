@@ -73,7 +73,8 @@ public sealed class MainForm : Form
     void BuildUi()
     {
         Text = "SteamCMD Helper - Workshop uploads";
-        Width = 1000; Height = 800; MinimumSize = new Size(840, 640);
+        var screen = Screen.PrimaryScreen?.WorkingArea.Size ?? new Size(1000, 800);
+        Width = Math.Min(1000, screen.Width); Height = Math.Min(800, screen.Height); MinimumSize = new Size(840, 640);
         Font = new Font("Segoe UI", 9.5f);
         StartPosition = FormStartPosition.CenterScreen;
         Theme.Style(_tip);
