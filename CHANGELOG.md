@@ -13,9 +13,13 @@
   upload keeps its folder for inspection; such folders are swept after 7 days.
 - Unit tests in `tests/SteamCmdHelper.Tests` (`dotnet test`, runs on any OS).
 
+## 1.2.2
+
+- Removed the experimental Tabletop Simulator layout: its items are not built the way SteamCMD uploads content (documented in the README).
+
 ## 1.2.1
 
-- Added an experimental Tabletop Simulator layout (app 286160). Real uploads with it ask for confirmation first.
+- Added an experimental Tabletop Simulator layout (app 286160).
 
 ## 1.2.0
 

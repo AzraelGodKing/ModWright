@@ -93,9 +93,9 @@ Example for a game whose mods have a `mod.json` and live in `mods/`:
   "NameKey": "info.title", "VersionKey": "info.version", "Preview": "" }
 ```
 
-### Tabletop Simulator (experimental)
+### Tabletop Simulator is not supported
 
-The **Tabletop Simulator** layout (app ID 286160) treats each sub-folder as one mod: its save `.json`, the images and models it uses, and `preview.png` / `steam_description.txt` for creating. Version and changelog are optional. This preset is **unproven**: TTS normally uploads from inside the game (Modding > Workshop Upload), which packages the item itself, and I could not confirm that a raw SteamCMD upload produces an item the game loads. The app asks for confirmation before any real upload with it. Try a brand-new private item first and check it in the game before updating anything you care about.
+Tabletop Simulator (app 286160) does not work with this tool. A Workshop item for it is just a save `.json` and a `.png` thumbnail (its images and models are links to Steam cloud, Google Drive, GitHub and similar, not part of the item), and the game keeps no `steamapps\workshop\content` folder for it. It publishes through its own in-game uploader (Modding > Workshop Upload / Update Workshop), which SteamCMD's content-folder upload does not replace. Use the in-game uploader for TTS mods.
 
 Only RimWorld is tested against real mods; the other presets are starting points. For other games, check the layout with **Dry run** first and
 see the game's Workshop documentation for what a mod folder must contain.
