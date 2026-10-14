@@ -12,10 +12,10 @@ namespace SteamCmdHelper;
 public sealed class ProjectConfig
 {
     public const string FileName = ".steamhelper.json";
-    public static readonly string[] PresetNames = { "Generic", "RimWorld" };
+    public static readonly string[] PresetNames = { "Generic", "RimWorld", "Golf With Your Friends" };
 
     /// <summary>Presets that have not been proven against the real game. Real uploads ask for confirmation first.</summary>
-    public static readonly string[] ExperimentalPresets = Array.Empty<string>();
+    public static readonly string[] ExperimentalPresets = { "Golf With Your Friends" };
 
     /// <summary>Steam app id of the game (RimWorld = 294100). Required before anything can be uploaded.</summary>
     public string AppId { get; set; } = "";
@@ -119,6 +119,19 @@ public sealed class ProjectConfig
             BuiltFiles = new[] { "Assemblies/*.dll" },
             Exclude = new[] { ".git", ".vs", "obj", "bin", "Source", "Tools", "*.md", "*.pdb" },
             Source = "RimWorld preset"
+        },
+        // Modelled on a downloaded Workshop item: a folder holding "Map" (JSON course file), Preview.jpg and optional Additional0.jpg...
+        // Unverified: nobody has confirmed the game accepts a hand-uploaded item, and the game's own Map file carries a publishedID.
+        "Golf With Your Friends" => new ProjectConfig
+        {
+            AppId = "431240",
+            GameName = "Golf With Your Friends",
+            ModMarker = "Map",
+            NameKey = "\"levelName\"\\s*:\\s*\"([^\"]*)\"",
+            DescriptionKey = "\"description\"\\s*:\\s*\"([^\"]*)\"",
+            ChangelogRequired = false,
+            Preview = "Preview.jpg",
+            Source = "Golf With Your Friends preset (experimental)"
         },
         _ => new ProjectConfig { Source = "generic layout" }
     };

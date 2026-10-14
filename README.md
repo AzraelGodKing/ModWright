@@ -93,6 +93,10 @@ Example for a game whose mods have a `mod.json` and live in `mods/`:
   "NameKey": "info.title", "VersionKey": "info.version", "Preview": "" }
 ```
 
+### Golf With Your Friends (experimental)
+
+The **Golf With Your Friends** layout (app ID 431240) treats each sub-folder as one map: a `Map` file (JSON; the map name and description are read from it), `Preview.jpg` and any `AdditionalN.jpg` screenshots. It is modelled on how a downloaded Workshop map looks on disk, but it is **unproven**: nobody has confirmed the game accepts a hand-uploaded item, and the game writes the item's `publishedID` into the `Map` file itself. Real uploads with it ask for confirmation first. Try a brand-new private item first and check it loads in the game.
+
 ### Tabletop Simulator is not supported
 
 Tabletop Simulator (app 286160) does not work with this tool. A Workshop item for it is just a save `.json` and a `.png` thumbnail (its images and models are links to Steam cloud, Google Drive, GitHub and similar, not part of the item), and the game keeps no `steamapps\workshop\content` folder for it. It publishes through its own in-game uploader (Modding > Workshop Upload / Update Workshop), which SteamCMD's content-folder upload does not replace. Use the in-game uploader for TTS mods.
