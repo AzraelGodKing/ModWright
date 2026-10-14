@@ -110,6 +110,15 @@ see the game's Workshop documentation for what a mod folder must contain.
 
 The **?** button (top right, always visible) opens a short form for asking for a built-in layout for another game. It fills in the game name, app ID, your helper version and the file names (never contents) of one mod folder, then opens a pre-filled new issue in **Linear** (team `AZR`) in your browser. Nothing is created until you press Create in Linear, and you can edit or delete anything first. **Copy text instead** copies the text. Only people signed in to the Linear workspace can create the issue, so if you share the program, change `TeamKey` / `NewIssueUrl` in `RequestForm.cs` to your own (or tell people to use **Copy text instead** and send it to you).
 
+### Sending requests from inside the app (maintainer setup)
+
+To let users send requests without a browser or login, put a git-ignored file named `request.key` in the project folder before building:
+
+- line 1: a Linear personal API key restricted to **Create issues** and to one dedicated team (Settings > Account > Security & Access)
+- line 2: that team's ID (UUID)
+
+The file is embedded in the build, so anyone with the exe could extract the key. Keep the key's scope that narrow and revoke it if it is abused. Without the file the button opens a pre-filled issue instead.
+
 ## Safety
 
 - Password and Steam Guard code are typed into SteamCMD's own window, never into this app, and not saved.
