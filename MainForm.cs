@@ -126,6 +126,7 @@ public sealed class MainForm : Form
     async Task ApplyAppIdAsync()
     {
         if (_populating || _busy) return;
+        if (_cfg.AppIdLocked) { _appId.Text = _cfg.AppId; return; }
         var id = _appId.Text.Trim();
         if (id == _cfg.AppId) return;
         if (id.Length > 0 && !id.All(char.IsDigit)) { Append("The app ID is a number, e.g. 294100 for RimWorld (it is in the game's Steam store URL).", Color.Orange); return; }
@@ -142,9 +143,17 @@ public sealed class MainForm : Form
     void ApplyPresetChoice()
     {
         var name = _preset.SelectedItem as string ?? "";
-        if (name == "Custom" || !Directory.Exists(_s.RepoPath)) { ShowGame(); return; }
+        if (!Directory.Exists(_s.RepoPath)) { MessageBox.Show(this, "Pick the mods repo folder first.", Text); ShowGame(); return; }
+        if (name == ProjectConfig.CustomName)
+        {
+            if (_cfg.PresetName() == ProjectConfig.CustomName) { ShowGame(); return; }
+            _cfg.MakeCustom(); // keeps the current built-in layout's fields as the starting point
+            SaveLayout("Layout set to Custom (editable).");
+            ShowGame();
+            return;
+        }
         _cfg.ApplyPreset(name);
-        SaveLayout($"Layout set to {name}.");
+        SaveLayout($"Layout set to {name} (built in, locked).");
         RefreshAll();
     }
 
@@ -181,9 +190,18 @@ public sealed class MainForm : Form
         }
         else
         {
-            _game.Text = $"{(_cfg.GameName.Length > 0 ? _cfg.GameName : "App " + _cfg.AppId)}  -  layout: {_cfg.Source}";
+            _game.Text = $"{(_cfg.GameName.Length > 0 ? _cfg.GameName : "App " + _cfg.AppId)}  -  layout: {_cfg.Source}"
+                         + (_cfg.IsBuiltIn ? " (locked; choose Custom to make your own)" : "");
             _game.ForeColor = Color.DimGray;
         }
+        ApplyLocks();
+    }
+
+    /// <summary>Built-in layouts are read-only: no editing the layout file, and no changing the app id when the layout fixes it.</summary>
+    void ApplyLocks()
+    {
+        _editLayout.Enabled = !_busy && !_cfg.IsBuiltIn;
+        _appId.Enabled = !_busy && !_cfg.AppIdLocked;
     }
 
     static Label Lbl(string t) => new() { Text = t, AutoSize = true };
@@ -232,6 +250,7 @@ public sealed class MainForm : Form
     {
         SaveFields();
         if (!Directory.Exists(_s.RepoPath)) { MessageBox.Show(this, "Pick the mods repo folder first.", Text); return; }
+        if (_cfg.IsBuiltIn) { MessageBox.Show(this, "Built-in layouts are locked. Choose \"Custom\" in the Layout box to make your own.", Text); return; }
         var path = _cfg.EnsureFile(_s.RepoPath);
         Append($"Opened {path}. Save it, then press Refresh.", Color.DeepSkyBlue);
         try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
@@ -295,6 +314,7 @@ public sealed class MainForm : Form
         _busy = busy;
         foreach (var c in new Control[] { _browse, _editLayout, _refresh, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset })
             c.Enabled = !busy;
+        ApplyLocks();
         _cancel.Enabled = busy;
         UpdateGoButton();
     }

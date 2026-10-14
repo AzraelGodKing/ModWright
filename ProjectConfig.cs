@@ -5,17 +5,24 @@ namespace SteamCmdHelper;
 
 /// <summary>
 /// Describes how a mods repo is laid out, so the helper works for any Steam Workshop game.
-/// Read from ".steamhelper.json" in the repo root. Without that file the layout is auto-detected
-/// (RimWorld if the mods have About/About.xml, otherwise the generic layout).
+///
+/// Built-in layouts (<see cref="PresetNames"/>) live in this program and are locked: the repo's
+/// ".steamhelper.json" only records WHICH one is used (plus the app id for Generic), so editing that file
+/// cannot change them. A "Custom" layout is the one kind stored in full in the file and editable.
+/// Without a file the layout is auto-detected (RimWorld if the mods have About/About.xml, else Generic).
 /// All paths are relative to each mod's own folder and use forward slashes.
 /// </summary>
 public sealed class ProjectConfig
 {
     public const string FileName = ".steamhelper.json";
+    public const string CustomName = "Custom";
     public static readonly string[] PresetNames = { "Generic", "RimWorld", "Golf With Your Friends" };
 
     /// <summary>Presets that have not been proven against the real game. Real uploads ask for confirmation first.</summary>
     public static readonly string[] ExperimentalPresets = { "Golf With Your Friends" };
+
+    /// <summary>Which layout is in use: a built-in name, or "Custom". Empty in old files = worked out from the fields.</summary>
+    public string Preset { get; set; } = "";
 
     /// <summary>Steam app id of the game (RimWorld = 294100). Required before anything can be uploaded.</summary>
     public string AppId { get; set; } = "";
@@ -23,11 +30,13 @@ public sealed class ProjectConfig
     /// <summary>Shown in the window; purely a label (filled in automatically from Steam when possible).</summary>
     public string GameName { get; set; } = "";
 
+    // ---- everything below is only read from the file for Custom layouts; built-ins come from this program ----
+
     /// <summary>Folder inside the repo that holds the mods. Empty = the repo root.</summary>
     public string ModsFolder { get; set; } = "";
 
     /// <summary>
-    /// A subfolder counts as a mod when this file exists inside it (e.g. "About/About.xml", "mod.info", "addon.json").
+    /// A subfolder counts as a mod when this file exists inside it (e.g. "About/About.xml", "mod.info", "Map").
     /// Empty = every subfolder counts as a mod.
     /// </summary>
     public string ModMarker { get; set; } = "";
@@ -91,6 +100,14 @@ public sealed class ProjectConfig
     [JsonIgnore] public string? Error { get; set; }
     [JsonIgnore] public bool AppIdValid => !string.IsNullOrWhiteSpace(AppId) && AppId.All(char.IsDigit);
 
+    /// <summary>True for the layouts built into the program. These cannot be edited.</summary>
+    [JsonIgnore] public bool IsBuiltIn => PresetNames.Contains(PresetName());
+
+    /// <summary>True when the layout itself names the game, so the app id is fixed too.</summary>
+    [JsonIgnore] public bool AppIdLocked => IsBuiltIn && GetPreset(PresetName()).AppId.Length > 0;
+
+    [JsonIgnore] public bool Experimental => ExperimentalPresets.Contains(PresetName());
+
     static readonly JsonSerializerOptions Opts = new()
     {
         WriteIndented = true,
@@ -99,12 +116,13 @@ public sealed class ProjectConfig
         PropertyNameCaseInsensitive = true
     };
 
-    // ------------------------------------------------------------ presets
+    // ------------------------------------------------------------ built-in layouts
 
-    public static ProjectConfig Preset(string name) => name switch
+    public static ProjectConfig GetPreset(string name) => name switch
     {
         "RimWorld" => new ProjectConfig
         {
+            Preset = "RimWorld",
             AppId = "294100",
             GameName = "RimWorld",
             ModMarker = "About/About.xml",
@@ -118,12 +136,13 @@ public sealed class ProjectConfig
             SteamDescriptionFile = "About/steam_description.txt",
             BuiltFiles = new[] { "Assemblies/*.dll" },
             Exclude = new[] { ".git", ".vs", "obj", "bin", "Source", "Tools", "*.md", "*.pdb" },
-            Source = "RimWorld preset"
+            Source = "built-in RimWorld layout"
         },
         // Modelled on a downloaded Workshop item: a folder holding "Map" (JSON course file), Preview.jpg and optional Additional0.jpg...
         // Unverified: nobody has confirmed the game accepts a hand-uploaded item, and the game's own Map file carries a publishedID.
         "Golf With Your Friends" => new ProjectConfig
         {
+            Preset = "Golf With Your Friends",
             AppId = "431240",
             GameName = "Golf With Your Friends",
             ModMarker = "Map",
@@ -131,37 +150,41 @@ public sealed class ProjectConfig
             DescriptionKey = "\"description\"\\s*:\\s*\"([^\"]*)\"",
             ChangelogRequired = false,
             Preview = "Preview.jpg",
-            Source = "Golf With Your Friends preset (experimental)"
+            Source = "built-in Golf With Your Friends layout (experimental)"
         },
-        _ => new ProjectConfig { Source = "generic layout" }
+        _ => new ProjectConfig { Preset = "Generic", Source = "built-in Generic layout" }
     };
 
-    /// <summary>Replaces the layout fields with a preset's. The app id is only replaced when the preset names a game.</summary>
+    /// <summary>Switches to a built-in layout (replacing every layout field). The app id is only replaced when the layout names a game.</summary>
     public void ApplyPreset(string name)
     {
-        var p = Preset(name);
+        var p = GetPreset(name);
+        Preset = p.Preset;
         if (p.AppId.Length > 0) { AppId = p.AppId; GameName = p.GameName; }
         ModsFolder = p.ModsFolder; ModMarker = p.ModMarker;
         NameKey = p.NameKey; VersionKey = p.VersionKey; DescriptionKey = p.DescriptionKey;
         Changelog = p.Changelog; ChangelogRequired = p.ChangelogRequired; ChangelogFirstLineIsVersion = p.ChangelogFirstLineIsVersion;
         WorkshopIdFile = p.WorkshopIdFile; Preview = p.Preview; SteamDescriptionFile = p.SteamDescriptionFile;
         BuiltFiles = p.BuiltFiles; UseGitArchive = p.UseGitArchive; Exclude = p.Exclude;
+        Source = p.Source;
     }
 
-    /// <summary>Which preset the current layout matches ("Custom" if neither).</summary>
+    /// <summary>Turns the current layout into an editable Custom one (keeping its fields as a starting point).</summary>
+    public void MakeCustom() { Preset = CustomName; Source = FileName + " (custom layout)"; }
+
+    /// <summary>The layout in use: a built-in name or "Custom". Old files without a Preset field are matched against the built-ins.</summary>
     public string PresetName()
     {
+        if (Preset == CustomName || PresetNames.Contains(Preset)) return Preset;
         foreach (var n in PresetNames)
         {
-            var p = Preset(n);
+            var p = GetPreset(n);
             if (p.ModMarker == ModMarker && p.Changelog == Changelog && p.WorkshopIdFile == WorkshopIdFile
                 && p.NameKey == NameKey && p.VersionKey == VersionKey && p.ModsFolder == ModsFolder
                 && p.ChangelogRequired == ChangelogRequired && (p.AppId.Length == 0 || p.AppId == AppId)) return n;
         }
-        return "Custom";
+        return CustomName;
     }
-
-    [JsonIgnore] public bool Experimental => ExperimentalPresets.Contains(PresetName());
 
     // ------------------------------------------------------------ load / save
 
@@ -174,7 +197,19 @@ public sealed class ProjectConfig
         try
         {
             var c = JsonSerializer.Deserialize<ProjectConfig>(File.ReadAllText(path), Opts) ?? new ProjectConfig();
-            c.Source = FileName + " in the repo";
+            var name = c.PresetName();
+            if (PresetNames.Contains(name))
+            {
+                // Built-in layouts are locked: whatever else the file says about the layout is ignored.
+                var appId = c.AppId; var game = c.GameName;
+                c.ApplyPreset(name);
+                if (GetPreset(name).AppId.Length == 0) { c.AppId = appId; c.GameName = game; }
+            }
+            else
+            {
+                c.Preset = CustomName;
+                c.Source = FileName + " (custom layout)";
+            }
             return c;
         }
         catch (Exception e)
@@ -192,29 +227,43 @@ public sealed class ProjectConfig
         {
             if (Directory.Exists(repo) && Directory.GetDirectories(repo).Any(d => File.Exists(Path.Combine(d, "About", "About.xml"))))
             {
-                var rw = Preset("RimWorld");
-                rw.Source = "auto-detected RimWorld layout";
+                var rw = GetPreset("RimWorld");
+                rw.Source = "auto-detected built-in RimWorld layout";
                 return rw;
             }
         }
         catch { }
-        var g = Preset("Generic");
-        g.Source = "generic layout (no " + FileName + ")";
+        var g = GetPreset("Generic");
+        g.Source = "built-in Generic layout (no " + FileName + ")";
         return g;
     }
 
-    /// <summary>Writes the layout file, replacing any existing one.</summary>
+    /// <summary>
+    /// Writes the layout file, replacing any existing one. Built-in layouts save only their name (and the app id when the
+    /// layout does not fix it); a Custom layout saves every field.
+    /// </summary>
     public string Save(string repo)
     {
         var path = PathFor(repo);
-        File.WriteAllText(path, JsonSerializer.Serialize(this, Opts));
-        Source = FileName + " in the repo";
+        var name = PresetName();
+        if (PresetNames.Contains(name))
+        {
+            var lean = new Dictionary<string, string> { ["Preset"] = name };
+            if (GetPreset(name).AppId.Length == 0) { lean["AppId"] = AppId; lean["GameName"] = GameName; }
+            File.WriteAllText(path, JsonSerializer.Serialize(lean, Opts));
+        }
+        else
+        {
+            Preset = CustomName;
+            File.WriteAllText(path, JsonSerializer.Serialize(this, Opts));
+        }
         return path;
     }
 
-    /// <summary>Makes sure the layout file exists (writing the current layout if not) and returns its path, ready to edit.</summary>
+    /// <summary>Makes sure a Custom layout file exists (writing the current fields as a starting point) and returns its path.</summary>
     public string EnsureFile(string repo)
     {
+        if (IsBuiltIn) throw new InvalidOperationException("Built-in layouts cannot be edited. Choose Custom first.");
         var path = PathFor(repo);
         if (!File.Exists(path)) Save(repo);
         return path;

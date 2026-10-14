@@ -13,6 +13,12 @@
   upload keeps its folder for inspection; such folders are swept after 7 days.
 - Unit tests in `tests/SteamCmdHelper.Tests` (`dotnet test`, runs on any OS).
 
+## 1.4.0
+
+- Built-in layouts (Generic, RimWorld, Golf With Your Friends) are now part of the program and locked: the layout file only records which one is used, and the app ID is fixed by layouts that name a game.
+- Only the new **Custom** layout is stored in full and editable. Old layout files that match a built-in layout become that locked layout.
+- `--layouttest` headless check.
+
 ## 1.3.0
 
 - Added an experimental Golf With Your Friends layout (app 431240). Real uploads with it ask for confirmation first.
