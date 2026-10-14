@@ -10,12 +10,13 @@ public sealed class MainForm : Form
 
     readonly TextBox _repo = new() { Tag = "fill", ReadOnly = true, TabStop = false, Cursor = Cursors.Hand };
     readonly TextBox _account = new() { Width = 200 };
-    readonly Label _branch = new() { AutoSize = true };
+    readonly Label _branch = new() { AutoSize = true, AutoEllipsis = true, MaximumSize = new Size(240, 0) };
     readonly TextBox _appId = new() { Width = 90 };
     readonly ComboBox _preset = new() { Width = 110, DropDownStyle = ComboBoxStyle.DropDownList };
-    readonly Label _game = new() { AutoSize = true, Tag = "fill", ForeColor = Color.DimGray };
+    readonly Label _game = new() { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill", ForeColor = Color.DimGray };
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(8) };
-    readonly Label _login = new() { AutoSize = true, Tag = "fill" };
+    readonly ToolTip _tip = new();
+    readonly Label _login = new() { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" };
     readonly ListView _list = new();
     readonly ProgressBar _modBar = new() { Minimum = 0, Maximum = 100, Height = 16, Dock = DockStyle.Top };
     readonly ProgressBar _overall = new() { Minimum = 0, Maximum = 100, Height = 16, Dock = DockStyle.Top };
@@ -25,7 +26,7 @@ public sealed class MainForm : Form
     readonly CheckBox _allowCreate = new() { AutoSize = true, Text = "Allow creating new items (private) for mods not on Steam yet" };
     readonly RichTextBox _log = new() { Dock = DockStyle.Fill, ReadOnly = true, BackColor = Color.FromArgb(24, 24, 28), ForeColor = Color.Gainsboro, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None };
 
-    Button _browse = null!, _refresh = null!, _go = null!, _cancel = null!, _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!;
+    Button _help = null!, _browse = null!, _refresh = null!, _go = null!, _cancel = null!, _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!;
 
     List<ModInfo> _mods = new();
     CancellationTokenSource? _cts;
@@ -77,7 +78,11 @@ public sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 170));
 
-        root.Controls.Add(Row(Lbl("Mods repo"), _repo, _browse, _branch), 0, 0);
+        _help = Btn("?", (_, _) => OpenRequest());
+        _help.AutoSize = false; _help.Size = new Size(30, 28); _help.Padding = Padding.Empty;
+        _help.Font = new Font(Font, FontStyle.Bold);
+        new ToolTip().SetToolTip(_help, "Request a layout for another game (opens a GitHub issue)");
+        root.Controls.Add(Row(Lbl("Mods repo"), _repo, _browse, _branch, _help), 0, 0);
         _preset.Items.AddRange(ProjectConfig.PresetNames.Cast<object>().Append("Custom").ToArray());
         _preset.Width = 150;
         root.Controls.Add(Row(Lbl("Steam app ID"), _appId, Lbl("Layout"), _preset, _editLayout, _game), 0, 1);
@@ -121,6 +126,16 @@ public sealed class MainForm : Form
     }
 
     // ---------------------------------------------------------------- game / layout
+
+    /// <summary>The "?" button: ask for a layout for another game via a pre-filled GitHub issue.</summary>
+    void OpenRequest()
+    {
+        // Show one mod's file names (never contents) so the request says what a mod looks like.
+        var mod = (_list.SelectedItems.Count > 0 ? _list.SelectedItems[0].Tag : _list.Items.Count > 0 ? _list.Items[0].Tag : null) as ModInfo;
+        var names = mod != null ? RequestForm.ListFileNames(mod.Dir) : "";
+        using var f = new RequestForm(_cfg.GameName, _cfg.AppId, _cfg.PresetName(), names);
+        f.ShowDialog(this);
+    }
 
     /// <summary>The user typed an app id: validate it, look the game name up on Steam, and save it to the layout file.</summary>
     async Task ApplyAppIdAsync()
@@ -194,6 +209,7 @@ public sealed class MainForm : Form
                          + (_cfg.IsBuiltIn ? " (locked; choose Custom to make your own)" : "");
             _game.ForeColor = Color.DimGray;
         }
+        _tip.SetToolTip(_game, _game.Text); // full text when it is cut off with "..."
         ApplyLocks();
     }
 
@@ -319,7 +335,7 @@ public sealed class MainForm : Form
         UpdateGoButton();
     }
 
-    void SetLogin(string text, Color c) { _login.Text = text; _login.ForeColor = c; }
+    void SetLogin(string text, Color c) { _login.Text = text; _login.ForeColor = c; _tip.SetToolTip(_login, text); }
 
     void UpdateLoginHint()
     {

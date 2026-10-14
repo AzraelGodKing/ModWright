@@ -53,6 +53,33 @@ static class Program
         var lt = Array.IndexOf(args, "--layouttest");
         if (lt >= 0 && lt + 1 < args.Length) { File.WriteAllText(args[lt + 1], LayoutTest()); return; }
 
+        if (Array.IndexOf(args, "--urltest") is var ut and >= 0 && ut + 1 < args.Length)
+        {
+            var (u1, c1) = RequestForm.BuildIssueUrl("Test & Game", "123", "Custom", "line1\r\nline2 = \"x\" & y");
+            var (u2, c2) = RequestForm.BuildIssueUrl("Big Game", "456", "Generic", string.Join("\r\n", Enumerable.Range(0, 3000).Select(n => "folder/sub/file_" + n + ".json")));
+            File.WriteAllText(args[ut + 1], $"short: len={u1.Length} cut={c1}\r\n{u1}\r\nlong: len={u2.Length} cut={c2}\r\n{u2.Substring(0, 160)}...\r\n");
+            return;
+        }
+
+        if (Array.IndexOf(args, "--shot") is var sh and >= 0 && sh + 1 < args.Length)
+        {
+            // Render the main window and the request form to PNG files (layout check without clicking).
+            ApplicationConfiguration.Initialize();
+            void Snap(Form f, string file)
+            {
+                // Real on-screen capture (DrawToBitmap leaves some controls blank); the window is visible for about two seconds.
+                f.StartPosition = FormStartPosition.Manual; f.Location = new Point(20, 20); f.TopMost = true;
+                f.Show(); Application.DoEvents(); System.Threading.Thread.Sleep(1800); Application.DoEvents();
+                using var bmp = new Bitmap(f.Width, f.Height);
+                using (var g = Graphics.FromImage(bmp)) g.CopyFromScreen(f.Location, Point.Empty, f.Size);
+                bmp.Save(file, System.Drawing.Imaging.ImageFormat.Png);
+                f.Close();
+            }
+            Snap(new MainForm(), Path.Combine(args[sh + 1], "main.png"));
+            Snap(new RequestForm("RimWorld", "294100", "RimWorld", "About/About.xml\r\nAbout/Preview.png\r\nAssemblies/Mod.dll"), Path.Combine(args[sh + 1], "request.png"));
+            return;
+        }
+
         var i = Array.IndexOf(args, "--selftest");
         var j = Array.IndexOf(args, "--package");
         if (i >= 0 || j >= 0)
