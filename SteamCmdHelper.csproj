@@ -8,10 +8,14 @@
     <RootNamespace>SteamCmdHelper</RootNamespace>
     <AssemblyName>SteamCmdHelper</AssemblyName>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.5.1</Version>
+    <Version>1.6.0</Version>
     <Product>SteamCMD Helper</Product>
     <Description>One-click Steam Workshop uploads for RimWorld mods, with login handling and progress.</Description>
     <!-- The test project lives inside this folder; keep its sources out of the app. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);tests/**</DefaultItemExcludes>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Built into the program only when you have this git-ignored file; see RequestSender.cs -->
+    <EmbeddedResource Include="request.key" LogicalName="request.key" Condition="Exists('request.key')" />
+  </ItemGroup>
 </Project>

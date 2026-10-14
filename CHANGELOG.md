@@ -13,6 +13,11 @@
   upload keeps its folder for inspection; such folders are swept after 7 days.
 - Unit tests in `tests/SteamCmdHelper.Tests` (`dotnet test`, runs on any OS).
 
+## 1.6.0
+
+- The ? button can now send a layout request straight to the developer from inside the app (needs only an internet connection, no account). Builds without the key still open a pre-filled Linear issue.
+- Requests are limited to one per minute and show exactly what will be sent.
+
 ## 1.5.1
 
 - The **?** button now opens a pre-filled issue in Linear (team AZR) instead of GitHub. Only people signed in to that Linear workspace can create it; **Copy text instead** works for everyone.

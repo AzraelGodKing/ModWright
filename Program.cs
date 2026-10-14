@@ -53,6 +53,30 @@ static class Program
         var lt = Array.IndexOf(args, "--layouttest");
         if (lt >= 0 && lt + 1 < args.Length) { File.WriteAllText(args[lt + 1], LayoutTest()); return; }
 
+        if (Array.IndexOf(args, "--sendtest") is var st and >= 0 && st + 1 < args.Length)
+        {
+            // Posts to a local fake endpoint and records what a real server would receive.
+            var outFile = args[st + 1];
+            var prefix = "http://localhost:47831/graphql/";
+            using var listener = new System.Net.HttpListener();
+            listener.Prefixes.Add(prefix);
+            listener.Start();
+            var served = Task.Run(async () =>
+            {
+                var ctx = await listener.GetContextAsync();
+                using var rd = new StreamReader(ctx.Request.InputStream);
+                var body = await rd.ReadToEndAsync();
+                File.WriteAllText(outFile, $"auth={ctx.Request.Headers["Authorization"]}\r\nmethod={ctx.Request.HttpMethod}\r\nbody={body}\r\n");
+                var reply = System.Text.Encoding.UTF8.GetBytes("{\"data\":{\"issueCreate\":{\"success\":true,\"issue\":{\"identifier\":\"GR-7\"}}}}");
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.OutputStream.WriteAsync(reply);
+                ctx.Response.Close();
+            });
+            var (ok, msg) = RequestSender.SendAsync("Game layout request: Test \"Q\"", "line1\nline2 \\ x", prefix).GetAwaiter().GetResult();
+            served.Wait(5000);
+            File.AppendAllText(outFile, $"available={RequestSender.Available} ok={ok} msg={msg}\r\n");
+            return;
+        }
         if (Array.IndexOf(args, "--urltest") is var ut and >= 0 && ut + 1 < args.Length)
         {
             var (u1, c1) = RequestForm.BuildIssueUrl("Test & Game", "123", "Custom", "line1\r\nline2 = \"x\" & y");

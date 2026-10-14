@@ -24,6 +24,7 @@ public sealed class RequestForm : Form
 
     public RequestForm(string gameName, string appId, string layoutName, string modFileNames)
     {
+        var direct = RequestSender.Available; // this build can send requests itself (no browser, no login)
         Text = "Request a layout for another game";
         Width = 620; Height = 560; MinimumSize = new Size(520, 480);
         StartPosition = FormStartPosition.CenterParent;
@@ -48,7 +49,8 @@ public sealed class RequestForm : Form
         root.Controls.Add(new Label
         {
             AutoSize = true, MaximumSize = new Size(560, 0),
-            Text = "Want this tool to support another game? Fill this in and it opens a new issue in Linear for you to review and create (you must be signed in to the AzraelGodKing Linear workspace). Nothing is sent from this window."
+            Text = direct ? "Want this tool to support another game? Fill this in and press Send request. It goes straight to the developer over the internet; you do not need any account."
+                 : "Want this tool to support another game? Fill this in and it opens a new issue in Linear for you to review and create (you must be signed in to the AzraelGodKing Linear workspace). Nothing is sent from this window."
         }, 0, 0);
 
         var top = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 4, Margin = new Padding(0, 8, 0, 4) };
@@ -70,10 +72,11 @@ public sealed class RequestForm : Form
 
         root.Controls.Add(_layout, 0, 3);
 
-        _note.Text = "Only the text in the box above goes into the issue, and only after you create it in Linear. Edit or delete anything you don't want to share.";
+        _note.Text = direct ? "Pressing Send request creates an issue with exactly the game, app ID and text shown above, plus this program's version. Nothing else is sent. Edit or delete anything you don't want to share."
+                         : "Only the text in the box above goes into the issue, and only after you create it in Linear. Edit or delete anything you don't want to share.";
         root.Controls.Add(_note, 0, 4);
 
-        var open = new Button { Text = "Open Linear issue", AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
+        var open = new Button { Text = direct ? "Send request" : "Open Linear issue", AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
         var copy = new Button { Text = "Copy text instead", AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
         var cancel = new Button { Text = "Cancel", AutoSize = true, Padding = new Padding(8, 2, 8, 2), DialogResult = DialogResult.Cancel };
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
@@ -85,7 +88,7 @@ public sealed class RequestForm : Form
         CancelButton = cancel;
         AcceptButton = null;
 
-        open.Click += (_, _) => OpenIssue(layoutName);
+        open.Click += async (_, _) => { if (direct) await SendRequestAsync(layoutName, open); else OpenIssue(layoutName); };
         copy.Click += (_, _) =>
         {
             try { Clipboard.SetText(BuildBody(layoutName)); MessageBox.Show(this, "Copied. Paste it into a new issue in Linear.", Text); }
@@ -121,12 +124,45 @@ public sealed class RequestForm : Form
         }
     }
 
+    /// <summary>The issue text (Markdown) shared by the pre-filled link and the direct send.</summary>
+    public static string BuildDescription(string game, string app, string layoutName, string layout) =>
+        $"**Game:** {game}\n**Steam app ID:** {app}\n**Helper:** {Version} (layout: {layoutName})\n\n### What does one mod look like?\n\n{layout}".Replace("\r\n", "\n");
+
+    static DateTime _lastSend = DateTime.MinValue;
+
+    async Task SendRequestAsync(string layoutName, Button button)
+    {
+        var game = _game.Text.Trim();
+        var app = _appId.Text.Trim();
+        if (game.Length == 0) { MessageBox.Show(this, "Enter the game's name.", Text); _game.Focus(); return; }
+        if (app.Length > 0 && !app.All(char.IsDigit)) { MessageBox.Show(this, "The app ID is a number.", Text); _appId.Focus(); return; }
+        if (DateTime.UtcNow - _lastSend < TimeSpan.FromSeconds(60)) { MessageBox.Show(this, "A request was just sent. Please wait a minute before sending another.", Text); return; }
+
+        button.Enabled = false;
+        var oldText = button.Text; button.Text = "Sending...";
+        try
+        {
+            var title = "Game layout request: " + game;
+            var (ok, message) = await RequestSender.SendAsync(title, BuildDescription(game, app, layoutName, _layout.Text.Trim()));
+            if (ok)
+            {
+                _lastSend = DateTime.UtcNow;
+                MessageBox.Show(this, $"Thanks! Your request was sent (reference {message}).", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                DialogResult = DialogResult.OK;
+                return;
+            }
+            try { Clipboard.SetText(BuildBody(layoutName)); } catch { }
+            MessageBox.Show(this, message + "\n\nThe request text was copied to your clipboard so you can send it another way.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally { if (!IsDisposed) { button.Text = oldText; button.Enabled = true; } }
+    }
+
     /// <summary>The pre-filled "new issue" address. The text is trimmed until the whole address fits (cut = true when that happened).</summary>
     public static (string url, bool cut) BuildIssueUrl(string game, string app, string layoutName, string layout)
     {
         string Url(string layoutText)
         {
-            var description = $"**Game:** {game}\n**Steam app ID:** {app}\n**Helper:** {Version} (layout: {layoutName})\n\n### What does one mod look like?\n\n{layoutText}";
+            var description = BuildDescription(game, app, layoutName, layoutText);
             return NewIssueUrl + "?team=" + TeamKey
                 + "&title=" + Uri.EscapeDataString("Game layout request: " + game)
                 + "&description=" + Uri.EscapeDataString(description.Replace("\r\n", "\n"));
