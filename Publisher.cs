@@ -39,12 +39,13 @@ public sealed class Publisher
     {
         At("Reading changelog...", 5);
         var clPath = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Changelog));
-        var (_, notes) = ModScanner.ReadChangelog(clPath, _cfg);
+        var notes = File.Exists(clPath) ? ModScanner.ReadChangelog(clPath, _cfg).notes : "";
+        if (!_cfg.AppIdValid) return new PublishResult(false, "The Steam app ID is not set. Enter the game's app ID in the window first.");
         if (notes.Length > 7900) notes = notes.Substring(0, 7900) + "\n[i]...see the full changelog on the project page.[/i]";
 
         SweepStale(_tempRoot, StaleAfter);
         var stageRoot = Path.Combine(_tempRoot, StagePrefix + Guid.NewGuid().ToString("N"));
-        var stage = Path.Combine(stageRoot, m.Folder);
+        var stage = Path.Combine(stageRoot, ProjectConfig.Norm(m.RelPath));
         Directory.CreateDirectory(stageRoot);
 
         // The package is removed on every way out (success, dry run, a check failing, packaging throwing,
@@ -61,16 +62,12 @@ public sealed class Publisher
             var extra = "";
             if (!m.OnSteam)
             {
-                var preview = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Preview));
                 var desc = ReadDescription(m);
                 if (desc.Length < 20) return new PublishResult(false, $"No description found. Add {_cfg.SteamDescriptionFile}.");
-                extra = $"""
-
-                    "title"           "{Esc(m.Name)}"
-                    "description"     "{Esc(desc)}"
-                    "previewfile"     "{preview}"
-                    "visibility"      "2"
-                """;
+                var previewLine = string.IsNullOrWhiteSpace(_cfg.Preview)
+                    ? ""
+                    : $"\n    \"previewfile\"     \"{Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Preview))}\"";
+                extra = $"\n    \"title\"           \"{Esc(m.Name)}\"\n    \"description\"     \"{Esc(desc)}\"{previewLine}\n    \"visibility\"      \"2\"";
             }
 
             var vdf = $$"""
@@ -165,7 +162,7 @@ public sealed class Publisher
         if (_cfg.UseGitArchive && ModScanner.IsGitRepo(_repo))
         {
             var zip = Path.Combine(stageRoot, "package.zip");
-            var code = await RunProcAsync("git", new[] { "archive", "--format=zip", "-o", zip, "HEAD", m.Folder }, _repo, Say, ct);
+            var code = await RunProcAsync("git", new[] { "archive", "--format=zip", "-o", zip, "HEAD", m.RelPath }, _repo, Say, ct);
             if (code != 0 || !File.Exists(zip)) throw new InvalidOperationException("git archive failed. Is this mod committed?");
             ZipFile.ExtractToDirectory(zip, stageRoot, true);
             File.Delete(zip);
@@ -205,10 +202,10 @@ public sealed class Publisher
     {
         var f = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.SteamDescriptionFile));
         if (File.Exists(f)) return File.ReadAllText(f).Trim();
+        if (string.IsNullOrWhiteSpace(_cfg.ModMarker)) return "";
         var marker = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.ModMarker));
-        try { if (marker.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)) return ModScanner.ReadXml(marker, _cfg.DescriptionXPath) ?? ""; }
-        catch { }
-        return "";
+        try { return ModScanner.ReadMeta(marker, _cfg.DescriptionKey) ?? ""; }
+        catch { return ""; }
     }
 
     // ------------------------------------------------------------ helpers

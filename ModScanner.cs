@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using System.Xml.XPath;
@@ -9,6 +10,8 @@ public sealed class ModInfo
 {
     public string Dir = "";
     public string Folder = "";
+    /// <summary>Path of the mod folder relative to the repo root, with forward slashes (used by git).</summary>
+    public string RelPath = "";
     public string Name = "";
     public string Version = "";
     public string? WorkshopId;
@@ -35,12 +38,38 @@ public static class ModScanner
 
     public static bool IsGitRepo(string repo) => !string.IsNullOrWhiteSpace(Git(repo, "rev-parse --is-inside-work-tree"));
 
-    public static string? ReadXml(string file, string xpath)
+    /// <summary>
+    /// Reads one value from a metadata file. .xml = XPath, .json = dotted path, anything else = a key name
+    /// (matches name=Foo / name = "Foo" / name: Foo) or a regex whose first group is the value.
+    /// </summary>
+    public static string? ReadMeta(string file, string key)
     {
-        if (string.IsNullOrWhiteSpace(xpath)) return null;
-        var doc = XDocument.Load(file);
-        var el = doc.XPathSelectElement("/" + xpath.TrimStart('/'));
-        var v = el?.Value.Trim();
+        if (string.IsNullOrWhiteSpace(key) || !File.Exists(file)) return null;
+        string? v = null;
+        var ext = Path.GetExtension(file).ToLowerInvariant();
+        if (ext == ".xml")
+        {
+            var el = XDocument.Load(file).XPathSelectElement("/" + key.TrimStart('/'));
+            v = el?.Value;
+        }
+        else if (ext == ".json")
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(file), new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+            var cur = doc.RootElement;
+            foreach (var part in key.Split('.'))
+            {
+                if (cur.ValueKind != JsonValueKind.Object || !cur.TryGetProperty(part, out cur)) return null;
+            }
+            v = cur.ValueKind == JsonValueKind.String ? cur.GetString() : cur.ToString();
+        }
+        else
+        {
+            var text = File.ReadAllText(file);
+            var pattern = key.Contains('(') ? key : @"^\s*" + Regex.Escape(key) + "\\s*[=:]\\s*\"?(.*?)\"?\\s*,?\\s*$";
+            var m = Regex.Match(text, pattern, RegexOptions.Multiline | RegexOptions.IgnoreCase);
+            v = m.Success && m.Groups.Count > 1 ? m.Groups[1].Value : null;
+        }
+        v = v?.Trim();
         return string.IsNullOrEmpty(v) ? null : v;
     }
 
@@ -52,10 +81,14 @@ public static class ModScanner
         return (lines.FirstOrDefault()?.Trim() ?? "", string.Join("\n", lines.Skip(1)).Trim());
     }
 
+    public static string ModsRoot(string repo, ProjectConfig cfg) =>
+        string.IsNullOrWhiteSpace(cfg.ModsFolder) ? repo : Path.Combine(repo, ProjectConfig.Norm(cfg.ModsFolder));
+
     public static List<ModInfo> Scan(string repo, ProjectConfig cfg)
     {
         var list = new List<ModInfo>();
-        if (!Directory.Exists(repo)) return list;
+        var root = ModsRoot(repo, cfg);
+        if (!Directory.Exists(root)) return list;
 
         var dirtyLines = Git(repo, "status --porcelain")
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
@@ -63,22 +96,24 @@ public static class ModScanner
             .Select(l => l.Substring(3).Trim().Trim('"').Replace('\\', '/'))
             .ToList();
 
-        var marker = ProjectConfig.Norm(cfg.ModMarker);
-        foreach (var dir in Directory.GetDirectories(repo).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+        var hasMarker = !string.IsNullOrWhiteSpace(cfg.ModMarker);
+        var marker = hasMarker ? ProjectConfig.Norm(cfg.ModMarker) : "";
+        foreach (var dir in Directory.GetDirectories(root).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
         {
             var folder = Path.GetFileName(dir);
             if (folder.StartsWith('.')) continue;
-            var markerFile = Path.Combine(dir, marker);
-            if (!File.Exists(markerFile)) continue;
+            var markerFile = hasMarker ? Path.Combine(dir, marker) : "";
+            if (hasMarker && !File.Exists(markerFile)) continue;
+            if (!hasMarker && IgnoredFolder(folder)) continue;
 
-            var m = new ModInfo { Dir = dir, Folder = folder, Name = folder };
-            if (markerFile.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+            var rel = Path.GetRelativePath(repo, dir).Replace('\\', '/');
+            var m = new ModInfo { Dir = dir, Folder = folder, RelPath = rel, Name = folder };
+            if (hasMarker)
             {
                 try
                 {
-                    var name = ReadXml(markerFile, cfg.NameXPath);
-                    if (name != null) m.Name = name;
-                    m.Version = ReadXml(markerFile, cfg.VersionXPath) ?? "";
+                    m.Name = ReadMeta(markerFile, cfg.NameKey) ?? folder;
+                    m.Version = ReadMeta(markerFile, cfg.VersionKey) ?? "";
                 }
                 catch (Exception e) { m.Problems.Add(cfg.ModMarker + " unreadable (" + e.Message + ")"); }
             }
@@ -92,32 +127,39 @@ public static class ModScanner
             }
 
             var clPath = Path.Combine(dir, ProjectConfig.Norm(cfg.Changelog));
-            if (!File.Exists(clPath)) m.Problems.Add("no " + cfg.Changelog);
+            if (!File.Exists(clPath))
+            {
+                if (cfg.ChangelogRequired) m.Problems.Add("no " + cfg.Changelog);
+            }
             else
             {
                 var (clVersion, notes) = ReadChangelog(clPath, cfg);
                 if (clVersion != null)
                 {
-                    if (!Regex.IsMatch(clVersion, @"^\d+\.\d+\.\d+")) m.Problems.Add("changelog line 1 is not a version");
+                    if (!Regex.IsMatch(clVersion, @"^\d+(\.\d+)*")) m.Problems.Add("changelog line 1 is not a version");
                     else if (m.Version.Length == 0) m.Version = clVersion;
                     else if (clVersion != m.Version) m.Problems.Add($"changelog {clVersion} vs {m.Version} in {cfg.ModMarker}");
                 }
-                if (notes.Length < 10) m.Problems.Add("changelog has no notes");
+                if (cfg.ChangelogRequired && notes.Length < 10) m.Problems.Add("changelog has no notes");
             }
 
-            if (!m.OnSteam && !File.Exists(Path.Combine(dir, ProjectConfig.Norm(cfg.Preview))))
+            if (!m.OnSteam && !string.IsNullOrWhiteSpace(cfg.Preview) && !File.Exists(Path.Combine(dir, ProjectConfig.Norm(cfg.Preview))))
                 m.Problems.Add("needs " + cfg.Preview + " to create on Steam");
 
             foreach (var glob in cfg.BuiltFiles ?? Array.Empty<string>())
                 if (MatchGlob(dir, glob).Count == 0) m.Problems.Add($"not built (nothing matches {glob})");
 
-            if (dirtyLines.Any(p => p.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase)))
+            if (dirtyLines.Any(p => p.StartsWith(rel + "/", StringComparison.OrdinalIgnoreCase)))
                 m.Warnings.Add("uncommitted changes will NOT be uploaded");
 
             list.Add(m);
         }
         return list;
     }
+
+    static bool IgnoredFolder(string name) =>
+        new[] { "bin", "obj", "node_modules", "_tools", "scripts", "docs", "site", "tools", "tests", "test" }
+            .Contains(name, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Files inside <paramref name="dir"/> matching a simple glob such as "Assemblies/*.dll" (wildcards in the last segment only).</summary>
     public static List<string> MatchGlob(string dir, string glob)

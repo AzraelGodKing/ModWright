@@ -11,7 +11,10 @@ public sealed class MainForm : Form
     readonly TextBox _repo = new() { Tag = "fill", ReadOnly = true, TabStop = false, Cursor = Cursors.Hand };
     readonly TextBox _account = new() { Width = 200 };
     readonly Label _branch = new() { AutoSize = true };
+    readonly TextBox _appId = new() { Width = 90 };
+    readonly ComboBox _preset = new() { Width = 110, DropDownStyle = ComboBoxStyle.DropDownList };
     readonly Label _game = new() { AutoSize = true, Tag = "fill", ForeColor = Color.DimGray };
+    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(8) };
     readonly Label _login = new() { AutoSize = true, Tag = "fill" };
     readonly ListView _list = new();
     readonly ProgressBar _modBar = new() { Minimum = 0, Maximum = 100, Height = 16, Dock = DockStyle.Top };
@@ -75,7 +78,8 @@ public sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 170));
 
         root.Controls.Add(Row(Lbl("Mods repo"), _repo, _browse, _branch), 0, 0);
-        root.Controls.Add(Row(_game, _editLayout), 0, 1);
+        _preset.Items.AddRange(new object[] { "Generic", "RimWorld", "Custom" });
+        root.Controls.Add(Row(Lbl("Steam app ID"), _appId, Lbl("Layout"), _preset, _editLayout, _game), 0, 1);
         root.Controls.Add(Row(Lbl("Steam account"), _account, _login, _checkLogin, _doLogin, _install), 0, 2);
 
         _list.View = View.Details;
@@ -110,6 +114,75 @@ public sealed class MainForm : Form
         _repo.DoubleClick += (_, _) => { if (!_busy) BrowseRepo(); };
         _account.Leave += (_, _) => { SaveFields(); UpdateLoginHint(); };
         _allowCreate.CheckedChanged += (_, _) => { if (!_populating) { SaveFields(); RefreshAll(); } };
+        _appId.Leave += async (_, _) => await ApplyAppIdAsync();
+        _appId.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await ApplyAppIdAsync(); } };
+        _preset.SelectionChangeCommitted += (_, _) => ApplyPresetChoice();
+    }
+
+    // ---------------------------------------------------------------- game / layout
+
+    /// <summary>The user typed an app id: validate it, look the game name up on Steam, and save it to the layout file.</summary>
+    async Task ApplyAppIdAsync()
+    {
+        if (_populating || _busy) return;
+        var id = _appId.Text.Trim();
+        if (id == _cfg.AppId) return;
+        if (id.Length > 0 && !id.All(char.IsDigit)) { Append("The app ID is a number, e.g. 294100 for RimWorld (it is in the game's Steam store URL).", Color.Orange); return; }
+        if (!Directory.Exists(_s.RepoPath)) { MessageBox.Show(this, "Pick the mods repo folder first.", Text); _appId.Text = _cfg.AppId; return; }
+
+        _cfg.AppId = id;
+        _cfg.GameName = "";
+        if (id.Length > 0) _cfg.GameName = await LookupGameNameAsync(id) ?? "";
+        SaveLayout(id.Length > 0 ? $"App ID set to {id}{(_cfg.GameName.Length > 0 ? " (" + _cfg.GameName + ")" : "")}." : "App ID cleared.");
+        ShowGame();
+        UpdateGoButton();
+    }
+
+    void ApplyPresetChoice()
+    {
+        var name = _preset.SelectedItem as string ?? "";
+        if (name == "Custom" || !Directory.Exists(_s.RepoPath)) { ShowGame(); return; }
+        _cfg.ApplyPreset(name);
+        SaveLayout($"Layout set to {name}.");
+        RefreshAll();
+    }
+
+    void SaveLayout(string what)
+    {
+        try { _cfg.Save(_s.RepoPath); Append(what + " Saved to " + ProjectConfig.FileName + " in the repo.", Color.DeepSkyBlue); }
+        catch (Exception e) { Append("Could not save " + ProjectConfig.FileName + ": " + e.Message, Color.Tomato); }
+    }
+
+    static async Task<string?> LookupGameNameAsync(string appId)
+    {
+        try
+        {
+            var json = await Http.GetStringAsync($"https://store.steampowered.com/api/appdetails?appids={appId}&filters=basic");
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty(appId, out var e)) return null;
+            if (!e.TryGetProperty("success", out var ok) || !ok.GetBoolean()) return null;
+            return e.GetProperty("data").GetProperty("name").GetString();
+        }
+        catch { return null; }
+    }
+
+    void ShowGame()
+    {
+        _populating = true;
+        _appId.Text = _cfg.AppId;
+        var preset = _cfg.PresetName();
+        _preset.SelectedItem = preset;
+        _populating = false;
+        if (!_cfg.AppIdValid)
+        {
+            _game.Text = "Enter the game's Steam app ID (the number in its store URL) before uploading.";
+            _game.ForeColor = Color.DarkOrange;
+        }
+        else
+        {
+            _game.Text = $"{(_cfg.GameName.Length > 0 ? _cfg.GameName : "App " + _cfg.AppId)}  -  layout: {_cfg.Source}";
+            _game.ForeColor = Color.DimGray;
+        }
     }
 
     static Label Lbl(string t) => new() { Text = t, AutoSize = true };
@@ -158,7 +231,7 @@ public sealed class MainForm : Form
     {
         SaveFields();
         if (!Directory.Exists(_s.RepoPath)) { MessageBox.Show(this, "Pick the mods repo folder first.", Text); return; }
-        var path = ProjectConfig.WriteDefault(_s.RepoPath);
+        var path = _cfg.EnsureFile(_s.RepoPath);
         Append($"Opened {path}. Save it, then press Refresh.", Color.DeepSkyBlue);
         try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
         catch (Exception e) { Append("Could not open the file: " + e.Message, Color.Tomato); }
@@ -170,7 +243,7 @@ public sealed class MainForm : Form
         _cfg = ProjectConfig.Load(_s.RepoPath);
         var branch = ModScanner.GitBranch(_s.RepoPath);
         _branch.Text = branch == null ? "(not a git repo)" : "branch: " + branch;
-        _game.Text = $"Game: {_cfg.GameName} (app {_cfg.AppId})   layout: {_cfg.Source}";
+        ShowGame();
         if (_cfg.Error != null) Append(_cfg.Error, Color.Orange);
 
         _populating = true;
@@ -191,7 +264,9 @@ public sealed class MainForm : Form
         _populating = false;
 
         if (_mods.Count == 0)
-            Append($"No mods found. Pick the folder that contains the mod folders (each needs {_cfg.ModMarker}), or press Edit layout file to describe your layout.", Color.Orange);
+            Append(string.IsNullOrWhiteSpace(_cfg.ModMarker)
+                ? "No mod folders found. Pick the folder that contains one sub-folder per mod, or press Edit layout file to point at them."
+                : $"No mods found. Pick the folder that contains the mod folders (each needs {_cfg.ModMarker}), choose a different Layout, or press Edit layout file.", Color.Orange);
 
         UpdateLoginHint();
         UpdateGoButton();
@@ -211,13 +286,13 @@ public sealed class MainForm : Form
     {
         var n = _list.CheckedItems.Count;
         _go.Text = n == 0 ? "Upload selected" : $"Upload {n} mod{(n == 1 ? "" : "s")}";
-        _go.Enabled = !_busy && n > 0;
+        _go.Enabled = !_busy && n > 0 && _cfg.AppIdValid;
     }
 
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset })
             c.Enabled = !busy;
         _cancel.Enabled = busy;
         UpdateGoButton();
@@ -317,11 +392,12 @@ public sealed class MainForm : Form
         SaveFields();
         var picked = Selected().ToList();
         if (picked.Count == 0) return;
+        if (!_cfg.AppIdValid) { MessageBox.Show(this, "Enter the game's Steam app ID first (the number in its store page URL).", Text); _appId.Focus(); return; }
         if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { MessageBox.Show(this, "SteamCMD is not installed yet. Click Install SteamCMD.", Text); return; }
 
         var dry = _dry.Checked;
         var sb = new StringBuilder();
-        sb.AppendLine(dry ? "Dry run for:" : $"Publish to the Steam Workshop ({_cfg.GameName}):");
+        sb.AppendLine(dry ? "Dry run for:" : $"Publish to the Steam Workshop ({(_cfg.GameName.Length > 0 ? _cfg.GameName : "app " + _cfg.AppId)}):");
         sb.AppendLine();
         foreach (var m in picked)
             sb.AppendLine($"  {m.Name}  v{m.Version}   {(m.OnSteam ? "update " + m.WorkshopId : "NEW private item")}{(m.Warnings.Count > 0 ? "   (" + m.Warnings[0] + ")" : "")}");
