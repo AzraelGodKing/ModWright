@@ -78,7 +78,8 @@ public sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 170));
 
         root.Controls.Add(Row(Lbl("Mods repo"), _repo, _browse, _branch), 0, 0);
-        _preset.Items.AddRange(new object[] { "Generic", "RimWorld", "Custom" });
+        _preset.Items.AddRange(ProjectConfig.PresetNames.Cast<object>().Append("Custom").ToArray());
+        _preset.Width = 150;
         root.Controls.Add(Row(Lbl("Steam app ID"), _appId, Lbl("Layout"), _preset, _editLayout, _game), 0, 1);
         root.Controls.Add(Row(Lbl("Steam account"), _account, _login, _checkLogin, _doLogin, _install), 0, 2);
 
@@ -403,6 +404,15 @@ public sealed class MainForm : Form
             sb.AppendLine($"  {m.Name}  v{m.Version}   {(m.OnSteam ? "update " + m.WorkshopId : "NEW private item")}{(m.Warnings.Count > 0 ? "   (" + m.Warnings[0] + ")" : "")}");
         if (!dry) { sb.AppendLine(); sb.AppendLine("Updates go live for subscribers right away."); }
         if (MessageBox.Show(this, sb.ToString(), Text, MessageBoxButtons.OKCancel, dry ? MessageBoxIcon.Question : MessageBoxIcon.Warning) != DialogResult.OK) return;
+
+        if (!dry && _cfg.Experimental)
+        {
+            var warn = MessageBox.Show(this,
+                $"The \"{_cfg.PresetName()}\" layout is experimental: it has not been proven against the real game, and the game may expect its own in-game uploader's packaging.\n\n" +
+                "Updating an EXISTING item replaces its content on Steam. Try a brand-new private item first (tick Allow creating new items), and check it in the game before updating anything real.\n\nContinue?",
+                Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+            if (warn != DialogResult.Yes) return;
+        }
 
         if (!dry && !await LoginFlowAsync()) { Append("Stopped: not logged in to Steam.", Color.Orange); return; }
 

@@ -93,7 +93,11 @@ Example for a game whose mods have a `mod.json` and live in `mods/`:
   "NameKey": "info.title", "VersionKey": "info.version", "Preview": "" }
 ```
 
-Only RimWorld is tested against real mods. For other games, check the layout with **Dry run** first and
+### Tabletop Simulator (experimental)
+
+The **Tabletop Simulator** layout (app ID 286160) treats each sub-folder as one mod: its save `.json`, the images and models it uses, and `preview.png` / `steam_description.txt` for creating. Version and changelog are optional. This preset is **unproven**: TTS normally uploads from inside the game (Modding > Workshop Upload), which packages the item itself, and I could not confirm that a raw SteamCMD upload produces an item the game loads. The app asks for confirmation before any real upload with it. Try a brand-new private item first and check it in the game before updating anything you care about.
+
+Only RimWorld is tested against real mods; the other presets are starting points. For other games, check the layout with **Dry run** first and
 see the game's Workshop documentation for what a mod folder must contain.
 
 ## Safety

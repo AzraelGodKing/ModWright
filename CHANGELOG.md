@@ -13,6 +13,10 @@
   upload keeps its folder for inspection; such folders are swept after 7 days.
 - Unit tests in `tests/SteamCmdHelper.Tests` (`dotnet test`, runs on any OS).
 
+## 1.2.1
+
+- Added an experimental Tabletop Simulator layout (app 286160). Real uploads with it ask for confirmation first.
+
 ## 1.2.0
 
 - Works for any Steam game: Steam app ID box (game name looked up from Steam) and Generic / RimWorld layout presets.
