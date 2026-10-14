@@ -51,8 +51,19 @@ the release workflow checks both, runs the tests and publishes the release with 
    Logging in through SteamCMD can knock the regular Steam client offline; use Steam > Go Online afterwards.
 6. Tick the mods and press **Upload**. **Dry run** does every check and builds the package but uploads nothing.
 
-Rows show problems in red (missing changelog, changelog version not matching the mod's version, nothing
-built, etc.). A warning means uncommitted tracked changes (git packaging uses `HEAD`).
+The checks are kept basic. A row turns red and cannot be uploaded only for things that would make the upload fail
+or go wrong:
+
+- a new item without its preview image, or a preview over 1 MB (Steam refuses both)
+- an id file that is not a number, or a metadata file that cannot be read
+- **RimWorld:** the same rules as the [Add Changenote](https://steamcommunity.com/sharedfiles/filedetails/?id=2161604688)
+  mod. The version comes from `<version>` in `About/Manifest.xml`, or else `<modVersion>` in `About/About.xml`, and
+  `About/Changelog.txt` must have an entry for that version: a line starting with the version number, plus the lines
+  under it up to the next version line (lines starting with `#` are skipped). That entry becomes the Workshop change note.
+
+Everything else is only a warning shown on the row: other layouts' changelog issues, missing build output, and
+uncommitted tracked changes (git packaging uses `HEAD`). The **Workshop ID** column reads the mod's own id file
+(`About/PublishedFileId.txt` for RimWorld) and shows `0` when there is none, meaning the upload creates a new item.
 
 ### Mods not on Steam yet
 
@@ -75,10 +86,12 @@ The **Generic** layout expects, inside each mod folder: `CHANGELOG.md` (the Work
 | `NameKey`, `VersionKey`, `DescriptionKey` | empty | How to read those from the marker file (see below). Empty name = folder name |
 | `Changelog` | `CHANGELOG.md` | Release notes file |
 | `ChangelogRequired` | true | When false, a missing changelog just sends an empty change note |
-| `ChangelogFirstLineIsVersion` | false | Line 1 is the version (must match the marker's version) and the rest is the note |
+| `ChangelogFirstLineIsVersion` | false | Line 1 is the version (warns when it differs from the marker's version) and the rest is the note |
+| `ChangelogByVersion` | false | Add Changenote style: one entry per version, and the entry for the current version is required and becomes the note (RimWorld: true) |
+| `ManifestFile` | empty | A Mod Manager style manifest whose `<version>` wins over `VersionKey` (RimWorld: `About/Manifest.xml`) |
 | `WorkshopIdFile` | `workshop_id.txt` | Stores the Workshop id |
 | `Preview`, `SteamDescriptionFile` | `preview.png`, `steam_description.txt` | Used when creating (empty `Preview` = none) |
-| `BuiltFiles` | `[]` | Build outputs copied from the working tree, e.g. `["Assemblies/*.dll"]`, and required to exist |
+| `BuiltFiles` | `[]` | Build outputs copied from the working tree, e.g. `["Assemblies/*.dll"]` (a warning when missing) |
 | `UseGitArchive` | true | Package with `git archive HEAD` (honours `export-ignore`); false copies the folder using `Exclude` |
 | `Exclude` | `.git`, `bin`, `obj`, ... | Skipped when `UseGitArchive` is false |
 

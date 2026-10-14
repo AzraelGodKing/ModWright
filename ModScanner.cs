@@ -73,13 +73,54 @@ public static class ModScanner
         return string.IsNullOrEmpty(v) ? null : v;
     }
 
-    /// <summary>The changelog split into (version line or null, release notes).</summary>
-    public static (string? version, string notes) ReadChangelog(string file, ProjectConfig cfg)
+    /// <summary>
+    /// The changelog split into (version line or null, release notes). With <see cref="ProjectConfig.ChangelogByVersion"/>
+    /// the notes are the entry for <paramref name="version"/> (see <see cref="ChangenoteFor"/>).
+    /// </summary>
+    public static (string? version, string notes) ReadChangelog(string file, ProjectConfig cfg, string? version = null)
     {
         var lines = File.ReadAllLines(file);
+        if (cfg.ChangelogByVersion) return (null, ChangenoteFor(lines, version ?? ""));
         if (!cfg.ChangelogFirstLineIsVersion) return (null, string.Join("\n", lines).Trim());
         return (lines.FirstOrDefault()?.Trim() ?? "", string.Join("\n", lines.Skip(1)).Trim());
     }
+
+    static readonly Regex VersionLine = new(@"^\d+(?:\.\d+){1,3}");
+
+    /// <summary>
+    /// The change note for <paramref name="version"/>, worked out exactly like the Add Changenote mod: lines starting with #
+    /// are skipped, the entry starts at the first line that starts with the version and runs until the next line that starts
+    /// with a version number. Empty when there is no entry.
+    /// </summary>
+    public static string ChangenoteFor(IEnumerable<string> lines, string version)
+    {
+        if (string.IsNullOrWhiteSpace(version)) return "";
+        var picked = new List<string>();
+        var inEntry = false;
+        foreach (var line in lines)
+        {
+            if (line.StartsWith('#')) continue;
+            if (line.StartsWith(version)) { inEntry = true; picked.Add(line); continue; }
+            if (!inEntry) continue;
+            if (VersionLine.IsMatch(line)) break;
+            picked.Add(line);
+        }
+        return string.Join("\n", picked).Trim();
+    }
+
+    /// <summary>The version: the manifest's &lt;version&gt; when the layout has one and it is set, else the marker's.</summary>
+    static string ReadVersion(string dir, string markerFile, ProjectConfig cfg)
+    {
+        if (!string.IsNullOrWhiteSpace(cfg.ManifestFile))
+        {
+            var manifest = Path.Combine(dir, ProjectConfig.Norm(cfg.ManifestFile));
+            try { if (ReadMeta(manifest, "Manifest/version") is { } v) return v; } catch { }
+        }
+        return ReadMeta(markerFile, cfg.VersionKey) ?? "";
+    }
+
+    /// <summary>Steam refuses preview images larger than this.</summary>
+    public const long MaxPreviewBytes = 1024 * 1024;
 
     public static string ModsRoot(string repo, ProjectConfig cfg) =>
         string.IsNullOrWhiteSpace(cfg.ModsFolder) ? repo : Path.Combine(repo, ProjectConfig.Norm(cfg.ModsFolder));
@@ -113,7 +154,7 @@ public static class ModScanner
                 try
                 {
                     m.Name = ReadMeta(markerFile, cfg.NameKey) ?? folder;
-                    m.Version = ReadMeta(markerFile, cfg.VersionKey) ?? "";
+                    m.Version = ReadVersion(dir, markerFile, cfg);
                 }
                 catch (Exception e) { m.Problems.Add(cfg.ModMarker + " unreadable (" + e.Message + ")"); }
             }
@@ -126,28 +167,44 @@ public static class ModScanner
                 else m.Problems.Add(cfg.WorkshopIdFile + " is not a number");
             }
 
+            // Only what would make the upload fail or go wrong blocks it (Problems). Everything else is a warning.
             var clPath = Path.Combine(dir, ProjectConfig.Norm(cfg.Changelog));
-            if (!File.Exists(clPath))
+            if (cfg.ChangelogByVersion)
             {
-                if (cfg.ChangelogRequired) m.Problems.Add("no " + cfg.Changelog);
+                // Add Changenote's rules: the current version must be known and have its own changelog entry.
+                if (m.Version.Length == 0)
+                    m.Problems.Add("no version (" + (string.IsNullOrWhiteSpace(cfg.ManifestFile) ? "" : "<version> in " + cfg.ManifestFile + " or ") + "version in " + cfg.ModMarker + ")");
+                else if (!File.Exists(clPath))
+                    m.Problems.Add("no " + cfg.Changelog);
+                else if (ReadChangelog(clPath, cfg, m.Version).notes.Length == 0)
+                    m.Problems.Add($"{cfg.Changelog} has no entry for {m.Version}");
+            }
+            else if (!File.Exists(clPath))
+            {
+                if (cfg.ChangelogRequired) m.Warnings.Add("no " + cfg.Changelog);
             }
             else
             {
                 var (clVersion, notes) = ReadChangelog(clPath, cfg);
                 if (clVersion != null)
                 {
-                    if (!Regex.IsMatch(clVersion, @"^\d+(\.\d+)*")) m.Problems.Add("changelog line 1 is not a version");
+                    if (!Regex.IsMatch(clVersion, @"^\d+(\.\d+)*")) m.Warnings.Add("changelog line 1 is not a version");
                     else if (m.Version.Length == 0) m.Version = clVersion;
-                    else if (clVersion != m.Version) m.Problems.Add($"changelog {clVersion} vs {m.Version} in {cfg.ModMarker}");
+                    else if (clVersion != m.Version) m.Warnings.Add($"changelog {clVersion} vs {m.Version} in {cfg.ModMarker}");
                 }
-                if (cfg.ChangelogRequired && notes.Length < 10) m.Problems.Add("changelog has no notes");
+                if (cfg.ChangelogRequired && notes.Length == 0) m.Warnings.Add("changelog has no notes");
             }
 
-            if (!m.OnSteam && !string.IsNullOrWhiteSpace(cfg.Preview) && !File.Exists(Path.Combine(dir, ProjectConfig.Norm(cfg.Preview))))
-                m.Problems.Add("needs " + cfg.Preview + " to create on Steam");
+            // Steam refuses a new item without a preview image, and any preview over 1 MB.
+            if (!m.OnSteam && !string.IsNullOrWhiteSpace(cfg.Preview))
+            {
+                var preview = new FileInfo(Path.Combine(dir, ProjectConfig.Norm(cfg.Preview)));
+                if (!preview.Exists) m.Problems.Add("needs " + cfg.Preview + " to create on Steam");
+                else if (preview.Length > MaxPreviewBytes) m.Problems.Add($"{cfg.Preview} is over 1 MB (Steam's limit)");
+            }
 
             foreach (var glob in cfg.BuiltFiles ?? Array.Empty<string>())
-                if (MatchGlob(dir, glob).Count == 0) m.Problems.Add($"not built (nothing matches {glob})");
+                if (MatchGlob(dir, glob).Count == 0) m.Warnings.Add($"not built (nothing matches {glob})");
 
             if (dirtyLines.Any(p => p.StartsWith(rel + "/", StringComparison.OrdinalIgnoreCase)))
                 m.Warnings.Add("uncommitted changes will NOT be uploaded");

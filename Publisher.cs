@@ -39,8 +39,10 @@ public sealed class Publisher
     {
         At("Reading changelog...", 5);
         var clPath = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Changelog));
-        var notes = File.Exists(clPath) ? ModScanner.ReadChangelog(clPath, _cfg).notes : "";
+        var notes = File.Exists(clPath) ? ModScanner.ReadChangelog(clPath, _cfg, m.Version).notes : "";
         if (!_cfg.AppIdValid) return new PublishResult(false, "The Steam app ID is not set. Enter the game's app ID in the window first.");
+        if (_cfg.ChangelogByVersion && notes.Length == 0)
+            return new PublishResult(false, $"{_cfg.Changelog} has no entry for version {(m.Version.Length > 0 ? m.Version : "(unknown)")}.");
         if (notes.Length > 7900) notes = notes.Substring(0, 7900) + "\n[i]...see the full changelog on the project page.[/i]";
 
         SweepStale(_tempRoot, StaleAfter);

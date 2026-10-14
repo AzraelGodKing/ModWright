@@ -4,6 +4,10 @@
 
 First release.
 
+- Pre-upload checks are basic: only a missing or over-1 MB preview on a new item, an unreadable id or metadata file,
+  and for RimWorld the Add Changenote rules (version from `About/Manifest.xml` or `About/About.xml`, and an entry for it
+  in `About/Changelog.txt`, which becomes the change note) block an upload. Everything else is a warning. Mods without
+  an id file show Workshop ID `0` (a new item).
 - Mod list with name, version, Workshop id and pre-upload checks; Steam login detection with a one-time login
   window in SteamCMD (this app never sees your password); dry run, create-new-item option, progress bars and a live log.
 - Works for any Steam game: Steam app ID box (game name looked up from Steam) and layouts that describe how the mods
