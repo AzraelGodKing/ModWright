@@ -41,6 +41,11 @@ public sealed class MainForm : Form
     bool _busy, _populating;
     int _idx, _count;
 
+    /// <summary>Skips the start-up "install SteamCMD?" question (for --shot).</summary>
+    public bool NoStartupPrompts { get; init; }
+
+    public const string Disclaimer = "Not affiliated with or endorsed by Valve Corporation or Steam.";
+
     /// <param name="theme">Overrides the saved theme without saving it (used by --shot).</param>
     public MainForm(string? theme = null)
     {
@@ -49,7 +54,12 @@ public sealed class MainForm : Form
         _repo.Text = _s.RepoPath;
         _account.Text = _s.Account;
         _allowCreate.Checked = _s.AllowCreate;
-        Shown += (_, _) => { RefreshAll(); if (SteamLogin.LooksCached(_s.EffectiveSteamCmd, _s.Account)) _ = VerifyLoginAsync(false); };
+        Shown += async (_, _) =>
+        {
+            RefreshAll();
+            if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { if (!NoStartupPrompts) await OfferInstallAsync(); }
+            else if (SteamLogin.LooksCached(_s.EffectiveSteamCmd, _s.Account)) _ = VerifyLoginAsync(false);
+        };
         FormClosing += (_, e) =>
         {
             if (!_busy) return;
@@ -88,6 +98,7 @@ public sealed class MainForm : Form
 
         // Fill first, then the top bar, so docking puts the bar above the pages.
         Controls.Add(pages);
+        Controls.Add(new Label { Text = Disclaimer, Dock = DockStyle.Bottom, Height = 22, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0, 0, 16, 2), Font = new Font("Segoe UI", 8.25f) }.Role(ThemeRole.Muted));
         Controls.Add(new Panel { Dock = DockStyle.Top, Height = 1 }.Role(ThemeRole.Divider));
         Controls.Add(BuildHeader());
         ShowPage(_uploadPage);
@@ -214,7 +225,8 @@ public sealed class MainForm : Form
 
         var version = (typeof(MainForm).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "").Split('+')[0];
         page.Controls.Add(Card("About", null,
-            Hint($"SteamCMD Helper {version}. Settings are stored in %LocalAppData%\\SteamCmdHelper\\settings.json.")), 0, 2);
+            Hint($"SteamCMD Helper {version}. Settings are stored in %LocalAppData%\\SteamCmdHelper\\settings.json."),
+            Hint(Disclaimer + " Steam and SteamCMD are trademarks of Valve Corporation.")), 0, 2);
         return page;
     }
 
@@ -583,7 +595,7 @@ public sealed class MainForm : Form
         _install.Visible = !installed;
         _steamCmdPath.Text = installed ? steam : "Not installed. Install SteamCMD puts it in " + Path.GetDirectoryName(steam);
         _tip.SetToolTip(_steamCmdPath, steam);
-        if (!installed) SetLogin("SteamCMD is not installed yet", Tone.Error);
+        if (!installed) SetLogin("SteamCMD is not installed - uploads won't work without it", Tone.Error);
         else if (string.IsNullOrWhiteSpace(_s.Account)) SetLogin("No Steam account set", Tone.Warn);
         else if (SteamLogin.LooksCached(steam, _s.Account)) SetLogin($"Saved login found for {_s.Account} (not checked yet)", Tone.Info);
         else SetLogin($"No saved login for {_s.Account} - you'll be asked to log in once", Tone.Warn);
@@ -653,6 +665,17 @@ public sealed class MainForm : Form
         finally { if (!wasBusy) SetBusy(false); }
 
         return await VerifyLoginAsync(true);
+    }
+
+    /// <summary>At start-up without SteamCMD: offer the one-click install, and say plainly that uploads need it.</summary>
+    async Task OfferInstallAsync()
+    {
+        var r = MessageBox.Show(this,
+            "SteamCMD is not installed.\n\nThis program uploads through SteamCMD (Valve's command-line Steam client) and won't work without it.\n\n" +
+            $"Install it now? It is downloaded from Valve to {Path.GetDirectoryName(_s.EffectiveSteamCmd)} and checked before it is used.",
+            Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        if (r == DialogResult.Yes) { await InstallAsync(); return; }
+        Append("SteamCMD is not installed, so nothing can be uploaded. Install it from the Options tab (Install SteamCMD).", Color.Orange);
     }
 
     async Task InstallAsync()

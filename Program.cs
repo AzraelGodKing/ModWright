@@ -102,8 +102,8 @@ static class Program
             foreach (var theme in new[] { Theme.DarkName, Theme.LightName })
             {
                 var suffix = theme == Theme.DarkName ? "" : "-light";
-                Snap(new MainForm(theme), Path.Combine(args[sh + 1], $"main{suffix}.png"));
-                var options = new MainForm(theme);
+                Snap(new MainForm(theme) { NoStartupPrompts = true }, Path.Combine(args[sh + 1], $"main{suffix}.png"));
+                var options = new MainForm(theme) { NoStartupPrompts = true };
                 options.Shown += (_, _) => options.ShowOptions();
                 Snap(options, Path.Combine(args[sh + 1], $"options{suffix}.png"));
                 Snap(new RequestForm("RimWorld", "294100", "RimWorld", "About/About.xml\r\nAbout/Preview.png\r\nAssemblies/Mod.dll"), Path.Combine(args[sh + 1], $"request{suffix}.png"));

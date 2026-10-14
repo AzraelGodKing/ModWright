@@ -7,12 +7,16 @@ sending anything, handles the Steam login, and shows progress bars and a live lo
 It works for **any game with a Steam Workshop**: you give it the game's Steam app ID and tell it how your
 mods are laid out. The upload logic is built in; the only outside tool it needs is SteamCMD.
 
+SteamCMD Helper is an independent tool. It is not affiliated with or endorsed by Valve Corporation or Steam.
+Steam and SteamCMD are trademarks of Valve Corporation.
+
 ## Requirements
 
 - Windows
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) to build (running needs the .NET 8 runtime, which the SDK includes)
 - `git` on PATH if your repo uses the default packaging (`UseGitArchive`)
-- SteamCMD: the app can download it for you (**Install SteamCMD**)
+- SteamCMD: required for uploading. If it is missing at start-up the app offers to download it for you
+  (also **Options > Install SteamCMD**)
 - A Steam account that owns the game
 
 ## Download
