@@ -9,6 +9,9 @@ First release.
 - Cleaner main window: a top bar with **Upload** and **Options** tabs, grouped Project, Mods and progress panels,
   flat buttons with a highlighted Upload button, and slim progress bars. The Steam login (account name, Check login,
   Log in, Install SteamCMD) moved to the **Options** tab; its status stays next to the Upload button as a link there.
+- At start-up, a missing SteamCMD is detected and the app offers to install it, warning that uploads won't work
+  without it; if declined, the log and the status line say so until it is installed.
+- A "not affiliated with Valve or Steam" notice at the bottom of the window, under Options > About and in the README.
 - Pre-upload checks are basic: only a missing or over-1 MB preview on a new item, an unreadable id or metadata file,
   and for RimWorld the Add Changenote rules (version from `About/Manifest.xml` or `About/About.xml`, and an entry for it
   in `About/Changelog.txt`, which becomes the change note) block an upload. Everything else is a warning. Mods without
