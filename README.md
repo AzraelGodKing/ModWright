@@ -112,12 +112,12 @@ The **?** button (top right, always visible) opens a short form for asking for a
 
 ### Sending requests from inside the app (maintainer setup)
 
-To let users send requests without a browser or login, put a git-ignored file named `request.key` in the project folder before building:
+Builds that carry a Linear key send requests straight from the app, with no browser or login. The key is baked in at build time and never committed:
 
-- line 1: a Linear personal API key restricted to **Create issues** and to one dedicated team (Settings > Account > Security & Access)
-- line 2: that team's ID (UUID)
+- **GitHub builds** (CI and releases) read the repository secrets `LINEAR_CREATE_API_KEY` (a Linear personal API key restricted to **Create issues** in one dedicated team) and `LINEAR_TEAM_UUID` (that team's ID).
+- **Local builds** read the same two names from a git-ignored `request.key` file in the project folder, one `NAME=value` per line. Environment variables with those names win over the file.
 
-The file is embedded in the build, so anyone with the exe could extract the key. Keep the key's scope that narrow and revoke it if it is abused. Without the file the button opens a pre-filled issue instead.
+The key is stored masked, but anyone with the exe could still extract it. Keep its scope that narrow and revoke it if it is abused. A build without a key opens a pre-filled issue instead; the build log says which (`Linear request key: baked in` or `none found`).
 
 ## Safety
 

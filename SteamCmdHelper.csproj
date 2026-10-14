@@ -14,8 +14,6 @@
     <!-- The test project lives inside this folder; keep its sources out of the app. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);tests/**</DefaultItemExcludes>
   </PropertyGroup>
-  <ItemGroup>
-    <!-- Built into the program only when you have this git-ignored file; see RequestSender.cs -->
-    <EmbeddedResource Include="request.key" LogicalName="request.key" Condition="Exists('request.key')" />
-  </ItemGroup>
+  <!-- Bakes the Linear request key in when one is available at build time; see RequestKey.targets. -->
+  <Import Project="RequestKey.targets" />
 </Project>
