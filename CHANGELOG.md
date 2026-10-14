@@ -13,6 +13,10 @@
   upload keeps its folder for inspection; such folders are swept after 7 days.
 - Unit tests in `tests/SteamCmdHelper.Tests` (`dotnet test`, runs on any OS).
 
+## 1.3.0
+
+- Added an experimental Golf With Your Friends layout (app 431240). Real uploads with it ask for confirmation first.
+
 ## 1.2.2
 
 - Removed the experimental Tabletop Simulator layout: its items are not built the way SteamCMD uploads content (documented in the README).

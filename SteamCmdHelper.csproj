@@ -8,7 +8,7 @@
     <RootNamespace>SteamCmdHelper</RootNamespace>
     <AssemblyName>SteamCmdHelper</AssemblyName>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.2.2</Version>
+    <Version>1.3.0</Version>
     <Product>SteamCMD Helper</Product>
     <Description>One-click Steam Workshop uploads for RimWorld mods, with login handling and progress.</Description>
     <!-- The test project lives inside this folder; keep its sources out of the app. -->
