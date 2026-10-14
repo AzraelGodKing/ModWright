@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>SteamCmdHelper</RootNamespace>
+    <AssemblyName>SteamCmdHelper</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Version>1.0.0</Version>
+    <Product>SteamCMD Helper</Product>
+    <Description>One-click Steam Workshop uploads for RimWorld mods, with login handling and progress.</Description>
+  </PropertyGroup>
+</Project>
