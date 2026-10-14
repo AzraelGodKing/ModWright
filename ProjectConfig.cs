@@ -12,10 +12,10 @@ namespace SteamCmdHelper;
 public sealed class ProjectConfig
 {
     public const string FileName = ".steamhelper.json";
-    public static readonly string[] PresetNames = { "Generic", "RimWorld", "Tabletop Simulator" };
+    public static readonly string[] PresetNames = { "Generic", "RimWorld" };
 
     /// <summary>Presets that have not been proven against the real game. Real uploads ask for confirmation first.</summary>
-    public static readonly string[] ExperimentalPresets = { "Tabletop Simulator" };
+    public static readonly string[] ExperimentalPresets = Array.Empty<string>();
 
     /// <summary>Steam app id of the game (RimWorld = 294100). Required before anything can be uploaded.</summary>
     public string AppId { get; set; } = "";
@@ -119,15 +119,6 @@ public sealed class ProjectConfig
             BuiltFiles = new[] { "Assemblies/*.dll" },
             Exclude = new[] { ".git", ".vs", "obj", "bin", "Source", "Tools", "*.md", "*.pdb" },
             Source = "RimWorld preset"
-        },
-        // Each folder is one mod: its save .json, images/models it uses, preview.png and (for creating) steam_description.txt.
-        // Unverified: TTS normally uploads from inside the game, which packages the item itself.
-        "Tabletop Simulator" => new ProjectConfig
-        {
-            AppId = "286160",
-            GameName = "Tabletop Simulator",
-            ChangelogRequired = false,
-            Source = "Tabletop Simulator preset (experimental)"
         },
         _ => new ProjectConfig { Source = "generic layout" }
     };
