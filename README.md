@@ -61,9 +61,21 @@ or go wrong:
   `About/Changelog.txt` must have an entry for that version: a line starting with the version number, plus the lines
   under it up to the next version line (lines starting with `#` are skipped). That entry becomes the Workshop change note.
 
-Everything else is only a warning shown on the row: other layouts' changelog issues, missing build output, and
-uncommitted tracked changes (git packaging uses `HEAD`). The **Workshop ID** column reads the mod's own id file
-(`About/PublishedFileId.txt` for RimWorld) and shows `0` when there is none, meaning the upload creates a new item.
+Everything else is only a warning: other layouts' changelog issues, missing build output, and uncommitted tracked
+changes (git packaging uses `HEAD`). Hover over a row to see its problems and warnings; problems are also listed in the log.
+
+The list columns:
+
+- **Uploaded version**: the version already on Steam. Steam does not store one, so it is read from the newest change
+  note on the item's public changelog page (notes sent by this app for RimWorld, or by Add Changenote, start with the
+  version). If that note has none, it shows what this PC last uploaded, else `?`. Private items show `?` until the
+  first upload from this PC.
+- **Version to upload**: the mod's current version. Double-click it to change it; the new number is written to
+  `<version>` in `About/Manifest.xml` (when it has one) and the version element of an XML marker file such as
+  `About/About.xml`. For RimWorld, add a changelog entry for the new version before uploading.
+- **Workshop ID**: from the mod's own id file (`About/PublishedFileId.txt` for RimWorld); `0` means the upload creates a new item.
+- **Preview**: ✔ when the preview image exists and is within Steam's 1 MB limit, ✖ otherwise (hover for the size).
+- **Status**: `Ready`, `Fix`, or `Ready to create (private)`.
 
 ### Mods not on Steam yet
 

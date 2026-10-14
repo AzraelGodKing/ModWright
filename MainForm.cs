@@ -93,12 +93,16 @@ public sealed class MainForm : Form
         _list.FullRowSelect = true;
         _list.HideSelection = false;
         _list.Dock = DockStyle.Fill;
-        _list.Columns.Add("Mod", 220);
-        _list.Columns.Add("Version", 80);
-        _list.Columns.Add("Workshop ID", 120);
-        _list.Columns.Add("Status", 520);
+        _list.ShowItemToolTips = true;
+        _list.Columns.Add("Mod", 200);
+        _list.Columns.Add("Uploaded version", 135);
+        _list.Columns.Add("Version to upload", 135);
+        _list.Columns.Add("Workshop ID", 105);
+        _list.Columns.Add("Preview", 65, HorizontalAlignment.Center);
+        _list.Columns.Add("Status", 190);
         _list.ItemCheck += OnItemCheck;
         _list.ItemChecked += (_, _) => UpdateGoButton();
+        _list.MouseDoubleClick += OnListDoubleClick;
         root.Controls.Add(_list, 0, 3);
 
         var prog = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = new Padding(0, 8, 0, 4) };
@@ -285,19 +289,27 @@ public sealed class MainForm : Form
         _populating = true;
         _list.Items.Clear();
         _mods = ModScanner.Scan(_s.RepoPath, _cfg);
+        var uploaded = UploadedVersions.LoadRecord();
         foreach (var m in _mods)
         {
-            var it = new ListViewItem(m.Name);
-            it.SubItems.Add(m.Version);
+            var it = new ListViewItem(m.Name) { UseItemStyleForSubItems = false };
+            it.SubItems.Add(!m.OnSteam ? "-" : uploaded.TryGetValue(m.WorkshopId!, out var up) ? up : "...");
+            it.SubItems.Add(m.Version.Length > 0 ? m.Version : "?");
             it.SubItems.Add(m.WorkshopId ?? "0"); // 0 = not on Steam yet, so uploading creates it
-            it.SubItems.Add(m.StatusText);
+            var preview = it.SubItems.Add(m.PreviewOk == null ? "-" : m.PreviewOk == true ? "✔" : "✖");
+            preview.ForeColor = m.PreviewOk == false ? Color.Firebrick : Color.ForestGreen;
+            it.SubItems.Add(m.StatusLabel);
+            it.ToolTipText = RowTip(m);
             it.Tag = m;
             var usable = m.Ready && (m.OnSteam || _s.AllowCreate);
             it.Checked = usable && m.OnSteam;
-            it.ForeColor = !m.Ready ? Color.Firebrick : (!m.OnSteam && !_s.AllowCreate) ? Color.Gray : SystemColors.WindowText;
+            var color = !m.Ready ? Color.Firebrick : (!m.OnSteam && !_s.AllowCreate) ? Color.Gray : SystemColors.WindowText;
+            foreach (ListViewItem.ListViewSubItem s in it.SubItems) if (s != preview) s.ForeColor = color;
             _list.Items.Add(it);
+            if (!m.Ready) Append($"{m.Name}: fix {string.Join("; ", m.Problems)}", Color.Orange);
         }
         _populating = false;
+        _ = LoadUploadedVersionsAsync(_mods.Where(m => m.OnSteam).ToList(), uploaded);
 
         if (_mods.Count == 0)
             Append(string.IsNullOrWhiteSpace(_cfg.ModMarker)
@@ -306,6 +318,61 @@ public sealed class MainForm : Form
 
         UpdateLoginHint();
         UpdateGoButton();
+    }
+
+    const int UploadedCol = 1, VersionCol = 2;
+
+    static string RowTip(ModInfo m)
+    {
+        var lines = new List<string>();
+        lines.AddRange(m.Problems.Select(p => "Fix: " + p));
+        lines.AddRange(m.Warnings.Select(w => "Note: " + w));
+        if (m.PreviewNote.Length > 0) lines.Add("Preview: " + m.PreviewNote);
+        lines.Add("Double-click the version to upload to change it.");
+        return string.Join("\n", lines);
+    }
+
+    /// <summary>
+    /// Fills in "Uploaded version" from each item's public Steam changelog (the newest change note starts with the
+    /// version when it was sent by this app or the Add Changenote mod). Falls back to what this PC last uploaded, else "?".
+    /// </summary>
+    async Task LoadUploadedVersionsAsync(List<ModInfo> mods, Dictionary<string, string> uploaded)
+    {
+        // One at a time: Steam rate-limits its community pages.
+        foreach (var m in mods)
+        {
+            var v = await UploadedVersions.FetchAsync(m.WorkshopId!);
+            if (IsDisposed) return;
+            var it = _list.Items.Cast<ListViewItem>().FirstOrDefault(i => ReferenceEquals(i.Tag, m));
+            if (it == null) return; // the list was refreshed meanwhile; that refresh fills it in
+            it.SubItems[UploadedCol].Text = v ?? (uploaded.TryGetValue(m.WorkshopId!, out var up) ? up : "?");
+        }
+    }
+
+    void OnListDoubleClick(object? sender, MouseEventArgs e)
+    {
+        if (_busy) return;
+        var hit = _list.HitTest(e.Location);
+        if (hit.Item?.Tag is not ModInfo m || hit.SubItem == null || hit.Item.SubItems.IndexOf(hit.SubItem) != VersionCol) return;
+        var entered = Prompt($"Version to upload for {m.Name}:", m.Version);
+        if (entered == null || entered.Trim() == m.Version) return;
+        var error = ModScanner.SetVersion(m, _cfg, entered);
+        if (error != null) { MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+        Append($"{m.Name}: version set to {entered.Trim()}." + (_cfg.ChangelogByVersion ? $" Add a {entered.Trim()} entry to {_cfg.Changelog} before uploading." : ""), Color.DeepSkyBlue);
+        RefreshAll();
+    }
+
+    /// <summary>A one-line text box dialog. Null when cancelled.</summary>
+    string? Prompt(string label, string value)
+    {
+        using var f = new Form { Text = Text, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false, ClientSize = new Size(360, 110), Font = Font };
+        var l = new Label { Text = label, AutoSize = true, Location = new Point(12, 12) };
+        var t = new TextBox { Text = value, Location = new Point(12, 36), Width = 336 };
+        var ok = new Button { Text = "Save", DialogResult = DialogResult.OK, Location = new Point(192, 72), Width = 75 };
+        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(273, 72), Width = 75 };
+        f.Controls.AddRange(new Control[] { l, t, ok, cancel });
+        f.AcceptButton = ok; f.CancelButton = cancel;
+        return f.ShowDialog(this) == DialogResult.OK ? t.Text : null;
     }
 
     void OnItemCheck(object? sender, ItemCheckEventArgs e)
@@ -475,6 +542,7 @@ public sealed class MainForm : Form
                 catch (OperationCanceledException) { Append("Cancelled.", Color.Orange); break; }
                 catch (Exception e) { res = new PublishResult(false, e.Message); }
                 if (!res.Ok) Append($"SKIPPED {m.Name}: {res.Message}", Color.Tomato);
+                else if (!dry && (m.WorkshopId ?? res.NewId) is { } id) UploadedVersions.Remember(id, m.Version);
                 if (res.Ok) ok++; else failed++;
                 SetStage(res.Ok ? res.Message : "Failed - see the log", res.Ok ? 100 : 0);
                 _overall.Value = Math.Min(100, (int)((_idx + 1) * 100.0 / _count));

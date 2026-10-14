@@ -15,11 +15,17 @@ public sealed class ModInfo
     public string Name = "";
     public string Version = "";
     public string? WorkshopId;
+    /// <summary>Preview image: true = present and within Steam's 1 MB limit, false = missing or too big, null = the layout has none.</summary>
+    public bool? PreviewOk;
+    public string PreviewNote = "";
     public readonly List<string> Problems = new();
     public readonly List<string> Warnings = new();
 
     public bool OnSteam => WorkshopId != null;
     public bool Ready => Problems.Count == 0;
+
+    /// <summary>The short status shown in the list; the details are in <see cref="StatusText"/>.</summary>
+    public string StatusLabel => Problems.Count > 0 ? "Fix" : OnSteam ? "Ready" : "Ready to create (private)";
 
     public string StatusText =>
         Problems.Count > 0 ? "Fix: " + string.Join("; ", Problems)
@@ -119,6 +125,46 @@ public static class ModScanner
         return ReadMeta(markerFile, cfg.VersionKey) ?? "";
     }
 
+    /// <summary>
+    /// Writes a new version into the files it is read from: the manifest's &lt;version&gt; (when it has one) and the
+    /// <see cref="ProjectConfig.VersionKey"/> element of an XML marker file. Returns null on success, or why it cannot.
+    /// </summary>
+    public static string? SetVersion(ModInfo m, ProjectConfig cfg, string version)
+    {
+        version = version.Trim();
+        if (!Regex.IsMatch(version, @"^\d+(\.\d+){1,3}$")) return "Use a version number like 1.2.3.";
+        var written = 0;
+        if (!string.IsNullOrWhiteSpace(cfg.ManifestFile)
+            && TrySetXml(Path.Combine(m.Dir, ProjectConfig.Norm(cfg.ManifestFile)), "Manifest/version", version, create: false))
+            written++;
+        if (!string.IsNullOrWhiteSpace(cfg.ModMarker) && !string.IsNullOrWhiteSpace(cfg.VersionKey)
+            && Path.GetExtension(cfg.ModMarker).Equals(".xml", StringComparison.OrdinalIgnoreCase)
+            && TrySetXml(Path.Combine(m.Dir, ProjectConfig.Norm(cfg.ModMarker)), cfg.VersionKey, version, create: true))
+            written++;
+        return written > 0 ? null : "This layout does not read the version from an XML file the app can edit. Change it in the mod's own files.";
+    }
+
+    static bool TrySetXml(string file, string path, string value, bool create)
+    {
+        if (!File.Exists(file)) return false;
+        path = path.TrimStart('/');
+        var doc = XDocument.Load(file, LoadOptions.PreserveWhitespace);
+        var el = doc.XPathSelectElement("/" + path);
+        if (el == null)
+        {
+            var cut = path.LastIndexOf('/');
+            if (!create || cut < 0) return false;
+            var parent = doc.XPathSelectElement("/" + path.Substring(0, cut));
+            if (parent == null) return false;
+            el = new XElement(path.Substring(cut + 1));
+            parent.Add(el);
+        }
+        el.Value = value;
+        var settings = new System.Xml.XmlWriterSettings { Encoding = new System.Text.UTF8Encoding(false), OmitXmlDeclaration = doc.Declaration == null };
+        using (var w = System.Xml.XmlWriter.Create(file, settings)) doc.Save(w);
+        return true;
+    }
+
     /// <summary>Steam refuses preview images larger than this.</summary>
     public const long MaxPreviewBytes = 1024 * 1024;
 
@@ -195,12 +241,16 @@ public static class ModScanner
                 if (cfg.ChangelogRequired && notes.Length == 0) m.Warnings.Add("changelog has no notes");
             }
 
-            // Steam refuses a new item without a preview image, and any preview over 1 MB.
-            if (!m.OnSteam && !string.IsNullOrWhiteSpace(cfg.Preview))
+            // Steam refuses a new item without a preview image, and any preview over 1 MB. Existing items keep the
+            // preview they have on Steam (it is only sent on create), so for them this is shown but does not block.
+            if (!string.IsNullOrWhiteSpace(cfg.Preview))
             {
                 var preview = new FileInfo(Path.Combine(dir, ProjectConfig.Norm(cfg.Preview)));
-                if (!preview.Exists) m.Problems.Add("needs " + cfg.Preview + " to create on Steam");
-                else if (preview.Length > MaxPreviewBytes) m.Problems.Add($"{cfg.Preview} is over 1 MB (Steam's limit)");
+                m.PreviewOk = preview.Exists && preview.Length <= MaxPreviewBytes;
+                m.PreviewNote = !preview.Exists ? "no " + cfg.Preview
+                    : $"{cfg.Preview}: {preview.Length / 1024.0:0} KB of {MaxPreviewBytes / 1024} KB" + (m.PreviewOk == true ? "" : " (over Steam's limit)");
+                if (!m.OnSteam && !preview.Exists) m.Problems.Add("needs " + cfg.Preview + " to create on Steam");
+                else if (!m.OnSteam && preview.Length > MaxPreviewBytes) m.Problems.Add($"{cfg.Preview} is over 1 MB (Steam's limit)");
             }
 
             foreach (var glob in cfg.BuiltFiles ?? Array.Empty<string>())
