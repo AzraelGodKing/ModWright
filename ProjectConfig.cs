@@ -12,7 +12,10 @@ namespace SteamCmdHelper;
 public sealed class ProjectConfig
 {
     public const string FileName = ".steamhelper.json";
-    public static readonly string[] PresetNames = { "Generic", "RimWorld" };
+    public static readonly string[] PresetNames = { "Generic", "RimWorld", "Tabletop Simulator" };
+
+    /// <summary>Presets that have not been proven against the real game. Real uploads ask for confirmation first.</summary>
+    public static readonly string[] ExperimentalPresets = { "Tabletop Simulator" };
 
     /// <summary>Steam app id of the game (RimWorld = 294100). Required before anything can be uploaded.</summary>
     public string AppId { get; set; } = "";
@@ -117,6 +120,15 @@ public sealed class ProjectConfig
             Exclude = new[] { ".git", ".vs", "obj", "bin", "Source", "Tools", "*.md", "*.pdb" },
             Source = "RimWorld preset"
         },
+        // Each folder is one mod: its save .json, images/models it uses, preview.png and (for creating) steam_description.txt.
+        // Unverified: TTS normally uploads from inside the game, which packages the item itself.
+        "Tabletop Simulator" => new ProjectConfig
+        {
+            AppId = "286160",
+            GameName = "Tabletop Simulator",
+            ChangelogRequired = false,
+            Source = "Tabletop Simulator preset (experimental)"
+        },
         _ => new ProjectConfig { Source = "generic layout" }
     };
 
@@ -139,10 +151,13 @@ public sealed class ProjectConfig
         {
             var p = Preset(n);
             if (p.ModMarker == ModMarker && p.Changelog == Changelog && p.WorkshopIdFile == WorkshopIdFile
-                && p.NameKey == NameKey && p.VersionKey == VersionKey && p.ModsFolder == ModsFolder) return n;
+                && p.NameKey == NameKey && p.VersionKey == VersionKey && p.ModsFolder == ModsFolder
+                && p.ChangelogRequired == ChangelogRequired && (p.AppId.Length == 0 || p.AppId == AppId)) return n;
         }
         return "Custom";
     }
+
+    [JsonIgnore] public bool Experimental => ExperimentalPresets.Contains(PresetName());
 
     // ------------------------------------------------------------ load / save
 
