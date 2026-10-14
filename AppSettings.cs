@@ -9,6 +9,8 @@ public sealed class AppSettings
     public string SteamCmdPath { get; set; } = "";
     public string Account { get; set; } = "";
     public bool AllowCreate { get; set; }
+    /// <summary>"Dark" (the default) or "Light".</summary>
+    public string Theme { get; set; } = SteamCmdHelper.Theme.DarkName;
 
     static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SteamCmdHelper");

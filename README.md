@@ -43,13 +43,17 @@ the release workflow checks both, runs the tests and publishes the release with 
    The game name is looked up from Steam to confirm it. RimWorld-shaped repos are detected automatically.
 3. **Layout**: pick a built-in layout (**Generic**, **RimWorld**, **Golf With Your Friends**). Built-in layouts are part of the program and are **locked**: they cannot be edited, and the layout fixes the app ID. For anything else pick **Custom**, then **Edit layout file...** (below).
    The choice is saved in `.steamhelper.json` in the repo root; for a built-in layout that file holds only its name (and your app ID for Generic).
-4. **Steam account**: type your Steam login name. The status line says whether a saved login exists.
+4. **Steam account** (on the **Options** tab): type your Steam login name. The status line says whether a saved login
+   exists; the same status shows next to the Upload button, and clicking it opens Options.
    **Install SteamCMD** downloads it to `%LocalAppData%\SteamCmdHelper\steamcmd` (or uses
    `<repo>\_tools\steamcmd` if that exists).
 5. **Log in** happens automatically on the first upload. A SteamCMD window opens; type your password and the
    Steam Guard code there. This app never sees your password. Afterwards the login is cached.
    Logging in through SteamCMD can knock the regular Steam client offline; use Steam > Go Online afterwards.
 6. Tick the mods and press **Upload**. **Dry run** does every check and builds the package but uploads nothing.
+
+The app uses a dark theme by default. Switch to the light theme under **Options > Appearance**; the choice is saved
+for your Windows user.
 
 The checks are kept basic. A row turns red and cannot be uploaded only for things that would make the upload fail
 or go wrong:
@@ -147,7 +151,7 @@ The key is stored masked, but anyone with the exe could still extract it. Keep i
 ## Safety
 
 - Password and Steam Guard code are typed into SteamCMD's own window, never into this app, and not saved.
-- Settings (repo path, account name) live in `%LocalAppData%\SteamCmdHelper\settings.json`.
+- Settings (repo path, account name, theme) live in `%LocalAppData%\SteamCmdHelper\settings.json`.
 - SteamCMD keeps the login cache in its own folder; keep it out of git.
 - The layout file holds no secrets, but it is a new file in your repo: commit it or git-ignore it.
 - Uploads publish immediately to subscribers. Use Dry run first when unsure.
@@ -155,6 +159,7 @@ The key is stored masked, but anyone with the exe could still extract it. Keep i
 - An upload counts as done only when SteamCMD exits cleanly and confirms it with `Success.` (and, for a new item,
   returns its id). Otherwise the row is marked failed and the package is kept in `%TEMP%\steamcmd_helper_*` to inspect.
 - Headless checks: `SteamCmdHelper.exe [--repo <folder>] --selftest out.txt`, `... --package <ModFolder> out.txt`.
+  `--shot <folder>` saves screenshots of the main window, the Options tab and the request form in both themes.
 
 ## Tests
 

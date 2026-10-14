@@ -66,3 +66,22 @@ jobs:
         with:
           name: SteamCmdHelper-win-x64
           path: publish/SteamCmdHelper.exe
+
+      # Screenshots of both themes for reviewing UI changes. Best effort: never fails the build.
+      - name: Screenshots
+        continue-on-error: true
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force shots | Out-Null
+          Start-Process -FilePath publish/SteamCmdHelper.exe -ArgumentList '--shot', "$PWD\shots" -Wait
+          Get-ChildItem shots
+
+      - name: Upload screenshots
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: shots
+          if-no-files-found: ignore

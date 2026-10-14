@@ -87,7 +87,7 @@ static class Program
 
         if (Array.IndexOf(args, "--shot") is var sh and >= 0 && sh + 1 < args.Length)
         {
-            // Render the main window and the request form to PNG files (layout check without clicking).
+            // Render the main window, its Options tab and the request form to PNG files, in both themes (layout check without clicking).
             ApplicationConfiguration.Initialize();
             void Snap(Form f, string file)
             {
@@ -99,8 +99,15 @@ static class Program
                 bmp.Save(file, System.Drawing.Imaging.ImageFormat.Png);
                 f.Close();
             }
-            Snap(new MainForm(), Path.Combine(args[sh + 1], "main.png"));
-            Snap(new RequestForm("RimWorld", "294100", "RimWorld", "About/About.xml\r\nAbout/Preview.png\r\nAssemblies/Mod.dll"), Path.Combine(args[sh + 1], "request.png"));
+            foreach (var theme in new[] { Theme.DarkName, Theme.LightName })
+            {
+                var suffix = theme == Theme.DarkName ? "" : "-light";
+                Snap(new MainForm(theme), Path.Combine(args[sh + 1], $"main{suffix}.png"));
+                var options = new MainForm(theme);
+                options.Shown += (_, _) => options.ShowOptions();
+                Snap(options, Path.Combine(args[sh + 1], $"options{suffix}.png"));
+                Snap(new RequestForm("RimWorld", "294100", "RimWorld", "About/About.xml\r\nAbout/Preview.png\r\nAssemblies/Mod.dll"), Path.Combine(args[sh + 1], $"request{suffix}.png"));
+            }
             return;
         }
 
