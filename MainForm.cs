@@ -289,7 +289,7 @@ public sealed class MainForm : Form
         {
             var it = new ListViewItem(m.Name);
             it.SubItems.Add(m.Version);
-            it.SubItems.Add(m.WorkshopId ?? "(not on Steam)");
+            it.SubItems.Add(m.WorkshopId ?? "0"); // 0 = not on Steam yet, so uploading creates it
             it.SubItems.Add(m.StatusText);
             it.Tag = m;
             var usable = m.Ready && (m.OnSteam || _s.AllowCreate);

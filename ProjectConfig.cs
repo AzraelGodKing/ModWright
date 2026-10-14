@@ -52,6 +52,12 @@ public sealed class ProjectConfig
     /// <summary>Same idea for the version. Empty = take the version from the first line of the changelog (if that option is on).</summary>
     public string VersionKey { get; set; } = "";
 
+    /// <summary>
+    /// Optional Fluffy's Mod Manager style manifest (e.g. "About/Manifest.xml"). When it has a &lt;version&gt;, that wins
+    /// over <see cref="VersionKey"/>, the same order the Add Changenote mod uses.
+    /// </summary>
+    public string ManifestFile { get; set; } = "";
+
     /// <summary>Same idea for a fallback Workshop description when creating a new item.</summary>
     public string DescriptionKey { get; set; } = "";
 
@@ -63,6 +69,13 @@ public sealed class ProjectConfig
 
     /// <summary>When true, line 1 of the changelog is the version number and the rest is the note. When false the whole file is the note.</summary>
     public bool ChangelogFirstLineIsVersion { get; set; } = false;
+
+    /// <summary>
+    /// Add Changenote style (RimWorld): the changelog holds an entry per version, each starting with its version number,
+    /// and lines starting with # are ignored. The change note is the entry for the mod's current version, and an upload
+    /// is refused until that entry exists.
+    /// </summary>
+    public bool ChangelogByVersion { get; set; } = false;
 
     /// <summary>File that stores the item's Workshop id (a single number).</summary>
     public string WorkshopIdFile { get; set; } = "workshop_id.txt";
@@ -128,9 +141,10 @@ public sealed class ProjectConfig
             ModMarker = "About/About.xml",
             NameKey = "ModMetaData/name",
             VersionKey = "ModMetaData/modVersion",
+            ManifestFile = "About/Manifest.xml",
             DescriptionKey = "ModMetaData/description",
             Changelog = "About/changelog.txt",
-            ChangelogFirstLineIsVersion = true,
+            ChangelogByVersion = true,
             WorkshopIdFile = "About/PublishedFileId.txt",
             Preview = "About/Preview.png",
             SteamDescriptionFile = "About/steam_description.txt",
@@ -162,8 +176,9 @@ public sealed class ProjectConfig
         Preset = p.Preset;
         if (p.AppId.Length > 0) { AppId = p.AppId; GameName = p.GameName; }
         ModsFolder = p.ModsFolder; ModMarker = p.ModMarker;
-        NameKey = p.NameKey; VersionKey = p.VersionKey; DescriptionKey = p.DescriptionKey;
-        Changelog = p.Changelog; ChangelogRequired = p.ChangelogRequired; ChangelogFirstLineIsVersion = p.ChangelogFirstLineIsVersion;
+        NameKey = p.NameKey; VersionKey = p.VersionKey; ManifestFile = p.ManifestFile; DescriptionKey = p.DescriptionKey;
+        Changelog = p.Changelog; ChangelogRequired = p.ChangelogRequired;
+        ChangelogFirstLineIsVersion = p.ChangelogFirstLineIsVersion; ChangelogByVersion = p.ChangelogByVersion;
         WorkshopIdFile = p.WorkshopIdFile; Preview = p.Preview; SteamDescriptionFile = p.SteamDescriptionFile;
         BuiltFiles = p.BuiltFiles; UseGitArchive = p.UseGitArchive; Exclude = p.Exclude;
         Source = p.Source;
