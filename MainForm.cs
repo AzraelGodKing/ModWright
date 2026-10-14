@@ -6,10 +6,12 @@ namespace SteamCmdHelper;
 public sealed class MainForm : Form
 {
     readonly AppSettings _s = AppSettings.Load();
+    ProjectConfig _cfg = new();
 
     readonly TextBox _repo = new() { Tag = "fill" };
     readonly TextBox _account = new() { Width = 200 };
     readonly Label _branch = new() { AutoSize = true };
+    readonly Label _game = new() { AutoSize = true, Tag = "fill", ForeColor = Color.DimGray };
     readonly Label _login = new() { AutoSize = true, Tag = "fill" };
     readonly ListView _list = new();
     readonly ProgressBar _modBar = new() { Minimum = 0, Maximum = 100, Height = 16, Dock = DockStyle.Top };
@@ -20,16 +22,12 @@ public sealed class MainForm : Form
     readonly CheckBox _allowCreate = new() { AutoSize = true, Text = "Allow creating new items (private) for mods not on Steam yet" };
     readonly RichTextBox _log = new() { Dock = DockStyle.Fill, ReadOnly = true, BackColor = Color.FromArgb(24, 24, 28), ForeColor = Color.Gainsboro, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None };
 
-    Button _browse = null!, _refresh = null!, _go = null!, _cancel = null!, _checkLogin = null!, _doLogin = null!, _install = null!;
+    Button _browse = null!, _refresh = null!, _go = null!, _cancel = null!, _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!;
 
     List<ModInfo> _mods = new();
     CancellationTokenSource? _cts;
-    Process? _proc;
     bool _busy, _populating;
-    bool _modOk, _modFailed;
     int _idx, _count;
-
-    string ScriptPath => Path.Combine(_s.RepoPath, "scripts", "steam_publish.ps1");
 
     public MainForm()
     {
@@ -51,11 +49,12 @@ public sealed class MainForm : Form
     void BuildUi()
     {
         Text = "SteamCMD Helper - Workshop uploads";
-        Width = 1000; Height = 780; MinimumSize = new Size(840, 640);
+        Width = 1000; Height = 800; MinimumSize = new Size(840, 660);
         Font = new Font("Segoe UI", 9.5f);
         StartPosition = FormStartPosition.CenterScreen;
 
         _browse = Btn("Browse...", (_, _) => BrowseRepo());
+        _editLayout = Btn("Edit layout file...", (_, _) => EditLayout());
         _checkLogin = Btn("Check login", async (_, _) => { SaveFields(); await VerifyLoginAsync(true); });
         _doLogin = Btn("Log in...", async (_, _) => { SaveFields(); await LoginFlowAsync(); });
         _install = Btn("Install SteamCMD", async (_, _) => await InstallAsync());
@@ -65,7 +64,8 @@ public sealed class MainForm : Form
         _cancel = Btn("Cancel", (_, _) => Cancel());
         _cancel.Enabled = false;
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7, Padding = new Padding(12) };
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 8, Padding = new Padding(12) };
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -75,7 +75,8 @@ public sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 170));
 
         root.Controls.Add(Row(Lbl("Mods repo"), _repo, _browse, _branch), 0, 0);
-        root.Controls.Add(Row(Lbl("Steam account"), _account, _login, _checkLogin, _doLogin, _install), 0, 1);
+        root.Controls.Add(Row(_game, _editLayout), 0, 1);
+        root.Controls.Add(Row(Lbl("Steam account"), _account, _login, _checkLogin, _doLogin, _install), 0, 2);
 
         _list.View = View.Details;
         _list.CheckBoxes = true;
@@ -88,7 +89,7 @@ public sealed class MainForm : Form
         _list.Columns.Add("Status", 520);
         _list.ItemCheck += OnItemCheck;
         _list.ItemChecked += (_, _) => UpdateGoButton();
-        root.Controls.Add(_list, 0, 2);
+        root.Controls.Add(_list, 0, 3);
 
         var prog = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = new Padding(0, 8, 0, 4) };
         prog.Controls.Add(_current);
@@ -96,15 +97,13 @@ public sealed class MainForm : Form
         prog.Controls.Add(_stage);
         prog.Controls.Add(new Label { Text = "Overall", AutoSize = true, Margin = new Padding(3, 6, 3, 0) });
         prog.Controls.Add(_overall);
-        root.Controls.Add(prog, 0, 3);
+        root.Controls.Add(prog, 0, 4);
 
-        root.Controls.Add(Row(_allowCreate, _dry), 0, 4);
-
-        var buttons = Row(new Label { Tag = "fill", Text = "" }, _refresh, _cancel, _go);
-        root.Controls.Add(buttons, 0, 5);
+        root.Controls.Add(Row(_allowCreate, _dry), 0, 5);
+        root.Controls.Add(Row(new Label { Tag = "fill", Text = "" }, _refresh, _cancel, _go), 0, 6);
 
         _log.Margin = new Padding(0, 6, 0, 0);
-        root.Controls.Add(_log, 0, 6);
+        root.Controls.Add(_log, 0, 7);
 
         Controls.Add(root);
 
@@ -148,22 +147,35 @@ public sealed class MainForm : Form
 
     void BrowseRepo()
     {
-        using var d = new FolderBrowserDialog { Description = "Pick the folder that holds your RimWorld mods (the git repo)", SelectedPath = _repo.Text };
+        using var d = new FolderBrowserDialog { Description = "Pick the folder that holds your mods (the repo)", SelectedPath = _repo.Text };
         if (d.ShowDialog(this) != DialogResult.OK) return;
         _repo.Text = d.SelectedPath;
         SaveFields();
         RefreshAll();
     }
 
+    void EditLayout()
+    {
+        SaveFields();
+        if (!Directory.Exists(_s.RepoPath)) { MessageBox.Show(this, "Pick the mods repo folder first.", Text); return; }
+        var path = ProjectConfig.WriteDefault(_s.RepoPath);
+        Append($"Opened {path}. Save it, then press Refresh.", Color.DeepSkyBlue);
+        try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
+        catch (Exception e) { Append("Could not open the file: " + e.Message, Color.Tomato); }
+    }
+
     void RefreshAll()
     {
         SaveFields();
+        _cfg = ProjectConfig.Load(_s.RepoPath);
         var branch = ModScanner.GitBranch(_s.RepoPath);
         _branch.Text = branch == null ? "(not a git repo)" : "branch: " + branch;
+        _game.Text = $"Game: {_cfg.GameName} (app {_cfg.AppId})   layout: {_cfg.Source}";
+        if (_cfg.Error != null) Append(_cfg.Error, Color.Orange);
 
         _populating = true;
         _list.Items.Clear();
-        _mods = ModScanner.Scan(_s.RepoPath);
+        _mods = ModScanner.Scan(_s.RepoPath, _cfg);
         foreach (var m in _mods)
         {
             var it = new ListViewItem(m.Name);
@@ -178,10 +190,8 @@ public sealed class MainForm : Form
         }
         _populating = false;
 
-        if (!File.Exists(ScriptPath))
-            Append($"Cannot find scripts\\steam_publish.ps1 in {_s.RepoPath}. Check out the branch that has it (feat/steam-workshop-upload) or merge it.", Color.Orange);
         if (_mods.Count == 0)
-            Append("No mods found. Pick the folder that contains the mod folders (each has About\\About.xml).", Color.Orange);
+            Append($"No mods found. Pick the folder that contains the mod folders (each needs {_cfg.ModMarker}), or press Edit layout file to describe your layout.", Color.Orange);
 
         UpdateLoginHint();
         UpdateGoButton();
@@ -207,7 +217,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _refresh, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate })
             c.Enabled = !busy;
         _cancel.Enabled = busy;
         UpdateGoButton();
@@ -241,7 +251,7 @@ public sealed class MainForm : Form
     {
         if (l.StartsWith("SKIPPED") || l.Contains("ERROR", StringComparison.OrdinalIgnoreCase) || l.Contains("FAILED", StringComparison.OrdinalIgnoreCase)) return Color.Tomato;
         if (l.StartsWith("Uploaded ") || l.StartsWith("Created ") || l.Contains("Success", StringComparison.OrdinalIgnoreCase)) return Color.LightGreen;
-        if (l.StartsWith("===")) return Color.DeepSkyBlue;
+        if (l.StartsWith("===") || l.StartsWith("---")) return Color.DeepSkyBlue;
         return Color.Gainsboro;
     }
 
@@ -258,7 +268,7 @@ public sealed class MainForm : Form
         if (!wasBusy) SetBusy(true);
         try
         {
-            var (ok, output) = await SteamLogin.VerifyAsync(steam, _s.Account, CancellationToken.None);
+            var (ok, _) = await SteamLogin.VerifyAsync(steam, _s.Account, CancellationToken.None);
             if (ok) SetLogin($"Logged in as {_s.Account}", Color.SeaGreen);
             else SetLogin($"Not logged in as {_s.Account}", Color.Firebrick);
             if (announce || !ok) Append(ok ? $"Steam login OK for {_s.Account}." : $"Steam login check failed for {_s.Account} (no saved login, wrong name, or no connection).", ok ? Color.LightGreen : Color.Orange);
@@ -307,12 +317,11 @@ public sealed class MainForm : Form
         SaveFields();
         var picked = Selected().ToList();
         if (picked.Count == 0) return;
-        if (!File.Exists(ScriptPath)) { MessageBox.Show(this, "scripts\\steam_publish.ps1 is missing from the repo.", Text, MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
         if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { MessageBox.Show(this, "SteamCMD is not installed yet. Click Install SteamCMD.", Text); return; }
 
         var dry = _dry.Checked;
         var sb = new StringBuilder();
-        sb.AppendLine(dry ? "Dry run for:" : "Publish to the Steam Workshop:");
+        sb.AppendLine(dry ? "Dry run for:" : $"Publish to the Steam Workshop ({_cfg.GameName}):");
         sb.AppendLine();
         foreach (var m in picked)
             sb.AppendLine($"  {m.Name}  v{m.Version}   {(m.OnSteam ? "update " + m.WorkshopId : "NEW private item")}{(m.Warnings.Count > 0 ? "   (" + m.Warnings[0] + ")" : "")}");
@@ -320,6 +329,10 @@ public sealed class MainForm : Form
         if (MessageBox.Show(this, sb.ToString(), Text, MessageBoxButtons.OKCancel, dry ? MessageBoxIcon.Question : MessageBoxIcon.Warning) != DialogResult.OK) return;
 
         if (!dry && !await LoginFlowAsync()) { Append("Stopped: not logged in to Steam.", Color.Orange); return; }
+
+        var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account);
+        pub.Log += l => BeginInvoke(() => Append(l, LineColor(l)));
+        pub.Stage += (t, p) => BeginInvoke(() => SetStage(t, p));
 
         _cts = new CancellationTokenSource();
         SetBusy(true);
@@ -335,17 +348,19 @@ public sealed class MainForm : Form
                 _modBar.Value = 0;
                 SetStage("Starting...", 3);
                 Append($"--- {m.Name} ---", Color.DeepSkyBlue);
-                bool good;
-                try { good = await RunScriptAsync(m, !dry, _cts.Token); }
+                PublishResult res;
+                try { res = await pub.RunAsync(m, !dry, _cts.Token); }
                 catch (OperationCanceledException) { Append("Cancelled.", Color.Orange); break; }
-                if (good) ok++; else failed++;
-                SetStage(good ? "Done" : "Failed - see the log", good ? 100 : 0);
+                catch (Exception e) { res = new PublishResult(false, e.Message); }
+                if (!res.Ok) Append($"SKIPPED {m.Name}: {res.Message}", Color.Tomato);
+                if (res.Ok) ok++; else failed++;
+                SetStage(res.Ok ? res.Message : "Failed - see the log", res.Ok ? 100 : 0);
                 _overall.Value = Math.Min(100, (int)((_idx + 1) * 100.0 / _count));
             }
         }
         finally
         {
-            _cts?.Dispose(); _cts = null; _proc = null;
+            _cts?.Dispose(); _cts = null;
             SetBusy(false);
         }
         var verb = dry ? "checked" : "uploaded";
@@ -361,62 +376,8 @@ public sealed class MainForm : Form
         if (_count > 0) _overall.Value = Math.Clamp((int)((_idx * 100.0 + _modBar.Value) / _count), 0, 100);
     }
 
-    void OnScriptLine(string line)
-    {
-        if (string.IsNullOrWhiteSpace(line)) return;
-        Append(line, LineColor(line));
-        const StringComparison ic = StringComparison.OrdinalIgnoreCase;
-        if (line.Contains("Workshop id", ic)) SetStage("Packaged, preparing upload...", 20);
-        else if (line.Contains("Logging in", ic)) SetStage("Logging in to Steam...", 30);
-        else if (line.Contains("Uploading content", ic)) SetStage("Uploading files...", 50);
-        else if (line.Contains("Uploading preview", ic)) SetStage("Uploading preview image...", 70);
-        else if (line.Contains("Committing", ic)) SetStage("Committing update...", 88);
-        else if (line.StartsWith("Uploaded ") || line.StartsWith("Created ")) { _modOk = true; SetStage("Uploaded", 100); }
-        else if (line.Contains("Dry run: nothing uploaded", ic)) { _modOk = true; SetStage("Dry run OK", 100); }
-        else if (line.StartsWith("SKIPPED")) _modFailed = true;
-    }
-
-    async Task<bool> RunScriptAsync(ModInfo m, bool upload, CancellationToken ct)
-    {
-        static string Q(string s) => "'" + s.Replace("'", "''") + "'";
-        var cmd = new StringBuilder();
-        cmd.Append("[Console]::OutputEncoding=[Text.Encoding]::UTF8; & ").Append(Q(ScriptPath));
-        cmd.Append(" -Mod ").Append(Q(m.Folder)).Append(" -SteamCmd ").Append(Q(_s.EffectiveSteamCmd));
-        if (!m.OnSteam) cmd.Append(" -Create");
-        if (upload) cmd.Append(" -Upload -Account ").Append(Q(_s.Account));
-        cmd.Append("; exit $LASTEXITCODE");
-        var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(cmd.ToString()));
-
-        var psi = new ProcessStartInfo("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + encoded)
-        {
-            WorkingDirectory = _s.RepoPath,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        _modOk = false; _modFailed = false;
-        using var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
-        p.OutputDataReceived += (_, e) => { if (e.Data != null) BeginInvoke(() => OnScriptLine(e.Data)); };
-        p.ErrorDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) BeginInvoke(() => { Append(e.Data!, Color.Tomato); _modFailed = true; }); };
-        p.Start();
-        _proc = p;
-        p.BeginOutputReadLine();
-        p.BeginErrorReadLine();
-
-        using var reg = ct.Register(() => { try { p.Kill(true); } catch { } });
-        await Task.Run(() => p.WaitForExit());
-        ct.ThrowIfCancellationRequested();
-        await Task.Delay(150); // let the last BeginInvoke'd lines land
-        return _modOk && !_modFailed;
-    }
-
     void Cancel()
     {
         try { _cts?.Cancel(); } catch { }
-        try { _proc?.Kill(true); } catch { }
     }
 }

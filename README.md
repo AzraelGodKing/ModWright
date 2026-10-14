@@ -1,63 +1,68 @@
 # SteamCMD Helper
 
-Windows desktop app for uploading RimWorld mod updates to the Steam Workshop without remembering any
-commands. Open it, tick the mods, press **Upload**. It shows each mod's version and Workshop id, checks
-the changelog before sending anything, handles the Steam login, and shows progress bars and a live log.
+Windows desktop app for uploading Steam Workshop mod updates without remembering any commands. Open it,
+tick the mods, press **Upload**. It shows each mod's version and Workshop id, checks the changelog before
+sending anything, handles the Steam login, and shows progress bars and a live log.
 
-It does the work through `scripts\steam_publish.ps1` in your mods repo (one copy of the upload logic),
-and uses the mod's `About\changelog.txt` as the Workshop release notes.
+It works for any Steam game's mods: the app id and the folder layout are configurable (see below). The
+upload logic is built in; there is no script or other dependency besides SteamCMD itself.
 
 ## Requirements
 
 - Windows
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) to build (the published `.exe` needs nothing)
-- A mods repo that contains `scripts\steam_publish.ps1` (branch `feat/steam-workshop-upload` of `rimworld_mods` until it is merged)
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) to build (running needs the .NET 8 runtime, which the SDK includes)
+- `git` on PATH if your repo uses the default packaging (`UseGitArchive`)
+- SteamCMD: the app can download it for you (**Install SteamCMD**)
 
 ## Build and run
-
-From this folder:
 
 ```powershell
 dotnet build -c Release
 ```
 
-The program is `bin\Release\net8.0-windows\SteamCmdHelper.exe` (a small file; it needs the .NET 8 runtime,
-which the SDK includes). Make a shortcut to it on the desktop. `dotnet run` also works while developing.
+The program is `bin\Release\net8.0-windows\SteamCmdHelper.exe`. Make a shortcut to it. (A self-contained
+single-file publish also works, but some Windows setups refuse to launch large unsigned exes.)
 
-Optional self-contained single-file build, which needs no .NET install:
-
-```powershell
-dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true
-```
-
-Output is under `bin\Release\net8.0-windows\win-x64\publish\`. On the author's PC Windows refused to launch
-that large unsigned file ("Access is denied"), so the normal build above is the one to use there.
 ## Using it
 
-1. **Mods repo**: pick the folder that holds your mods (default `F:\Repositories\rimworld_mods`). The current git branch is shown.
+1. **Mods repo**: pick the folder that holds your mods (one sub-folder per mod).
 2. **Steam account**: type your Steam login name. The status line says whether a saved login exists.
-   If SteamCMD is missing, **Install SteamCMD** downloads it into the repo's `_tools\steamcmd\`.
+   **Install SteamCMD** downloads it to `%LocalAppData%\SteamCmdHelper\steamcmd` (or uses
+   `<repo>\_tools\steamcmd` if that exists).
 3. **Log in** happens automatically on the first upload. A SteamCMD window opens; type your password and the
-   Steam Guard code there and wait for it to close. This app never sees your password. Afterwards the login is
-   cached and uploads go straight through. **Check login** tests the saved login at any time.
-4. Tick the mods and press **Upload**. A confirmation lists what will be sent.
-   **Dry run** does every check and builds the package but uploads nothing.
+   Steam Guard code there. This app never sees your password. Afterwards the login is cached.
+4. Tick the mods and press **Upload**. **Dry run** does every check and builds the package but uploads nothing.
 
-Each row shows the mod's problems before you start (red): missing or empty changelog, changelog version not
-matching `About.xml`, mod not built yet (no DLL), and so on. A grey warning means uncommitted changes in that
-mod, which the script does not upload (it packages from git `HEAD` plus the built DLL).
+Rows show problems in red (missing changelog, changelog version not matching the mod's version, nothing
+built, etc.). A warning means uncommitted tracked changes (git packaging uses `HEAD`).
 
 ### Mods not on Steam yet
 
-Tick **Allow creating new items**. Those mods then show as "Ready to create (private)". They are created
-private, with the title from `About.xml`, `About\Preview.png`, and the description from
-`About\steam_description.txt` (or the `About.xml` description). The new id is saved to
-`About\PublishedFileId.txt`; commit it. Never repeat a create after a failure without checking your Steam
-profile first, or you can end up with a duplicate item.
+Tick **Allow creating new items**. They are created private, with the title, description and preview image
+from your layout. The new id is saved to the id file; commit it.
+
+## Layout file: `.steamhelper.json`
+
+Without a file, the RimWorld layout is assumed. For another game, press **Edit layout file...**, which writes
+`.steamhelper.json` in the repo root with every default filled in. Fields:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `AppId` / `GameName` | 294100 / RimWorld | Steam app id and display name |
+| `ModMarker` | `About/About.xml` | File that marks a folder as a mod (relative to the mod folder) |
+| `NameXPath`, `VersionXPath`, `DescriptionXPath` | `ModMetaData/...` | Where to read name, version, description in the marker XML |
+| `Changelog` | `About/changelog.txt` | Release notes file |
+| `ChangelogFirstLineIsVersion` | true | First line is the version and must match the marker's version; the rest is the Workshop note |
+| `WorkshopIdFile` | `About/PublishedFileId.txt` | Stores the Workshop id |
+| `Preview`, `SteamDescriptionFile` | `About/Preview.png`, `About/steam_description.txt` | Used when creating |
+| `BuiltFiles` | `["Assemblies/*.dll"]` | Build outputs copied from the working tree (not git) |
+| `UseGitArchive` | true | Package with `git archive HEAD` (honours `export-ignore`); false copies the folder using `Exclude` |
+| `Exclude` | `.git`, `bin`, `obj`, `*.md`, ... | Skipped when `UseGitArchive` is false |
 
 ## Safety
 
-- The password and Steam Guard code are typed into SteamCMD's own window, never into this app, and are not saved.
+- Password and Steam Guard code are typed into SteamCMD's own window, never into this app, and not saved.
 - Settings (repo path, account name) live in `%LocalAppData%\SteamCmdHelper\settings.json`.
-- SteamCMD keeps the login cache in its own folder. In `rimworld_mods` that folder is git-ignored; keep it that way.
+- SteamCMD keeps the login cache in its own folder; keep it out of git.
 - Uploads publish immediately to subscribers. Use Dry run first when unsure.
+- Headless checks: `SteamCmdHelper.exe --selftest out.txt`, `SteamCmdHelper.exe --package <ModFolder> out.txt`.
