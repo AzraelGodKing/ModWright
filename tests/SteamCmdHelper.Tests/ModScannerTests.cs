@@ -1,3 +1,5 @@
+using Xunit;
+
 namespace SteamCmdHelper.Tests;
 
 public class ModScannerTests : IDisposable

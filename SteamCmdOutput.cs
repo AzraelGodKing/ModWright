@@ -1,0 +1,66 @@
+using System.Text.RegularExpressions;
+
+namespace SteamCmdHelper;
+
+/// <summary>What one "+workshop_build_item" run actually achieved.</summary>
+/// <param name="PublishedFileId">The item's Workshop id when Steam reported one, even if the run failed afterwards.</param>
+public sealed record UploadOutcome(bool Ok, string Reason, string? PublishedFileId);
+
+/// <summary>
+/// Decides whether a SteamCMD Workshop upload really succeeded. SteamCMD can exit 0 after a failure and prints
+/// harmless lines that contain words like "error", so success needs all of: exit code 0, no SteamCMD failure
+/// line, an explicit "Success." line, and for a new item the Workshop id Steam assigned.
+/// </summary>
+public static class SteamCmdOutput
+{
+    const RegexOptions Ic = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
+
+    static readonly Regex Ansi = new(@"\x1B\[[0-9;?]*[A-Za-z]");
+    static readonly Regex SuccessLine = new(@"^Success\b", Ic);
+
+    /// <summary>
+    /// SteamCMD's own failure forms: "ERROR! Failed to update workshop item (Access Denied).",
+    /// "Logging in user 'x' to Steam Public...FAILED (Invalid Password)", "FAILED login with result code ...".
+    /// The upper-case markers are matched case-sensitively, so file names such as "Textures/Error.png" or benign
+    /// notices like "Failed to init SDL priority manager" do not match.
+    /// </summary>
+    static readonly Regex FailureLine = new(
+        @"(?-i:ERROR!|(?:^|\.\.\.)\s*FAILED\b)|\bFailed to (?:update|upload|commit|create|publish|prepare)\b|\bLogin Failure\b", Ic);
+
+    static readonly Regex IdInOutput = new(@"\bPublish(?:ed)?\s*File\s*ID\b\D{0,3}(\d{6,})", Ic);
+    static readonly Regex IdInVdf = new("\"publishedfileid\"\\s+\"(\\d+)\"", Ic);
+
+    /// <param name="lines">Everything SteamCMD printed, stdout and stderr.</param>
+    /// <param name="exitCode">SteamCMD's exit code.</param>
+    /// <param name="expectedId">The item's Workshop id for an update; null when creating a new item.</param>
+    /// <param name="vdfText">The build file after the run. SteamCMD writes a new item's id back into it.</param>
+    public static UploadOutcome Evaluate(IEnumerable<string> lines, int exitCode, string? expectedId, string? vdfText)
+    {
+        var clean = lines.Select(Clean).Where(l => l.Length > 0).ToList();
+
+        var vdfId = vdfText == null ? null : IdInVdf.Match(vdfText) is { Success: true } v && v.Groups[1].Value != "0" ? v.Groups[1].Value : null;
+        var outId = clean.Select(l => IdInOutput.Match(l)).FirstOrDefault(m => m.Success)?.Groups[1].Value;
+        var id = expectedId ?? vdfId ?? outId;
+
+        UploadOutcome Fail(string reason) => new(false, reason, id);
+
+        var failure = clean.FirstOrDefault(l => FailureLine.IsMatch(l));
+        if (failure != null) return Fail("SteamCMD reported a failure: " + failure);
+        if (exitCode != 0) return Fail($"SteamCMD exited with code {exitCode}.");
+        if (!clean.Any(l => SuccessLine.IsMatch(l))) return Fail("SteamCMD finished without confirming the upload (no \"Success\" line).");
+
+        if (expectedId != null)
+        {
+            if (outId != null && outId != expectedId) return Fail($"Steam reported Workshop id {outId}, but this mod's id is {expectedId}.");
+        }
+        else
+        {
+            if (id == null) return Fail("Steam accepted the upload but did not return the new Workshop id.");
+            if (vdfId != null && outId != null && vdfId != outId) return Fail($"Steam returned two different Workshop ids ({vdfId} and {outId}).");
+        }
+
+        return new UploadOutcome(true, expectedId != null ? "Uploaded" : "Created", id);
+    }
+
+    static string Clean(string line) => Ansi.Replace(line, "").Trim();
+}

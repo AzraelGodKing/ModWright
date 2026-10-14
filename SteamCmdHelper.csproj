@@ -11,7 +11,7 @@
     <Version>1.1.0</Version>
     <Product>SteamCMD Helper</Product>
     <Description>One-click Steam Workshop uploads for RimWorld mods, with login handling and progress.</Description>
-    <!-- The test project lives under tests/ and must not be compiled into the app. -->
+    <!-- The test project lives inside this folder; keep its sources out of the app. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);tests/**</DefaultItemExcludes>
   </PropertyGroup>
 </Project>

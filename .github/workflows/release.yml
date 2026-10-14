@@ -47,7 +47,7 @@ jobs:
           echo "VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Test
-        run: dotnet test tests/SteamCmdHelper.Tests/SteamCmdHelper.Tests.csproj -c Release
+        run: dotnet test tests/SteamCmdHelper.Tests -c Release
 
       - name: Publish
         run: |

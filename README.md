@@ -27,7 +27,6 @@ Each [GitHub Release](../../releases) has:
 
 ```powershell
 dotnet build SteamCmdHelper.csproj -c Release
-dotnet test tests/SteamCmdHelper.Tests/SteamCmdHelper.Tests.csproj
 ```
 
 The program is `bin\Release\net8.0-windows\SteamCmdHelper.exe`. Make a shortcut to it.
@@ -78,7 +77,18 @@ Without a file, the RimWorld layout is assumed. For another game, press **Edit l
 - Settings (repo path, account name) live in `%LocalAppData%\SteamCmdHelper\settings.json`.
 - SteamCMD keeps the login cache in its own folder; keep it out of git.
 - Uploads publish immediately to subscribers. Use Dry run first when unsure.
+- Install SteamCMD only installs a download that arrived whole and whose `steamcmd.exe` is signed by Valve.
+- An upload counts as done only when SteamCMD exits cleanly and confirms it with `Success.` (and, for a new item,
+  returns its id). Otherwise the row is marked failed and the package is kept in `%TEMP%\steamcmd_helper_*` to inspect.
 - Headless checks: `SteamCmdHelper.exe --selftest out.txt`, `SteamCmdHelper.exe --package <ModFolder> out.txt`.
+## Tests
+
+```
+dotnet test tests/SteamCmdHelper.Tests
+```
+
+The tests compile the non-UI source files directly, so they run on Windows, Linux or macOS.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).

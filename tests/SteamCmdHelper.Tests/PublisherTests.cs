@@ -1,129 +1,197 @@
-using System.Text.RegularExpressions;
+using System.Diagnostics;
+using SteamCmdHelper;
+using Xunit;
 
 namespace SteamCmdHelper.Tests;
 
-public class PublisherTests : IDisposable
+public sealed class PublisherTests : IDisposable
 {
-    readonly TempRepo _repo = new();
-    readonly ProjectConfig _cfg = new() { UseGitArchive = false };
+    readonly string _root = Path.Combine(Path.GetTempPath(), "steamcmd_helper_tests_" + Guid.NewGuid().ToString("N"));
+    readonly string _repo, _temp, _modDir;
 
-    public void Dispose() => _repo.Dispose();
-
-    // ------------------------------------------------------------ Esc
-
-    [Theory]
-    [InlineData("plain text", "plain text")]
-    [InlineData("say \"hi\"", "say \\\"hi\\\"")]
-    [InlineData(@"C:\mods\x", @"C:\\mods\\x")]
-    [InlineData("a\nb", "a\\nb")]
-    [InlineData("a\r\nb", "a\\nb")]
-    [InlineData("", "")]
-    public void Esc_escapes_vdf_values(string input, string expected)
+    public PublisherTests()
     {
-        Assert.Equal(expected, Publisher.Esc(input));
+        _repo = Path.Combine(_root, "repo");
+        _temp = Path.Combine(_root, "temp");
+        _modDir = Path.Combine(_repo, "MyMod");
+        Directory.CreateDirectory(_temp);
+        Directory.CreateDirectory(Path.Combine(_modDir, "About"));
+        File.WriteAllText(Path.Combine(_modDir, "About", "About.xml"),
+            "<ModMetaData><name>My Mod</name><modVersion>1.0.0</modVersion><description>A test mod that does a number of useful things.</description></ModMetaData>");
+        File.WriteAllText(Path.Combine(_modDir, "About", "changelog.txt"), "1.0.0\nFixed a crash when loading saves.");
+        File.WriteAllBytes(Path.Combine(_modDir, "About", "Preview.png"), new byte[] { 1, 2, 3 });
+    }
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_root, true); } catch { }
+    }
+
+    static ProjectConfig CopyConfig() => new() { UseGitArchive = false, BuiltFiles = Array.Empty<string>() };
+
+    ModInfo Mod(string? id) => new() { Dir = _modDir, Folder = "MyMod", Name = "My Mod", Version = "1.0.0", WorkshopId = id };
+
+    string[] StageDirs() => Directory.GetDirectories(_temp, Publisher.StagePrefix + "*");
+
+    string IdFile => Path.Combine(_modDir, "About", "PublishedFileId.txt");
+
+    /// <summary>A stand-in for steamcmd that prints <paramref name="lines"/>, optionally writes a new id into the build file, and exits.</summary>
+    string FakeSteamCmd(int exit, string? assignId, params string[] lines)
+    {
+        var dir = Path.Combine(_root, "steamcmd");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "steamcmd.sh");
+        var body = "#!/bin/sh\n" + string.Concat(lines.Select(l => $"printf '%s\\n' '{l.Replace("'", "'\\''")}'\n"));
+        // Arguments are: +login <account> +workshop_build_item <vdf> +quit
+        if (assignId != null) body += $"sed -i 's/\"publishedfileid\" \"0\"/\"publishedfileid\" \"{assignId}\"/' \"$4\"\n";
+        body += $"exit {exit}\n";
+        File.WriteAllText(path, body);
+        Process.Start("chmod", new[] { "+x", path })!.WaitForExit();
+        return path;
+    }
+
+    // The fake SteamCMD is a shell script, so the upload tests run on Linux and macOS only.
+    static bool CanFakeSteamCmd => !OperatingSystem.IsWindows();
+
+    [Fact]
+    public async Task Dry_run_removes_its_package()
+    {
+        var pub = new Publisher(_repo, CopyConfig(), "steamcmd", "modder", _temp);
+        var r = await pub.RunAsync(Mod("2001112223"), upload: false, CancellationToken.None);
+        Assert.True(r.Ok, r.Message);
+        Assert.Empty(StageDirs());
     }
 
     [Fact]
-    public void Esc_escapes_backslashes_before_adding_its_own()
+    public async Task Dry_run_of_a_new_item_removes_its_package()
     {
-        // A literal backslash-n in the text must stay distinguishable from a real newline.
-        Assert.Equal(@"\\n", Publisher.Esc(@"\n"));
-        Assert.Equal(@"\\\""", Publisher.Esc("\\\""));
+        File.WriteAllText(Path.Combine(_modDir, "About", "steam_description.txt"), "A long enough Steam description for the item.");
+        var pub = new Publisher(_repo, CopyConfig(), "steamcmd", "modder", _temp);
+        var r = await pub.RunAsync(Mod(null), upload: false, CancellationToken.None);
+        Assert.True(r.Ok, r.Message);
+        Assert.Empty(StageDirs());
     }
 
     [Fact]
-    public void Esc_output_has_no_unescaped_quotes_or_newlines()
+    public async Task Missing_description_removes_its_package()
     {
-        var nasty = "Line \"one\"\r\nLine two\\\n\"}\n\"evil\" \"1\"";
-
-        var esc = Publisher.Esc(nasty);
-
-        Assert.DoesNotContain('\n', esc);
-        Assert.DoesNotMatch(new Regex(@"(?<!\\)(\\\\)*"""), esc);
-    }
-
-    // ------------------------------------------------------------ build file
-
-    static string Unescape(string s) =>
-        Regex.Replace(s, @"\\(.)", m => m.Groups[1].Value == "n" ? "\n" : m.Groups[1].Value);
-
-    /// <summary>Reads one quoted key's value from a .vdf file, undoing <see cref="Publisher.Esc"/>.</summary>
-    static string VdfValue(string vdf, string key)
-    {
-        var m = Regex.Match(vdf, "\"" + key + "\"\\s+\"((?:[^\"\\\\]|\\\\.)*)\"");
-        Assert.True(m.Success, "key " + key + " not found in:\n" + vdf);
-        return Unescape(m.Groups[1].Value);
-    }
-
-    async Task<string> DryRunVdf(ModInfo mod)
-    {
-        var log = new List<string>();
-        var pub = new Publisher(_repo.Root, _cfg, "steamcmd-not-used", "account");
-        pub.Log += log.Add;
-
-        var res = await pub.RunAsync(mod, upload: false, CancellationToken.None);
-
-        Assert.True(res.Ok, res.Message);
-        var line = Assert.Single(log, l => l.StartsWith("Dry run:"));
-        var stageRoot = line.Substring(line.LastIndexOf(" in ", StringComparison.Ordinal) + 4);
-        try { return await File.ReadAllTextAsync(Path.Combine(stageRoot, mod.Folder + ".vdf")); }
-        finally { Directory.Delete(stageRoot, true); }
+        File.WriteAllText(Path.Combine(_modDir, "About", "About.xml"), "<ModMetaData><name>My Mod</name></ModMetaData>");
+        var pub = new Publisher(_repo, CopyConfig(), "steamcmd", "modder", _temp);
+        var r = await pub.RunAsync(Mod(null), upload: false, CancellationToken.None);
+        Assert.False(r.Ok);
+        Assert.Empty(StageDirs());
     }
 
     [Fact]
-    public async Task Dry_run_writes_escaped_change_note()
+    public async Task Failed_packaging_removes_its_package()
     {
-        var notes = "- Fixed \"quoted\" names\r\n- Paths like C:\\Steam\\mods work\n- \"}\" no longer breaks the file";
-        _repo.AddMod("Alpha", changelog: "1.2.3\n" + notes);
-        var mod = Assert.Single(ModScanner.Scan(_repo.Root, _cfg));
+        // git archive of a mod that was never committed throws while packaging.
+        Git("init", "-q");
+        File.WriteAllText(Path.Combine(_repo, "readme.txt"), "x");
+        Git("add", "readme.txt");
+        Git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init");
 
-        var vdf = await DryRunVdf(mod);
-
-        Assert.Equal(notes.Replace("\r\n", "\n"), VdfValue(vdf, "changenote"));
-        Assert.Equal("294100", VdfValue(vdf, "appid"));
-        Assert.Equal("123456789", VdfValue(vdf, "publishedfileid"));
-        Assert.DoesNotContain("\"title\"", vdf);
+        var cfg = new ProjectConfig { UseGitArchive = true, BuiltFiles = Array.Empty<string>() };
+        var pub = new Publisher(_repo, cfg, "steamcmd", "modder", _temp);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => pub.RunAsync(Mod("2001112223"), upload: false, CancellationToken.None));
+        Assert.Empty(StageDirs());
     }
 
     [Fact]
-    public async Task Dry_run_for_new_item_escapes_title_and_description()
+    public async Task Successful_update_reports_ok_and_removes_its_package()
     {
-        _repo.AddMod("Alpha", workshopId: null);
-        _repo.Write("Alpha/About/steam_description.txt", "[b]My \"best\" mod[/b]\nLine two with a \\ backslash.");
-        var mod = Assert.Single(ModScanner.Scan(_repo.Root, _cfg));
-        mod.Name = "Alpha \"Deluxe\"";
-
-        var vdf = await DryRunVdf(mod);
-
-        Assert.Equal("0", VdfValue(vdf, "publishedfileid"));
-        Assert.Equal("Alpha \"Deluxe\"", VdfValue(vdf, "title"));
-        Assert.Equal("[b]My \"best\" mod[/b]\nLine two with a \\ backslash.", VdfValue(vdf, "description"));
-        Assert.Equal("2", VdfValue(vdf, "visibility"));
+        if (!CanFakeSteamCmd) return;
+        var steam = FakeSteamCmd(0, null, "Logging in user 'modder' to Steam Public...OK", "Uploading content...", "Committing update...", "Success.");
+        var pub = new Publisher(_repo, CopyConfig(), steam, "modder", _temp);
+        var r = await pub.RunAsync(Mod("2001112223"), upload: true, CancellationToken.None);
+        Assert.True(r.Ok, r.Message);
+        Assert.Empty(StageDirs());
     }
 
     [Fact]
-    public async Task New_item_without_description_fails()
+    public async Task Exit_zero_without_success_line_is_a_failure()
     {
-        _repo.AddMod("Alpha", workshopId: null);
-        _repo.Write("Alpha/About/About.xml", "<ModMetaData><name>Alpha</name><modVersion>1.2.3</modVersion></ModMetaData>");
-        var mod = Assert.Single(ModScanner.Scan(_repo.Root, _cfg));
-        var pub = new Publisher(_repo.Root, _cfg, "steamcmd-not-used", "account");
-
-        var res = await pub.RunAsync(mod, upload: false, CancellationToken.None);
-
-        Assert.False(res.Ok);
-        Assert.Contains("No description found", res.Message);
+        if (!CanFakeSteamCmd) return;
+        var steam = FakeSteamCmd(0, null, "Logging in user 'modder' to Steam Public...OK", "Uploading content...");
+        var pub = new Publisher(_repo, CopyConfig(), steam, "modder", _temp);
+        var r = await pub.RunAsync(Mod("2001112223"), upload: true, CancellationToken.None);
+        Assert.False(r.Ok);
+        Assert.Single(StageDirs()); // kept for inspection
     }
 
     [Fact]
-    public async Task Long_change_note_is_truncated()
+    public async Task Error_line_with_exit_zero_is_a_failure()
     {
-        _repo.AddMod("Alpha", changelog: "1.2.3\n" + new string('x', 9000));
-        var mod = Assert.Single(ModScanner.Scan(_repo.Root, _cfg));
+        if (!CanFakeSteamCmd) return;
+        var steam = FakeSteamCmd(0, null, "Uploading content...", "ERROR! Failed to update workshop item (Access Denied).", "Success.");
+        var pub = new Publisher(_repo, CopyConfig(), steam, "modder", _temp);
+        var r = await pub.RunAsync(Mod("2001112223"), upload: true, CancellationToken.None);
+        Assert.False(r.Ok);
+        Assert.Contains("Access Denied", r.Message);
+    }
 
-        var note = VdfValue(await DryRunVdf(mod), "changenote");
+    [Fact]
+    public async Task Create_saves_the_new_id()
+    {
+        if (!CanFakeSteamCmd) return;
+        File.WriteAllText(Path.Combine(_modDir, "About", "steam_description.txt"), "A long enough Steam description for the item.");
+        var steam = FakeSteamCmd(0, "3004445556", "Uploading content...", "Committing update...", "Success.");
+        var pub = new Publisher(_repo, CopyConfig(), steam, "modder", _temp);
+        var r = await pub.RunAsync(Mod(null), upload: true, CancellationToken.None);
+        Assert.True(r.Ok, r.Message);
+        Assert.Equal("3004445556", r.NewId);
+        Assert.Equal("3004445556", File.ReadAllText(IdFile));
+        Assert.Empty(StageDirs());
+    }
 
-        Assert.StartsWith(new string('x', 7900) + "\n[i]", note);
-        Assert.True(note.Length < 8000);
+    [Fact]
+    public async Task Failed_create_still_saves_an_assigned_id()
+    {
+        if (!CanFakeSteamCmd) return;
+        File.WriteAllText(Path.Combine(_modDir, "About", "steam_description.txt"), "A long enough Steam description for the item.");
+        var steam = FakeSteamCmd(0, "3004445556", "Uploading content...", "ERROR! Timeout uploading manifest (Failure)");
+        var pub = new Publisher(_repo, CopyConfig(), steam, "modder", _temp);
+        var r = await pub.RunAsync(Mod(null), upload: true, CancellationToken.None);
+        Assert.False(r.Ok);
+        Assert.Equal("3004445556", File.ReadAllText(IdFile));
+        Assert.Contains("do NOT create it again", r.Message);
+    }
+
+    [Fact]
+    public async Task Create_without_returned_id_is_a_failure_and_saves_nothing()
+    {
+        if (!CanFakeSteamCmd) return;
+        File.WriteAllText(Path.Combine(_modDir, "About", "steam_description.txt"), "A long enough Steam description for the item.");
+        var steam = FakeSteamCmd(0, null, "Uploading content...", "Success.");
+        var pub = new Publisher(_repo, CopyConfig(), steam, "modder", _temp);
+        var r = await pub.RunAsync(Mod(null), upload: true, CancellationToken.None);
+        Assert.False(r.Ok);
+        Assert.False(File.Exists(IdFile));
+    }
+
+    [Fact]
+    public void Sweep_removes_only_old_staging_folders()
+    {
+        var old = Path.Combine(_temp, Publisher.StagePrefix + "old");
+        var fresh = Path.Combine(_temp, Publisher.StagePrefix + "fresh");
+        var unrelated = Path.Combine(_temp, "someone_else");
+        foreach (var d in new[] { old, fresh, unrelated }) Directory.CreateDirectory(d);
+        Directory.SetLastWriteTimeUtc(old, DateTime.UtcNow.AddDays(-30));
+        Directory.SetLastWriteTimeUtc(unrelated, DateTime.UtcNow.AddDays(-30));
+
+        Publisher.SweepStale(_temp, TimeSpan.FromDays(7));
+
+        Assert.False(Directory.Exists(old));
+        Assert.True(Directory.Exists(fresh));
+        Assert.True(Directory.Exists(unrelated));
+    }
+
+    void Git(params string[] args)
+    {
+        var psi = new ProcessStartInfo("git") { WorkingDirectory = _repo, UseShellExecute = false };
+        foreach (var a in args) psi.ArgumentList.Add(a);
+        using var p = Process.Start(psi)!;
+        p.WaitForExit();
+        Assert.Equal(0, p.ExitCode);
     }
 }
