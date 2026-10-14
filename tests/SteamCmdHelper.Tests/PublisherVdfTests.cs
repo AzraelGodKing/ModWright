@@ -86,7 +86,8 @@ public sealed class PublisherVdfTests : IDisposable
 
         var vdf = await CapturedVdf(mod);
 
-        Assert.Equal(notes.Replace("\r\n", "\n"), VdfValue(vdf, "changenote"));
+        // RimWorld sends the Add Changenote entry, which starts with its version line.
+        Assert.Equal("1.2.3\n" + notes.Replace("\r\n", "\n"), VdfValue(vdf, "changenote"));
         Assert.Equal("294100", VdfValue(vdf, "appid"));
         Assert.Equal("123456789", VdfValue(vdf, "publishedfileid"));
         Assert.DoesNotContain("\"title\"", vdf);
@@ -118,7 +119,7 @@ public sealed class PublisherVdfTests : IDisposable
 
         var note = VdfValue(await CapturedVdf(mod), "changenote");
 
-        Assert.StartsWith(new string('x', 7900) + "\n[i]", note);
+        Assert.StartsWith(("1.2.3\n" + new string('x', 9000)).Substring(0, 7900) + "\n[i]", note);
         Assert.True(note.Length < 8000);
     }
 }
