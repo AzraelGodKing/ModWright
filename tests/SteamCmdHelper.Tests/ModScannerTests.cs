@@ -5,7 +5,7 @@ namespace SteamCmdHelper.Tests;
 public class ModScannerTests : IDisposable
 {
     readonly TempRepo _repo = new();
-    readonly ProjectConfig _cfg = new();
+    readonly ProjectConfig _cfg = TestConfig.RimWorld();
 
     public void Dispose() => _repo.Dispose();
 
@@ -81,7 +81,6 @@ public class ModScannerTests : IDisposable
 
     [Theory]
     [InlineData("v1.2.3")]
-    [InlineData("1.2")]
     [InlineData("Version 1.2.3")]
     [InlineData("")]
     public void Changelog_first_line_must_be_a_version(string firstLine)
@@ -90,6 +89,16 @@ public class ModScannerTests : IDisposable
 
         var m = ScanOne();
         Assert.Contains("changelog line 1 is not a version", m.Problems);
+    }
+
+    [Fact]
+    public void Two_part_changelog_version_is_accepted()
+    {
+        _repo.AddMod("Alpha", version: null, changelog: "1.2\n- A note that is long enough.");
+
+        var m = ScanOne();
+        Assert.Empty(m.Problems);
+        Assert.Equal("1.2", m.Version);
     }
 
     [Fact]
@@ -112,9 +121,9 @@ public class ModScannerTests : IDisposable
     }
 
     [Fact]
-    public void Version_comes_from_changelog_when_version_xpath_is_empty()
+    public void Version_comes_from_changelog_when_version_key_is_empty()
     {
-        _cfg.VersionXPath = "";
+        _cfg.VersionKey = "";
         _repo.AddMod("Alpha", version: "9.9.9", changelog: "2.0.0\n- Rewrote everything from scratch.");
 
         var m = ScanOne();
@@ -273,15 +282,15 @@ public class ModScannerTests : IDisposable
     // ------------------------------------------------------------ helpers
 
     [Fact]
-    public void ReadXml_returns_null_for_missing_or_blank_values()
+    public void ReadMeta_xml_returns_null_for_missing_or_blank_values()
     {
         var f = _repo.Write("a.xml", "<Root><name>  Hello  </name><blank>   </blank></Root>");
 
-        Assert.Equal("Hello", ModScanner.ReadXml(f, "Root/name"));
-        Assert.Equal("Hello", ModScanner.ReadXml(f, "/Root/name"));
-        Assert.Null(ModScanner.ReadXml(f, "Root/blank"));
-        Assert.Null(ModScanner.ReadXml(f, "Root/missing"));
-        Assert.Null(ModScanner.ReadXml(f, ""));
+        Assert.Equal("Hello", ModScanner.ReadMeta(f, "Root/name"));
+        Assert.Equal("Hello", ModScanner.ReadMeta(f, "/Root/name"));
+        Assert.Null(ModScanner.ReadMeta(f, "Root/blank"));
+        Assert.Null(ModScanner.ReadMeta(f, "Root/missing"));
+        Assert.Null(ModScanner.ReadMeta(f, ""));
     }
 
     [Fact]

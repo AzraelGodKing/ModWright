@@ -27,7 +27,7 @@ public sealed class PublisherTests : IDisposable
         try { Directory.Delete(_root, true); } catch { }
     }
 
-    static ProjectConfig CopyConfig() => new() { UseGitArchive = false, BuiltFiles = Array.Empty<string>() };
+    static ProjectConfig CopyConfig() => TestConfig.RimWorld(c => { c.UseGitArchive = false; c.BuiltFiles = Array.Empty<string>(); });
 
     ModInfo Mod(string? id) => new() { Dir = _modDir, Folder = "MyMod", Name = "My Mod", Version = "1.0.0", WorkshopId = id };
 
@@ -91,7 +91,7 @@ public sealed class PublisherTests : IDisposable
         Git("add", "readme.txt");
         Git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init");
 
-        var cfg = new ProjectConfig { UseGitArchive = true, BuiltFiles = Array.Empty<string>() };
+        var cfg = TestConfig.RimWorld(c => { c.UseGitArchive = true; c.BuiltFiles = Array.Empty<string>(); });
         var pub = new Publisher(_repo, cfg, "steamcmd", "modder", _temp);
         await Assert.ThrowsAsync<InvalidOperationException>(() => pub.RunAsync(Mod("2001112223"), upload: false, CancellationToken.None));
         Assert.Empty(StageDirs());
