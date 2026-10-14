@@ -154,10 +154,10 @@ public sealed class MainForm : Form
     {
         var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(14, 12, 14, 12) };
         page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        page.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        page.RowStyles.Add(new RowStyle(SizeType.Percent, 65));
         page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        page.RowStyles.Add(new RowStyle(SizeType.Absolute, 170));
+        page.RowStyles.Add(new RowStyle(SizeType.Percent, 35)); // the list and the log share what is left, so neither vanishes on small screens
 
         _preset.Items.AddRange(ProjectConfig.PresetNames.Cast<object>().Append("Custom").ToArray());
         page.Controls.Add(Card("Project", null,
