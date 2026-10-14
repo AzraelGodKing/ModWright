@@ -7,16 +7,13 @@ namespace SteamCmdHelper;
 
 /// <summary>
 /// Creates a "game layout request" issue in Linear straight from the app, using a key that can ONLY create issues
-/// in one team. The key is never stored in git: it is read from a "request.key" file that is built into the program
-/// when present at build time (git-ignored), or else sits next to the program.
-///
-/// request.key has two lines:  line 1 = the Linear API key (lin_api_...),  line 2 = the team's id (a GUID).
+/// in one team. The key is never stored in git: it is baked into the program at build time from the
+/// LINEAR_CREATE_API_KEY / LINEAR_TEAM_UUID secrets, or a git-ignored request.key for local builds (see RequestKey.targets).
 /// Without it the request form falls back to a pre-filled link / copy-to-clipboard.
 /// </summary>
 public static class RequestSender
 {
     public const string Endpoint = "https://api.linear.app/graphql";
-    public const string KeyFile = "request.key";
     public const int MaxTitle = 120;
     public const int MaxDescription = 8000;
 
@@ -25,7 +22,7 @@ public static class RequestSender
     /// <summary>The key and team id, or null when this build has none.</summary>
     public static (string key, string teamId)? Credentials()
     {
-        var text = ReadEmbedded() ?? ReadBesideExe();
+        var text = BakedRequestKey.Read();
         if (text == null) return null;
         var lines = text.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
         if (lines.Length < 2 || !lines[0].StartsWith("lin_api_") || !Guid.TryParse(lines[1], out _)) return null;
@@ -33,28 +30,6 @@ public static class RequestSender
     }
 
     public static bool Available => Credentials() != null;
-
-    static string? ReadEmbedded()
-    {
-        try
-        {
-            using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream(KeyFile);
-            if (s == null) return null;
-            using var r = new StreamReader(s);
-            return r.ReadToEnd();
-        }
-        catch { return null; }
-    }
-
-    static string? ReadBesideExe()
-    {
-        try
-        {
-            var p = Path.Combine(AppContext.BaseDirectory, KeyFile);
-            return File.Exists(p) ? File.ReadAllText(p) : null;
-        }
-        catch { return null; }
-    }
 
     /// <summary>The GraphQL request body (separate so it can be checked without sending).</summary>
     public static string BuildBody(string teamId, string title, string description)

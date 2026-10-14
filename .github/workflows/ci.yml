@@ -54,6 +54,11 @@ jobs:
           path: TestResults
 
       - name: Publish self-contained exe
+        env:
+          # Baked into the exe so the ? button can send layout requests (see RequestKey.targets).
+          # Empty for pull requests from forks, which then build without a key.
+          LINEAR_CREATE_API_KEY: ${{ secrets.LINEAR_CREATE_API_KEY }}
+          LINEAR_TEAM_UUID: ${{ secrets.LINEAR_TEAM_UUID }}
         run: dotnet publish SteamCmdHelper.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
 
       - name: Upload exe
