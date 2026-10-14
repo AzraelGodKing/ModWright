@@ -14,14 +14,26 @@ upload logic is built in; there is no script or other dependency besides SteamCM
 - `git` on PATH if your repo uses the default packaging (`UseGitArchive`)
 - SteamCMD: the app can download it for you (**Install SteamCMD**)
 
+## Download
+
+Each [GitHub Release](../../releases) has:
+
+- `SteamCmdHelper-<version>-win-x64.exe`: a single self-contained exe; no .NET install needed.
+- `SteamCmdHelper-<version>-win-x64-framework-dependent.zip`: a small folder build that needs the
+  [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0). Use it if Windows or your antivirus
+  refuses to launch the large unsigned exe.
+
 ## Build and run
 
 ```powershell
-dotnet build -c Release
+dotnet build SteamCmdHelper.csproj -c Release
 ```
 
-The program is `bin\Release\net8.0-windows\SteamCmdHelper.exe`. Make a shortcut to it. (A self-contained
-single-file publish also works, but some Windows setups refuse to launch large unsigned exes.)
+The program is `bin\Release\net8.0-windows\SteamCmdHelper.exe`. Make a shortcut to it.
+
+CI builds and tests every push to `main` and every pull request. To release, bump `<Version>` in
+`SteamCmdHelper.csproj`, add a matching `## <version>` section to `CHANGELOG.md`, then push a tag such as `v1.2.0`;
+the release workflow checks both, runs the tests and publishes the release with those notes.
 
 ## Using it
 
