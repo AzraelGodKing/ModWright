@@ -13,6 +13,11 @@
   upload keeps its folder for inspection; such folders are swept after 7 days.
 - Unit tests in `tests/SteamCmdHelper.Tests` (`dotnet test`, runs on any OS).
 
+## 1.5.0
+
+- Added a **?** button that opens a pre-filled GitHub issue to request a layout for another game (issue form in `.github/ISSUE_TEMPLATE`).
+- `--urltest` headless check.
+
 ## 1.4.0
 
 - Built-in layouts (Generic, RimWorld, Golf With Your Friends) are now part of the program and locked: the layout file only records which one is used, and the app ID is fixed by layouts that name a game.

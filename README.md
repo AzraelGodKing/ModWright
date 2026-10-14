@@ -106,6 +106,10 @@ Tabletop Simulator (app 286160) does not work with this tool. A Workshop item fo
 Only RimWorld is tested against real mods; the other presets are starting points. For other games, check the layout with **Dry run** first and
 see the game's Workshop documentation for what a mod folder must contain.
 
+## Requesting another game
+
+The **?** button (top right, always visible) opens a short form for asking for a built-in layout for another game. It fills in the game name, app ID, your helper version and the file names (never contents) of one mod folder, then opens a pre-filled GitHub issue in your browser. Nothing is sent until you press Submit on GitHub, and you can edit or delete anything first. **Copy text instead** copies the text if you do not use GitHub.
+
 ## Safety
 
 - Password and Steam Guard code are typed into SteamCMD's own window, never into this app, and not saved.
