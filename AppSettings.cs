@@ -112,10 +112,21 @@ public sealed class AppSettings
         return all.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    /// <summary>
+    /// Where settings, history and the default SteamCMD live: %LocalAppData%\SteamCmdHelper, or in portable mode (a file
+    /// named <see cref="PortableMarker"/> next to the exe) a "data" folder beside the exe, so the whole tool can live on
+    /// a USB stick or in a synced folder.
+    /// </summary>
     public static string Folder => Dir;
 
-    static string Dir => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SteamCmdHelper");
+    public const string PortableMarker = "portable.txt";
+
+    /// <summary>True when the program runs in portable mode.</summary>
+    public static bool Portable => File.Exists(Path.Combine(AppContext.BaseDirectory, PortableMarker));
+
+    static string Dir => Portable
+        ? Path.Combine(AppContext.BaseDirectory, "data")
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SteamCmdHelper");
 
     static string FilePath => Path.Combine(Dir, "settings.json");
 

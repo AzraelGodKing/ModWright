@@ -181,7 +181,10 @@ public sealed class Publisher
     {
         var idFile = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.WorkshopIdFile));
         Directory.CreateDirectory(Path.GetDirectoryName(idFile)!);
-        await File.WriteAllTextAsync(idFile, id, new UTF8Encoding(false), ct);
+        var text = id;
+        if (!string.IsNullOrWhiteSpace(_cfg.WorkshopIdKey))
+            text = ModScanner.WriteKey(File.Exists(idFile) ? await File.ReadAllTextAsync(idFile, ct) : "", _cfg.WorkshopIdKey, id);
+        await File.WriteAllTextAsync(idFile, text, new UTF8Encoding(false), ct);
     }
 
     /// <summary>Removes staging folders older than <paramref name="age"/> left behind by failed uploads or a crash.</summary>

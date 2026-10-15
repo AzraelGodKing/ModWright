@@ -16,10 +16,18 @@ public sealed class ProjectConfig
 {
     public const string FileName = ".steamhelper.json";
     public const string CustomName = "Custom";
-    public static readonly string[] PresetNames = { "Generic", "RimWorld", "Golf With Your Friends" };
+    public const string ParadoxName = "Paradox (descriptor.mod)";
+    public static readonly string[] PresetNames = { "Generic", "RimWorld", ParadoxName, "Golf With Your Friends" };
 
     /// <summary>Presets that have not been proven against the real game. Real uploads ask for confirmation first.</summary>
-    public static readonly string[] ExperimentalPresets = { "Golf With Your Friends" };
+    public static readonly string[] ExperimentalPresets = { ParadoxName, "Golf With Your Friends" };
+
+    /// <summary>Steam app ids of the Paradox games whose mods carry a descriptor.mod, for the app ID box's hint.</summary>
+    public static readonly (string AppId, string Game)[] ParadoxGames =
+    {
+        ("281990", "Stellaris"), ("394360", "Hearts of Iron IV"), ("236850", "Europa Universalis IV"),
+        ("1158310", "Crusader Kings III"), ("203770", "Crusader Kings II"), ("859580", "Imperator: Rome"),
+    };
 
     /// <summary>Which layout is in use: a built-in name, or "Custom". Empty in old files = worked out from the fields.</summary>
     public string Preset { get; set; } = "";
@@ -77,8 +85,14 @@ public sealed class ProjectConfig
     /// </summary>
     public bool ChangelogByVersion { get; set; } = false;
 
-    /// <summary>File that stores the item's Workshop id (a single number).</summary>
+    /// <summary>File that stores the item's Workshop id (a single number, unless <see cref="WorkshopIdKey"/> is set).</summary>
     public string WorkshopIdFile { get; set; } = "workshop_id.txt";
+
+    /// <summary>
+    /// When set, the id is one value inside <see cref="WorkshopIdFile"/> (read like <see cref="NameKey"/>, e.g.
+    /// "remote_file_id" in a Paradox descriptor.mod) and a new item's id is written back to that key.
+    /// </summary>
+    public string WorkshopIdKey { get; set; } = "";
 
     /// <summary>Preview image, required by Steam when creating a new item. Empty = none.</summary>
     public string Preview { get; set; } = "preview.png";
@@ -166,6 +180,21 @@ public sealed class ProjectConfig
             Preview = "Preview.jpg",
             Source = "built-in Golf With Your Friends layout (experimental)"
         },
+        // Paradox games (Stellaris, Hearts of Iron IV, Europa Universalis IV, Crusader Kings III, ...): the mod folder holds a
+        // descriptor.mod with name, version and, once published, remote_file_id; thumbnail.png is the preview. The app id
+        // depends on the game, so it is typed in like Generic. Experimental: the games' own launcher normally uploads.
+        ParadoxName => new ProjectConfig
+        {
+            Preset = ParadoxName,
+            ModMarker = "descriptor.mod",
+            NameKey = "name",
+            VersionKey = "version",
+            ChangelogRequired = false,
+            WorkshopIdFile = "descriptor.mod",
+            WorkshopIdKey = "remote_file_id",
+            Preview = "thumbnail.png",
+            Source = "built-in Paradox layout (experimental)"
+        },
         _ => new ProjectConfig { Preset = "Generic", Source = "built-in Generic layout" }
     };
 
@@ -179,7 +208,7 @@ public sealed class ProjectConfig
         NameKey = p.NameKey; VersionKey = p.VersionKey; ManifestFile = p.ManifestFile; DescriptionKey = p.DescriptionKey;
         Changelog = p.Changelog; ChangelogRequired = p.ChangelogRequired;
         ChangelogFirstLineIsVersion = p.ChangelogFirstLineIsVersion; ChangelogByVersion = p.ChangelogByVersion;
-        WorkshopIdFile = p.WorkshopIdFile; Preview = p.Preview; SteamDescriptionFile = p.SteamDescriptionFile;
+        WorkshopIdFile = p.WorkshopIdFile; WorkshopIdKey = p.WorkshopIdKey; Preview = p.Preview; SteamDescriptionFile = p.SteamDescriptionFile;
         BuiltFiles = p.BuiltFiles; UseGitArchive = p.UseGitArchive; Exclude = p.Exclude;
         Source = p.Source;
     }
@@ -194,7 +223,7 @@ public sealed class ProjectConfig
         foreach (var n in PresetNames)
         {
             var p = GetPreset(n);
-            if (p.ModMarker == ModMarker && p.Changelog == Changelog && p.WorkshopIdFile == WorkshopIdFile
+            if (p.ModMarker == ModMarker && p.Changelog == Changelog && p.WorkshopIdFile == WorkshopIdFile && p.WorkshopIdKey == WorkshopIdKey
                 && p.NameKey == NameKey && p.VersionKey == VersionKey && p.ModsFolder == ModsFolder
                 && p.ChangelogRequired == ChangelogRequired && (p.AppId.Length == 0 || p.AppId == AppId)) return n;
         }
@@ -245,6 +274,12 @@ public sealed class ProjectConfig
                 var rw = GetPreset("RimWorld");
                 rw.Source = "auto-detected built-in RimWorld layout";
                 return rw;
+            }
+            if (Directory.Exists(repo) && Directory.GetDirectories(repo).Any(d => File.Exists(Path.Combine(d, "descriptor.mod"))))
+            {
+                var px = GetPreset(ParadoxName);
+                px.Source = "auto-detected built-in Paradox layout (experimental)";
+                return px;
             }
         }
         catch { }

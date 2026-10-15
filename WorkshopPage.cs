@@ -106,8 +106,7 @@ public static class WorkshopPage
 
     // ------------------------------------------------------------ pending edits, kept until the next upload
 
-    static string StorePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SteamCmdHelper", "workshop_pages.json");
+    static string StorePath => Path.Combine(AppSettings.Folder, "workshop_pages.json");
 
     static readonly object Gate = new();
 
