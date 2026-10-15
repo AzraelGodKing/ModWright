@@ -141,7 +141,8 @@ jobs:
         run: |
           $version = '${{ github.ref_name }}'.TrimStart('v')
           $base = "https://github.com/${{ github.repository }}/releases/download/v$version"
-          $sums = (Invoke-WebRequest "$base/SHA256SUMS.txt").Content
+          # The download is served as application/octet-stream, so Content is bytes, not text.
+          $sums = [Text.Encoding]::UTF8.GetString((Invoke-WebRequest "$base/SHA256SUMS.txt").RawContentStream.ToArray())
           $exe = "SteamCmdHelper-$version-win-x64.exe"
           $hash = ($sums -split "`n" | Where-Object { $_ -match [regex]::Escape($exe) } | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
           if (-not $hash) { throw "SHA256SUMS.txt has no line for $exe" }
