@@ -18,6 +18,13 @@
   SteamCMD has no way to set them.
 - At start-up the app checks GitHub for a newer release and offers to download it (or show its notes, or skip that
   version). It can be turned off, or run on demand with **Check now**, under **Options > About**.
+- New **Updated on Steam** column: each item's last update date, read live from Steam's public item details in one
+  request. Private, friends-only or removed items show `not public`; the row tooltip adds the title, visibility and
+  subscriber count on Steam.
+- Upload history: every successful upload from this PC is recorded with its time, version and change note.
+  Right-click a mod for **Upload history...** or **Open on Steam**.
+- **Uploaded version** falls back to that history, and shows `?` when Steam has a newer update than this PC's last
+  upload. The tooltip says where the version came from.
 
 ## 1.0.0
 

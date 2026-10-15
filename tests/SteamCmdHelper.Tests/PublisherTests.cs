@@ -109,6 +109,37 @@ public sealed class PublisherTests : IDisposable
     }
 
     [Fact]
+    public async Task Successful_upload_is_added_to_the_history()
+    {
+        if (!CanFakeSteamCmd) return;
+        var steam = FakeSteamCmd(0, null, "Uploading content...", "Committing update...", "Success.");
+        var history = Path.Combine(_root, "history.json");
+        var pub = new Publisher(_repo, CopyConfig(), steam, "modder", _temp) { HistoryFile = history };
+        Assert.True((await pub.RunAsync(Mod("2001112223"), upload: true, CancellationToken.None)).Ok);
+
+        var e = Assert.Single(UploadHistory.Load(history));
+        Assert.Equal("2001112223", e.WorkshopId);
+        Assert.Equal("1.0.0", e.Version);
+        Assert.EndsWith("Fixed a crash when loading saves.", e.ChangeNote); // the note exactly as sent
+        Assert.False(e.Created);
+    }
+
+    [Fact]
+    public async Task Failed_upload_and_dry_run_are_not_added_to_the_history()
+    {
+        var history = Path.Combine(_root, "history.json");
+        var dry = new Publisher(_repo, CopyConfig(), "steamcmd", "modder", _temp) { HistoryFile = history };
+        Assert.True((await dry.RunAsync(Mod("2001112223"), upload: false, CancellationToken.None)).Ok);
+        if (CanFakeSteamCmd)
+        {
+            var steam = FakeSteamCmd(1, null, "ERROR! Timeout uploading manifest");
+            var pub = new Publisher(_repo, CopyConfig(), steam, "modder", _temp) { HistoryFile = history };
+            Assert.False((await pub.RunAsync(Mod("2001112223"), upload: true, CancellationToken.None)).Ok);
+        }
+        Assert.Empty(UploadHistory.Load(history));
+    }
+
+    [Fact]
     public async Task Exit_zero_without_success_line_is_a_failure()
     {
         if (!CanFakeSteamCmd) return;

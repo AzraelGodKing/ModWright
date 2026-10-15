@@ -83,8 +83,11 @@ The list columns:
 
 - **Uploaded version**: the version already on Steam. Steam does not store one, so it is read from the newest change
   note on the item's public changelog page (notes sent by this app for RimWorld, or by Add Changenote, start with the
-  version). If that note has none, it shows what this PC last uploaded, else `?`. Private items show `?` until the
-  first upload from this PC.
+  version). If that note has none, it shows what this PC last uploaded, unless Steam shows a later update (an upload
+  from somewhere else), in which case it shows `?`. Private items show `?` until the first upload from this PC.
+- **Updated on Steam**: when the item was last updated, read live from Steam's public item details (one request for
+  the whole list, no login). `not public` means Steam hides it from anonymous readers: private, friends only, or removed.
+  Hover a row for the title, visibility and subscriber count on Steam.
 - **Version to upload**: the mod's current version. Double-click it to change it; the new number is written to
   `<version>` in `About/Manifest.xml` (when it has one) and the version element of an XML marker file such as
   `About/About.xml`. For RimWorld the app then asks what changed and adds that as the new version's entry in
@@ -101,6 +104,9 @@ current title, description and visibility from Steam. Tick what to change; the c
 mod's next upload (the confirmation lists them), then cleared (an upload from the command line sends them too). Unticked fields stay as they are on Steam. For a mod not
 on Steam yet, ticked fields replace the name, description file and private visibility it would be created with.
 SteamCMD cannot change tags, so they are only shown (the game's own uploader sets them).
+
+The same right-click menu has **Upload history...** (every upload of the mod made from this PC: when, which
+version, and the change note sent) and **Open on Steam** (the item's page in your browser).
 
 ### Command line (scripts and CI)
 
@@ -201,6 +207,7 @@ The key is stored masked, but anyone with the exe could still extract it. Keep i
 
 - Password and Steam Guard code are typed into SteamCMD's own window, never into this app, and not saved.
 - Settings (repo path, account name, theme) live in `%LocalAppData%\SteamCmdHelper\settings.json`.
+- The upload history lives in `%LocalAppData%\SteamCmdHelper\history.json` (the newest 1000 uploads).
 - SteamCMD keeps the login cache in its own folder; keep it out of git.
 - The layout file holds no secrets, but it is a new file in your repo: commit it or git-ignore it.
 - Uploads publish immediately to subscribers. Use Dry run first when unsure.

@@ -30,6 +30,9 @@ public sealed class Publisher
     /// <summary>Workshop page changes to send with a mod's upload (title, description, visibility), or null for none.</summary>
     public Func<ModInfo, WorkshopPageEdit?>? PageEdits { get; set; }
 
+    /// <summary>When set, each successful upload is added to this <see cref="UploadHistory"/> file.</summary>
+    public string? HistoryFile { get; init; }
+
     public Publisher(string repo, ProjectConfig cfg, string steamCmd, string account, string? tempRoot = null)
     {
         _repo = repo; _cfg = cfg; _steamCmd = steamCmd; _account = account;
@@ -140,6 +143,12 @@ public sealed class Publisher
 
             if (newId != null) Say($"Created {m.Name} {m.Version} as {WorkshopPage.VisibilityName(visibility).ToUpperInvariant()} item {newId}. Saved to {_cfg.WorkshopIdFile} (commit it).");
             else Say($"Uploaded {m.Name} {m.Version}");
+
+            if ((m.WorkshopId ?? newId) is { } id)
+            {
+                if (HistoryFile != null) UploadHistory.Add(new UploadEntry(DateTimeOffset.UtcNow, id, m.Name, m.Version, notes, newId != null, _cfg.AppId), HistoryFile);
+                WorkshopStatus.Forget(id);
+            }
 
             At("Uploaded", 100);
             return new PublishResult(true, outcome.Reason, newId);
