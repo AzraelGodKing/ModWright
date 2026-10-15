@@ -28,6 +28,10 @@ Each [GitHub Release](../../releases) has:
   [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0). Use it if Windows or your antivirus
   refuses to launch the large unsigned exe.
 
+At start-up the app asks GitHub for the latest release and, when it is newer, offers **Download** (the standalone exe,
+through your browser), **Release notes**, or **Later**, with a box to stop reminding you about that version. Only the
+public releases list is read; nothing about you or your mods is sent. Turn it off, or **Check now**, under **Options > About**.
+
 ## Build and run
 
 ```powershell
