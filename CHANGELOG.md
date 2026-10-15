@@ -1,7 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
 
+- **Shrink preview image under 1 MB** (right-click a mod): re-saves an oversized preview just small enough for Steam,
+  scaling it down only as far as needed. The original is kept in `%LocalAppData%\SteamCmdHelper\preview-backups`.
+- After updating an existing item, the app asks Steam whether the item's "updated" time moved and says so in the
+  log. A clean SteamCMD run that never printed `Success.` now counts as uploaded when Steam shows the update arrived,
+  instead of being reported as failed.
 - Uploads are no longer reported as failed when SteamCMD prints "Success." on the same line as "Committing
   update..." (as it does on Windows). Steam had taken those updates; the app just missed the confirmation.
 - Refreshing the list no longer repeats every mod's "fix ..." line in the log; a mod's problems are logged again only
