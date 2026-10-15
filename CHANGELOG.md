@@ -6,6 +6,8 @@
   update..." (as it does on Windows). Steam had taken those updates; the app just missed the confirmation.
 - Refreshing the list no longer repeats every mod's "fix ..." line in the log; a mod's problems are logged again only
   when they change.
+- A mod that is not on Steam yet now says to turn on **Create new items (private)** when that is all that stops it
+  being ticked, instead of saying it is ready to create.
 
 ## 1.1.0
 
