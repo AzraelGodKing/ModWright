@@ -253,7 +253,66 @@ static class Program
         }
 
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm());
+        var u = Array.IndexOf(args, SelfUpdate.UpdatedFromArg);
+        var updatedFrom = u >= 0 && u + 1 < args.Length ? args[u + 1] : null;
+        // Right after an update the old version may still be closing; give it a moment instead of activating it.
+        if (!SingleInstance.Claim(updatedFrom != null ? TimeSpan.FromSeconds(20) : TimeSpan.Zero))
+        {
+            SingleInstance.ActivateOther();
+            return 0;
+        }
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) => ShowCrash(e.Exception, canContinue: true);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => { if (e.ExceptionObject is Exception ex) ShowCrash(ex, canContinue: false); };
+        var form = new MainForm { UpdatedFrom = updatedFrom };
+        SingleInstance.Listen(form);
+        Application.Run(form);
         return 0;
+    }
+
+    static int _crashing;
+
+    /// <summary>
+    /// Saves a crash report and offers to send it as a bug report. <paramref name="canContinue"/> is false for errors
+    /// off the window's thread, after which .NET ends the program anyway.
+    /// </summary>
+    static void ShowCrash(Exception e, bool canContinue)
+    {
+        if (Interlocked.Exchange(ref _crashing, 1) == 1) return; // an error while showing the last one
+        try
+        {
+            var text = CrashReport.Build(e, UpdateCheck.CurrentVersion, DateTime.Now);
+            var path = CrashReport.Save(text);
+            var report = new TaskDialogButton("Report it");
+            var copy = new TaskDialogButton("Copy details") { AllowCloseDialog = false };
+            var keepGoing = new TaskDialogButton("Keep going");
+            var quit = new TaskDialogButton("Close the app");
+            var page = new TaskDialogPage
+            {
+                Caption = "SteamCMD Helper",
+                Heading = "Something went wrong",
+                Text = "SteamCMD Helper hit an error it did not expect. " +
+                    (canContinue ? "You can keep going, but if anything looks wrong, restart the app. " : "It has to close. ") +
+                    "Report it sends the details below as a bug report, after you review them." +
+                    (path != null ? $"\n\nSaved to {path}" : ""),
+                Icon = TaskDialogIcon.Error,
+                Expander = new TaskDialogExpander(text) { CollapsedButtonText = "Details", Position = TaskDialogExpanderPosition.AfterFootnote },
+                Buttons = { report, copy, canContinue ? keepGoing : quit },
+            };
+            if (canContinue) page.Buttons.Add(quit);
+            copy.Click += (_, _) => { try { Clipboard.SetText(text); } catch { } };
+            var owner = Application.OpenForms.Cast<Form>().FirstOrDefault(f => f is MainForm);
+            var picked = owner != null && owner.IsHandleCreated && !owner.InvokeRequired ? TaskDialog.ShowDialog(owner, page) : TaskDialog.ShowDialog(page);
+            if (picked == report)
+            {
+                using var f = new RequestForm("", "", "", "");
+                f.Prefill(RequestSender.RequestKind.Bug, CrashReport.Summary(e),
+                    "What were you doing when it happened:\n\n\nCrash report (edit out anything you don't want to share):\n" + text);
+                f.ShowDialog(owner);
+            }
+            if (picked == quit && canContinue) Application.Exit();
+        }
+        catch { /* never let the crash handler crash */ }
+        finally { _crashing = 0; }
     }
 }

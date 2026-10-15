@@ -121,6 +121,14 @@ public sealed class RequestForm : Form
 
     RequestSender.RequestKind Kind => Kinds[Math.Max(0, _kind.SelectedIndex)].kind;
 
+    /// <summary>Opens the form as a filled-in request, e.g. a bug report with a crash report as its details.</summary>
+    public void Prefill(RequestSender.RequestKind kind, string summary, string details)
+    {
+        _kind.SelectedIndex = Array.FindIndex(Kinds, k => k.kind == kind);
+        _summary.Text = summary;
+        _details.Text = details.Replace("\r\n", "\n").Replace("\n", "\r\n");
+    }
+
     /// <summary>The selected area's label-map key, or null for "not sure" (and for layout requests).</summary>
     string? AreaKey => Kind != RequestSender.RequestKind.Layout && _area.SelectedIndex > 0 ? RequestSender.Areas[_area.SelectedIndex - 1].key : null;
 

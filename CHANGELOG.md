@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Update now** in the new-version prompt downloads the release, checks it against the release's SHA-256 checksums,
+  installs it over the running copy (standalone exe or folder build) and restarts. Failed installs put the old files
+  back. Opt in to **Install new versions automatically** under **Options > About** to download in the background and
+  install when the app closes. `SteamCmdHelper update` does the same from a script.
+- Unexpected errors are saved to `%LocalAppData%\SteamCmdHelper\crashes` and can be sent as a pre-filled bug report
+  with **Report it**.
+- Only one window opens at a time; starting the app again brings the open window to the front.
 - Batch uploads: **Tick all** / **Tick none** buttons, one login check for the whole batch, and a summary of what
   happened to each mod (uploaded, created, failed and why, not run) at the end, in the log and in a dialog. If Steam
   refuses the login part-way, the remaining mods are not tried.

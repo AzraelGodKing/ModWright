@@ -5,11 +5,16 @@ using System.Text.Json;
 namespace SteamCmdHelper;
 
 /// <summary>A published release that is newer than the running program.</summary>
-public sealed record ReleaseInfo(string Version, string PageUrl, string? DownloadUrl);
+/// <param name="DownloadUrl">What the browser should download: the standalone exe, else the first .exe or .zip.</param>
+/// <param name="ExeUrl">The standalone exe ("...-win-x64.exe"), used to update a single-file install in place.</param>
+/// <param name="ZipUrl">The framework-dependent folder build ("...-framework-dependent.zip"), used to update a folder install.</param>
+/// <param name="ChecksumsUrl">SHA256SUMS.txt, which every in-place update is checked against.</param>
+public sealed record ReleaseInfo(string Version, string PageUrl, string? DownloadUrl,
+    string? ExeUrl = null, string? ZipUrl = null, string? ChecksumsUrl = null);
 
 /// <summary>
 /// Looks up the latest GitHub release of this program. Only the public releases API is read: nothing about the user
-/// or their mods is sent, and the download itself is left to the browser.
+/// or their mods is sent. Downloading and installing it is <see cref="SelfUpdate"/>'s job.
 /// </summary>
 public static class UpdateCheck
 {
@@ -17,11 +22,12 @@ public static class UpdateCheck
     public const string LatestUrl = "https://api.github.com/repos/" + Repo + "/releases/latest";
     public const string ReleasesPage = "https://github.com/" + Repo + "/releases";
 
-    static readonly HttpClient Http = CreateClient();
+    static readonly HttpClient Http = CreateClient(TimeSpan.FromSeconds(10));
 
-    static HttpClient CreateClient()
+    /// <summary>A client that identifies this program to GitHub (its API refuses requests without a User-Agent).</summary>
+    public static HttpClient CreateClient(TimeSpan timeout)
     {
-        var c = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        var c = new HttpClient { Timeout = timeout };
         c.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("SteamCmdHelper", CurrentVersion));
         c.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         return c;
@@ -62,10 +68,12 @@ public static class UpdateCheck
         var assets = r.TryGetProperty("assets", out var a) && a.ValueKind == JsonValueKind.Array
             ? a.EnumerateArray().Select(x => (name: Str(x, "name") ?? "", url: Str(x, "browser_download_url"))).Where(x => x.url != null).ToList()
             : new();
-        var pick = assets.FirstOrDefault(x => x.name.EndsWith("-win-x64.exe", StringComparison.OrdinalIgnoreCase));
-        if (pick.url == null) pick = assets.FirstOrDefault(x => x.name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
-        if (pick.url == null) pick = assets.FirstOrDefault(x => x.name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
-        return new ReleaseInfo(version, Str(r, "html_url") ?? ReleasesPage, pick.url);
+        string? Ending(string end) => assets.FirstOrDefault(x => x.name.EndsWith(end, StringComparison.OrdinalIgnoreCase)).url;
+        var exe = Ending("-win-x64.exe");
+        var zip = Ending("-framework-dependent.zip");
+        var sums = assets.FirstOrDefault(x => x.name.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase)).url;
+        var download = exe ?? Ending(".exe") ?? Ending(".zip");
+        return new ReleaseInfo(version, Str(r, "html_url") ?? ReleasesPage, download, exe, zip, sums);
     }
 
     /// <summary>True when <paramref name="latest"/> is a higher version than <paramref name="current"/> (1.10.0 &gt; 1.9.0).</summary>

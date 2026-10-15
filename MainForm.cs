@@ -27,6 +27,8 @@ public sealed class MainForm : Form
     readonly RadioButton _themeDark = new() { AutoSize = true, Text = "Dark" };
     readonly RadioButton _themeLight = new() { AutoSize = true, Text = "Light" };
     readonly CheckBox _checkUpdates = new() { AutoSize = true, Text = "Check for a newer version at start-up" };
+    readonly CheckBox _autoUpdate = new() { AutoSize = true, Text = "Install new versions automatically (downloaded in the background, installed when you close the app)" };
+    readonly LinkLabel _updateReady = new LinkLabel { AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Visible = false, Margin = new Padding(0, 4, 0, 0) }.Role(ThemeRole.Keep);
     readonly ListView _list = new();
     readonly TextBox _filter = new() { Width = 170, PlaceholderText = "Filter mods  (Ctrl+F)" };
     readonly CheckBox _hideUpToDate = new() { AutoSize = true, Text = "Hide up to date" };
@@ -67,6 +69,12 @@ public sealed class MainForm : Form
     /// <summary>Skips the start-up "install SteamCMD?" question (for --shot).</summary>
     public bool NoStartupPrompts { get; init; }
 
+    /// <summary>The version this program replaced, when it was just started by an update.</summary>
+    public string? UpdatedFrom { get; init; }
+
+    /// <summary>A downloaded update that is installed when the window closes (or on "Restart now").</summary>
+    PreparedUpdate? _pendingUpdate;
+
     public const string Disclaimer = "Not affiliated with or endorsed by Valve Corporation or Steam.";
 
     static readonly string[] ColumnNames = { "Mod", "Uploaded version", "Updated on Steam", "Version to upload", "Workshop ID", "Preview", "Status" };
@@ -88,6 +96,8 @@ public sealed class MainForm : Form
         Shown += async (_, _) =>
         {
             RefreshAll();
+            if (UpdatedFrom != null) Append($"Updated SteamCMD Helper from {UpdatedFrom} to {UpdateCheck.CurrentVersion}.", LogKind.Ok);
+            if (!NoStartupPrompts) _ = Task.Run(() => SelfUpdate.CleanUp(SelfUpdate.AppDir)); // files the last update replaced
             if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { if (!NoStartupPrompts) await OfferInstallAsync(); }
             else if (SteamLogin.LooksCached(_s.EffectiveSteamCmd, _s.Account)) _ = VerifyLoginAsync(false);
             if (_s.CheckForUpdates && !NoStartupPrompts) await CheckForUpdateAsync(false);
@@ -99,6 +109,7 @@ public sealed class MainForm : Form
             if (MessageBox.Show(this, "An upload is running. Stop it and close?", Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) { e.Cancel = true; return; }
             Cancel();
         };
+        FormClosed += (_, _) => InstallPendingUpdate(restart: false);
     }
 
     // ---------------------------------------------------------------- UI
@@ -159,7 +170,13 @@ public sealed class MainForm : Form
         _themeDark.CheckedChanged += (_, _) => { if (_themeDark.Checked) SetTheme(Theme.DarkName); };
         _themeLight.CheckedChanged += (_, _) => { if (_themeLight.Checked) SetTheme(Theme.LightName); };
         _loginLink.LinkClicked += (_, _) => ShowPage(_optionsPage);
-        _checkUpdates.CheckedChanged += (_, _) => { if (!_populating) { _s.CheckForUpdates = _checkUpdates.Checked; _s.Save(); } };
+        _checkUpdates.CheckedChanged += (_, _) =>
+        {
+            _autoUpdate.Enabled = _checkUpdates.Checked;
+            if (!_populating) { _s.CheckForUpdates = _checkUpdates.Checked; _s.Save(); }
+        };
+        _autoUpdate.CheckedChanged += (_, _) => { if (!_populating) { _s.AutoUpdate = _autoUpdate.Checked; _s.Save(); } };
+        _updateReady.LinkClicked += (_, _) => RestartToUpdate();
         _filter.TextChanged += (_, _) => ApplyFilter();
         _filter.KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape && _filter.Text.Length > 0) { _filter.Text = ""; e.SuppressKeyPress = true; } };
         _hideUpToDate.CheckedChanged += (_, _) => { if (_populating) return; _s.HideUpToDate = _hideUpToDate.Checked; _s.Save(); ApplyFilter(); };
@@ -391,10 +408,14 @@ public sealed class MainForm : Form
 
         var version = (typeof(MainForm).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "").Split('+')[0];
         _checkUpdates.Checked = _s.CheckForUpdates;
+        _autoUpdate.Checked = _s.AutoUpdate;
+        _autoUpdate.Enabled = _s.CheckForUpdates;
         _checkUpdateNow = Btn("Check now", async (_, _) => await CheckForUpdateAsync(true));
         page.Controls.Add(Card("About", null,
             Hint($"SteamCMD Helper {version}."),
             Row(_checkUpdates, _checkUpdateNow),
+            _autoUpdate,
+            _updateReady,
             Hint("Shortcuts: F5 refresh, Ctrl+O pick the mods folder, Ctrl+F filter the list, Ctrl+Enter upload."),
             Hint(Disclaimer + " Steam and SteamCMD are trademarks of Valve Corporation.")), 0, 4);
         return page;
@@ -1474,11 +1495,13 @@ public sealed class MainForm : Form
     // ---------------------------------------------------------------- updates
 
     /// <summary>
-    /// Looks for a newer release on GitHub and offers to download it. At start-up (<paramref name="manual"/> false) it
-    /// stays quiet when up to date, offline, or the release was skipped; "Check now" always says what it found.
+    /// Looks for a newer release on GitHub. At start-up (<paramref name="manual"/> false) it stays quiet when up to date,
+    /// offline, or the release was skipped; "Check now" always says what it found. With automatic updates on, a start-up
+    /// check downloads the release in the background and installs it when the window closes, without asking.
     /// </summary>
     async Task CheckForUpdateAsync(bool manual)
     {
+        if (_pendingUpdate != null) { if (manual) RestartToUpdate(); return; }
         _checkUpdateNow.Enabled = false;
         ReleaseInfo? r;
         try { r = await UpdateCheck.FindNewerAsync(UpdateCheck.CurrentVersion); }
@@ -1492,6 +1515,19 @@ public sealed class MainForm : Form
         if (!manual && r.Version == _s.SkippedUpdate) return;
         Append($"SteamCMD Helper {r.Version} is available (you have {UpdateCheck.CurrentVersion}): {r.PageUrl}", LogKind.Note);
 
+        var cannot = SelfUpdate.CannotUpdateReason(r, SelfUpdate.AppDir);
+        if (!manual && _s.AutoUpdate && cannot == null)
+        {
+            try
+            {
+                _pendingUpdate = await SelfUpdate.PrepareAsync(r, SelfUpdate.KindOf(SelfUpdate.AppDir), null, CancellationToken.None);
+                ShowUpdateReady();
+            }
+            catch (Exception e) { Append($"Could not download {r.Version} automatically: {e.Message}", LogKind.Warn); }
+            return;
+        }
+
+        var update = new TaskDialogButton("Update now");
         var download = new TaskDialogButton("Download");
         var notes = new TaskDialogButton("Release notes");
         var later = new TaskDialogButton("Later");
@@ -1499,21 +1535,126 @@ public sealed class MainForm : Form
         {
             Caption = Text,
             Heading = $"SteamCMD Helper {r.Version} is available",
-            Text = $"You have {UpdateCheck.CurrentVersion}. " + (r.DownloadUrl != null
-                ? "Download saves the new exe through your browser; close this one and run the new one."
-                : "Open the release page to download it."),
+            Text = $"You have {UpdateCheck.CurrentVersion}. " + (cannot == null
+                ? "Update now downloads it, checks it, and restarts the app."
+                : r.DownloadUrl != null
+                    ? cannot + " Download saves the new exe through your browser; close this one and run the new one."
+                    : "Open the release page to download it."),
             Icon = TaskDialogIcon.Information,
-            Buttons = { download, notes, later },
+            Buttons = { update, download, notes, later },
             Verification = new TaskDialogVerificationCheckBox($"Don't remind me about {r.Version} again"),
         };
+        if (cannot != null) page.Buttons.Remove(update); else page.Buttons.Remove(download);
         if (r.DownloadUrl == null) page.Buttons.Remove(download);
+        page.DefaultButton = cannot == null ? update : later;
         var picked = TaskDialog.ShowDialog(this, page);
         _s.SkippedUpdate = page.Verification.Checked ? r.Version : "";
         _s.Save();
+        if (picked == update) { UpdateNow(r); return; }
         var url = picked == download ? r.DownloadUrl : picked == notes ? r.PageUrl : null;
         if (url == null) return;
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
         catch (Exception e) { Append("Could not open the browser: " + e.Message + " Download it from " + r.PageUrl, LogKind.Error); }
+    }
+
+    /// <summary>Downloads the release with a progress dialog, then offers to restart into it now or when the app closes.</summary>
+    void UpdateNow(ReleaseInfo r)
+    {
+        using var cts = new CancellationTokenSource();
+        var cancel = TaskDialogButton.Cancel;
+        var progress = new TaskDialogPage
+        {
+            Caption = Text,
+            Heading = $"Downloading SteamCMD Helper {r.Version}...",
+            Text = "The download is checked against the release's SHA-256 checksums before anything is changed.",
+            ProgressBar = new TaskDialogProgressBar { Minimum = 0, Maximum = 100, Value = 0 },
+            Buttons = { cancel },
+            AllowCancel = true,
+        };
+        cancel.Click += (_, _) => cts.Cancel();
+        Exception? error = null;
+        var restart = new TaskDialogButton("Restart now");
+        var onClose = new TaskDialogButton("When I close the app");
+        var ready = new TaskDialogPage
+        {
+            Caption = Text,
+            Heading = $"SteamCMD Helper {r.Version} is ready",
+            Text = _busy ? "An upload is running, so it will be installed when you close the app." : "Restart now to start using it, or it is installed when you close the app.",
+            Icon = TaskDialogIcon.ShieldSuccessGreenBar,
+            Buttons = { restart, onClose },
+            DefaultButton = restart,
+        };
+        if (_busy) ready.Buttons.Remove(restart);
+        progress.Created += async (_, _) =>
+        {
+            try
+            {
+                var p = new Progress<int>(v => { if (progress.BoundDialog != null) progress.ProgressBar!.Value = v; });
+                var prepared = await SelfUpdate.PrepareAsync(r, SelfUpdate.KindOf(SelfUpdate.AppDir), p, cts.Token);
+                if (cts.IsCancellationRequested || progress.BoundDialog == null) return; // closed while finishing
+                _pendingUpdate = prepared;
+                progress.Navigate(ready);
+            }
+            catch (Exception e)
+            {
+                error = e;
+                progress.BoundDialog?.Close();
+            }
+        };
+        var picked = TaskDialog.ShowDialog(this, progress);
+        if (_pendingUpdate == null) cts.Cancel(); // closed with Cancel or the X while downloading
+        if (error is OperationCanceledException || (error == null && _pendingUpdate == null)) { Append("Update cancelled.", LogKind.Note); return; }
+        if (error != null)
+        {
+            Append($"Could not update to {r.Version}: {error.Message}", LogKind.Error);
+            MessageBox.Show(this, $"Could not update to {r.Version}:\n\n{error.Message}\n\nNothing was changed. You can download it from {r.PageUrl}", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        ShowUpdateReady();
+        if (picked == restart) RestartToUpdate();
+    }
+
+    void ShowUpdateReady()
+    {
+        if (_pendingUpdate == null) return;
+        _updateReady.Text = $"SteamCMD Helper {_pendingUpdate.Version} is downloaded and is installed when you close the app. Restart now";
+        _updateReady.LinkArea = new LinkArea(_updateReady.Text.Length - "Restart now".Length, "Restart now".Length);
+        _updateReady.Visible = true;
+        Append($"SteamCMD Helper {_pendingUpdate.Version} is downloaded; it is installed when you close the app (or Options > About > Restart now).", LogKind.Note);
+    }
+
+    /// <summary>Installs the downloaded update and starts the new version, unless an upload is running.</summary>
+    void RestartToUpdate()
+    {
+        if (_pendingUpdate == null) return;
+        if (_busy) { MessageBox.Show(this, "An upload is running. The update is installed when you close the app, or restart once the upload is done.", Text); return; }
+        if (InstallPendingUpdate(restart: true)) Close();
+    }
+
+    /// <summary>Installs <see cref="_pendingUpdate"/> over this program's files. Returns false (and says why) when it could not.</summary>
+    bool InstallPendingUpdate(bool restart)
+    {
+        var u = _pendingUpdate;
+        if (u == null) return false;
+        var exe = Environment.ProcessPath ?? Path.Combine(SelfUpdate.AppDir, SelfUpdate.ExeName);
+        try
+        {
+            SelfUpdate.Apply(u, SelfUpdate.AppDir, Path.GetFileName(exe));
+            _pendingUpdate = null;
+            if (restart) SelfUpdate.Restart(exe, UpdateCheck.CurrentVersion);
+            return true;
+        }
+        catch (Exception e)
+        {
+            _pendingUpdate = null;
+            if (!IsDisposed && Visible)
+            {
+                _updateReady.Visible = false;
+                Append($"Could not install {u.Version}: {e.Message} Nothing was changed.", LogKind.Error);
+                MessageBox.Show(this, $"Could not install {u.Version}:\n\n{e.Message}\n\nNothing was changed.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            return false;
+        }
     }
 
     // ---------------------------------------------------------------- upload
