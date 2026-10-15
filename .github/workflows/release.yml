@@ -54,6 +54,8 @@ jobs:
           # Baked into the exe so the ? button can send layout requests (see RequestKey.targets).
           LINEAR_CREATE_API_KEY: ${{ secrets.LINEAR_CREATE_API_KEY }}
           LINEAR_TEAM_UUID: ${{ secrets.LINEAR_TEAM_UUID }}
+          PROJECTID: ${{ secrets.PROJECTID }}
+          LABELIDS: ${{ secrets.LABELIDS }}
         run: |
           # Self-contained single exe: runs without .NET installed.
           dotnet publish SteamCmdHelper.csproj -c Release -r win-x64 --self-contained \

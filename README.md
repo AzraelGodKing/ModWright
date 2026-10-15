@@ -148,9 +148,10 @@ The **?** button (top right, always visible) opens a short form for asking for a
 Builds that carry a Linear key send requests straight from the app, with no browser or login. The key is baked in at build time and never committed:
 
 - **GitHub builds** (CI and releases) read the repository secrets `LINEAR_CREATE_API_KEY` (a Linear personal API key restricted to **Create issues** in one dedicated team) and `LINEAR_TEAM_UUID` (that team's ID).
-- **Local builds** read the same two names from a git-ignored `request.key` file in the project folder, one `NAME=value` per line. Environment variables with those names win over the file.
+- **Optional routing:** the secrets `PROJECTID` (a Linear project ID) and `LABELIDS` (label IDs, separated by commas) pick the project and labels requests are filed under. Without them requests go into the team alone.
+- **Local builds** read the same names from a git-ignored `request.key` file in the project folder, one `NAME=value` per line. Environment variables with those names win over the file.
 
-Requests land in the **SteamCMD Helper** project with the **Layout Request** and **SteamCMD Helper** labels (IDs in `RequestSender.cs`). If Linear refuses those, for example because the project or a label was removed, the request is filed into the team alone instead, so it is never lost.
+If Linear refuses the project or labels, for example because one was removed, the request is filed into the team alone instead, so it is never lost.
 
 To check the secrets after setting or rotating them, run **Actions > Linear key check > Run workflow**. It files one test request into the project exactly as the app would and fails if the key, team or routing is wrong; delete the test issue afterwards.
 

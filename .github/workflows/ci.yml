@@ -59,6 +59,8 @@ jobs:
           # Empty for pull requests from forks, which then build without a key.
           LINEAR_CREATE_API_KEY: ${{ secrets.LINEAR_CREATE_API_KEY }}
           LINEAR_TEAM_UUID: ${{ secrets.LINEAR_TEAM_UUID }}
+          PROJECTID: ${{ secrets.PROJECTID }}
+          LABELIDS: ${{ secrets.LABELIDS }}
         run: dotnet publish SteamCmdHelper.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
 
       - name: Upload exe

@@ -10,6 +10,9 @@
           LINEAR_TEAM_UUID=<team id>
       (the older two-line form, key on line 1 and team id on line 2, is still read).
 
+    PROJECTID (a Linear project id) and LABELIDS (label ids separated by commas) are optional and read the same way,
+    environment first, then request.key. When set, requests are filed into that project with those labels.
+
     The value is stored XOR-masked in a generated source file under obj/, so it is not plain text in the exe. That
     only stops casual snooping; anyone determined can recover it, which is why the key may only create issues.
   -->
@@ -33,10 +36,13 @@
       <Code Type="Fragment" Language="cs"><![CDATA[
         var key = (ApiKey ?? "").Trim();
         var team = (TeamId ?? "").Trim();
-        if ((key.Length == 0 || team.Length == 0) && File.Exists(KeyFile))
+        // Read straight from the environment, not as MSBuild properties, so the names can't clash with SDK properties.
+        var project = (Environment.GetEnvironmentVariable("PROJECTID") ?? "").Trim();
+        var labels = (Environment.GetEnvironmentVariable("LABELIDS") ?? "").Trim();
+        if ((key.Length == 0 || team.Length == 0 || project.Length == 0 || labels.Length == 0) && File.Exists(KeyFile))
         {
             var lines = File.ReadAllLines(KeyFile).Select(l => l.Trim()).Where(l => l.Length > 0 && !l.StartsWith("#")).ToArray();
-            string fileKey = "", fileTeam = "";
+            string fileKey = "", fileTeam = "", fileProject = "", fileLabels = "";
             foreach (var l in lines)
             {
                 var cut = l.IndexOf('=');
@@ -46,10 +52,14 @@
                 var value = l.Substring(cut + 1).Trim().Trim('"');
                 if (name == "LINEAR_CREATE_API_KEY") fileKey = value;
                 else if (name == "LINEAR_TEAM_UUID") fileTeam = value;
+                else if (name == "PROJECTID") fileProject = value;
+                else if (name == "LABELIDS") fileLabels = value;
             }
             if (fileKey.Length == 0 && fileTeam.Length == 0 && lines.Length >= 2) { fileKey = lines[0]; fileTeam = lines[1]; }
             if (key.Length == 0) key = fileKey;
             if (team.Length == 0) team = fileTeam;
+            if (project.Length == 0) project = fileProject;
+            if (labels.Length == 0) labels = fileLabels;
         }
 
         Found = key.Length > 0 && team.Length > 0;
@@ -59,7 +69,12 @@
             return true;
         }
 
-        var data = Encoding.UTF8.GetBytes(key + "\n" + team);
+        // Lines: key, team, project (may be empty), labels (may be empty). Line breaks inside a value would shift the lines.
+        labels = string.Join(",", labels.Split(new[] { ',', ';', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
+        project = project.Replace("\r", "").Replace("\n", "");
+        var data = Encoding.UTF8.GetBytes(key + "\n" + team + "\n" + project + "\n" + labels);
+        Log.LogMessage(MessageImportance.High, "Linear request route: " + (project.Length > 0 ? "project set" : "no project")
+            + ", " + (labels.Length == 0 ? 0 : labels.Split(',').Length) + " label(s)");
         byte[] mask;
         using (var sha = SHA256.Create()) mask = sha.ComputeHash(Encoding.UTF8.GetBytes("SteamCmdHelper request key " + key + team));
         var masked = data.Select((b, i) => (byte)(b ^ mask[i % mask.Length])).ToArray();
