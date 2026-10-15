@@ -1,8 +1,8 @@
 name: Linear key check
 
 # Run by hand (Actions > Linear key check > Run workflow) after setting or rotating the
-# LINEAR_CREATE_API_KEY / LINEAR_TEAM_UUID secrets. It files one test request into the
-# SteamCMD Helper project in Linear, the same way the app does; delete that issue afterwards.
+# LINEAR_CREATE_API_KEY / LINEAR_TEAM_UUID / PROJECTID / LABELIDS secrets. It files one test request into the
+# PROJECTID project with the LABELIDS labels, the same way the app does; delete that issue afterwards.
 on:
   workflow_dispatch:
 
@@ -21,4 +21,6 @@ jobs:
           LINEAR_LIVE_TEST: "1"
           LINEAR_CREATE_API_KEY: ${{ secrets.LINEAR_CREATE_API_KEY }}
           LINEAR_TEAM_UUID: ${{ secrets.LINEAR_TEAM_UUID }}
+          PROJECTID: ${{ secrets.PROJECTID }}
+          LABELIDS: ${{ secrets.LABELIDS }}
         run: dotnet test tests/SteamCmdHelper.Tests -c Release --filter "FullyQualifiedName~LinearLiveTests" --logger "console;verbosity=detailed"

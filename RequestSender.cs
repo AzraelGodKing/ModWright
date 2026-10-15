@@ -9,6 +9,7 @@ namespace SteamCmdHelper;
 /// Creates a "game layout request" issue in Linear straight from the app, using a key that can ONLY create issues
 /// in one team. The key is never stored in git: it is baked into the program at build time from the
 /// LINEAR_CREATE_API_KEY / LINEAR_TEAM_UUID secrets, or a git-ignored request.key for local builds (see RequestKey.targets).
+/// The optional PROJECTID / LABELIDS secrets (or request.key lines) pick the project and labels the request is filed under.
 /// Without it the request form falls back to a pre-filled link / copy-to-clipboard.
 /// </summary>
 public static class RequestSender
@@ -17,35 +18,57 @@ public static class RequestSender
     public const int MaxTitle = 120;
     public const int MaxDescription = 8000;
 
-    /// <summary>The "SteamCMD Helper" project in Linear; requests are filed there.</summary>
-    public const string ProjectId = "d2489647-591c-41b8-a2ef-ed5925ef1a12";
-
-    /// <summary>The "Layout Request" and "SteamCMD Helper" labels, put on every request.</summary>
-    public static readonly string[] LabelIds = { "e1d2ed12-1294-48eb-a3ec-27d49fa9e53c", "cf33e973-3742-438e-b47e-0a32c56f8736" };
-
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
+
+    /// <summary>Where requests are filed inside the team: a project and labels, all optional.</summary>
+    public record Route(string? ProjectId, string[] LabelIds)
+    {
+        public static readonly Route None = new(null, Array.Empty<string>());
+        public bool IsEmpty => ProjectId == null && LabelIds.Length == 0;
+
+        /// <summary>Reads a project id and a list of label ids (separated by commas, semicolons or spaces);
+        /// anything that is not a GUID is ignored.</summary>
+        public static Route Parse(string? projectId, string? labelIds)
+        {
+            var project = Guid.TryParse(projectId?.Trim(), out _) ? projectId!.Trim() : null;
+            var labels = (labelIds ?? "").Split(new[] { ',', ';', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => l.Trim().Trim('"')).Where(l => Guid.TryParse(l, out _)).Distinct().ToArray();
+            return new Route(project, labels);
+        }
+    }
+
+    static string[] BakedLines()
+    {
+        var text = BakedRequestKey.Read();
+        return text == null ? Array.Empty<string>() : text.Split('\n').Select(l => l.Trim()).ToArray();
+    }
 
     /// <summary>The key and team id, or null when this build has none.</summary>
     public static (string key, string teamId)? Credentials()
     {
-        var text = BakedRequestKey.Read();
-        if (text == null) return null;
-        var lines = text.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
+        var lines = BakedLines();
         if (lines.Length < 2 || !lines[0].StartsWith("lin_api_") || !Guid.TryParse(lines[1], out _)) return null;
         return (lines[0], lines[1]);
     }
 
+    /// <summary>The project and labels baked in from the PROJECTID / LABELIDS secrets (lines 3 and 4), if any.</summary>
+    public static Route BakedRoute()
+    {
+        var lines = BakedLines();
+        return Route.Parse(lines.Length > 2 ? lines[2] : null, lines.Length > 3 ? lines[3] : null);
+    }
+
     public static bool Available => Credentials() != null;
 
-    /// <summary>The GraphQL request body (separate so it can be checked without sending). With <paramref name="routed"/>
-    /// the issue goes into the SteamCMD Helper project with its labels; without it, just into the team.</summary>
-    public static string BuildBody(string teamId, string title, string description, bool routed = true)
+    /// <summary>The GraphQL request body (separate so it can be checked without sending). The project and labels of
+    /// <paramref name="route"/> are only sent when set.</summary>
+    public static string BuildBody(string teamId, string title, string description, Route? route = null)
     {
         if (title.Length > MaxTitle) title = title.Substring(0, MaxTitle);
         if (description.Length > MaxDescription) description = description.Substring(0, MaxDescription) + "\n\n[trimmed]";
-        object input = routed
-            ? new { teamId, title, description, projectId = ProjectId, labelIds = LabelIds }
-            : new { teamId, title, description };
+        var input = new Dictionary<string, object> { ["teamId"] = teamId, ["title"] = title, ["description"] = description };
+        if (route?.ProjectId != null) input["projectId"] = route.ProjectId;
+        if (route is { LabelIds.Length: > 0 }) input["labelIds"] = route.LabelIds;
         return JsonSerializer.Serialize(new
         {
             query = "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { identifier } } }",
@@ -58,18 +81,18 @@ public static class RequestSender
     {
         var creds = Credentials();
         if (creds == null) return Task.FromResult((false, "This build has no request key."));
-        return SendAsync(creds.Value.key, creds.Value.teamId, title, description, endpointOverride ?? Endpoint, ct);
+        return SendAsync(creds.Value.key, creds.Value.teamId, BakedRoute(), title, description, endpointOverride ?? Endpoint, ct);
     }
 
-    /// <summary>Files the issue into the project with its labels. If Linear refuses that (say the project or a label
-    /// was removed, or the key may not use them), files it into the team alone so a request is never lost.</summary>
-    public static async Task<(bool ok, string message)> SendAsync(string key, string teamId, string title, string description, string endpoint, CancellationToken ct = default)
+    /// <summary>Files the issue into the route's project with its labels. If Linear refuses that (say the project or a
+    /// label was removed, or the key may not use them), files it into the team alone so a request is never lost.</summary>
+    public static async Task<(bool ok, string message)> SendAsync(string key, string teamId, Route route, string title, string description, string endpoint, CancellationToken ct = default)
     {
         try
         {
-            var (ok, message, refused) = await PostAsync(key, endpoint, BuildBody(teamId, title, description, routed: true), ct);
-            if (ok || !refused) return (ok, message);
-            (ok, message, _) = await PostAsync(key, endpoint, BuildBody(teamId, title, description, routed: false), ct);
+            var (ok, message, refused) = await PostAsync(key, endpoint, BuildBody(teamId, title, description, route), ct);
+            if (ok || !refused || route.IsEmpty) return (ok, message);
+            (ok, message, _) = await PostAsync(key, endpoint, BuildBody(teamId, title, description), ct);
             return (ok, message);
         }
         catch (TaskCanceledException) { return (false, "Linear did not answer in time. Check your internet connection."); }
