@@ -31,7 +31,7 @@ public sealed class MainForm : Form
     readonly CheckBox _allowCreate = new() { AutoSize = true, Text = "Allow creating new items (private) for mods not on Steam yet" };
     readonly RichTextBox _log = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None }.Role(ThemeRole.Log);
 
-    Button _help = null!, _browse = null!, _refresh = null!, _go = null!, _cancel = null!, _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!;
+    Button _help = null!, _browse = null!, _refresh = null!, _all = null!, _none = null!, _go = null!, _cancel = null!, _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!;
     NavButton _navUpload = null!, _navOptions = null!;
     Control _uploadPage = null!, _optionsPage = null!;
     Tone _loginTone = Tone.Muted;
@@ -85,6 +85,8 @@ public sealed class MainForm : Form
         _doLogin = Btn("Log in...", async (_, _) => { SaveFields(); await LoginFlowAsync(); });
         _install = Btn("Install SteamCMD", async (_, _) => await InstallAsync());
         _refresh = Btn("Refresh", (_, _) => RefreshAll());
+        _all = Btn("Tick all", (_, _) => TickAll(true));
+        _none = Btn("Tick none", (_, _) => TickAll(false));
         _go = Btn("Upload selected", async (_, _) => await GoAsync()).Role(ThemeRole.Accent);
         _go.Font = new Font(Font, FontStyle.Bold);
         _go.Padding = new Padding(14, 4, 14, 4);
@@ -181,7 +183,7 @@ public sealed class MainForm : Form
         _list.MouseDoubleClick += OnListDoubleClick;
         _list.Resize += (_, _) => StretchLastColumn();
         _list.ColumnWidthChanged += (_, e) => { if (e.ColumnIndex < _list.Columns.Count - 1) StretchLastColumn(); };
-        var mods = Card("Mods", new Control[] { _refresh }, _list);
+        var mods = Card("Mods", new Control[] { _all, _none, _refresh }, _list);
         mods.AutoSize = false; mods.Dock = DockStyle.Fill;
         page.Controls.Add(mods, 0, 1);
 
@@ -194,6 +196,7 @@ public sealed class MainForm : Form
         page.Controls.Add(progress, 0, 2);
 
         _tip.SetToolTip(_loginLink, "Steam login settings are on the Options tab");
+        _tip.SetToolTip(_all, "Tick every mod that is ready to upload, then upload them in one go");
         var actions = Row(_loginLink, _cancel, _go);
         actions.Margin = new Padding(0, 2, 0, 8);
         page.Controls.Add(actions, 0, 3);
@@ -559,6 +562,16 @@ public sealed class MainForm : Form
         if (!m.OnSteam && !_allowCreate.Checked) e.NewValue = CheckState.Unchecked;
     }
 
+    /// <summary>Ticks every mod that can be picked (the same rules as ticking by hand), or clears them all.</summary>
+    void TickAll(bool on)
+    {
+        if (_busy) return;
+        _list.BeginUpdate();
+        foreach (ListViewItem it in _list.Items) it.Checked = on; // OnItemCheck turns down the ones that can't be picked
+        _list.EndUpdate();
+        UpdateGoButton();
+    }
+
     IEnumerable<ModInfo> Selected() => _list.CheckedItems.Cast<ListViewItem>().Select(i => (ModInfo)i.Tag!);
 
     void UpdateGoButton()
@@ -571,7 +584,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Enabled = busy;
@@ -722,40 +735,43 @@ public sealed class MainForm : Form
         pub.Log += l => BeginInvoke(() => Append(l, LineColor(l)));
         pub.Stage += (t, p) => BeginInvoke(() => SetStage(t, p));
 
+        // One login check above covers the batch; each mod then reuses Steam's saved login.
+        var batch = new BatchUpload(pub);
+        batch.Starting += (m, i, n) =>
+        {
+            _idx = i;
+            _current.Text = $"{m.Name} v{m.Version}  ({i + 1} of {n})";
+            _modBar.Value = 0;
+            SetStage("Starting...", 3);
+            Append($"--- {m.Name} ---", Color.DeepSkyBlue);
+        };
+        batch.Finished += (r, i, n) =>
+        {
+            if (r.Status == BatchStatus.NotRun) Append("Cancelled.", Color.Orange);
+            else if (!r.Ok) Append($"SKIPPED {r.Mod.Name}: {r.Message}", Color.Tomato);
+            SetStage(r.Ok ? r.Message : "Failed - see the log", r.Ok ? 100 : 0);
+            _overall.Value = Math.Min(100, (int)((i + 1) * 100.0 / n));
+        };
+
         _cts = new CancellationTokenSource();
         SetBusy(true);
         _overall.Value = 0;
+        _idx = 0;
         _count = picked.Count;
-        int ok = 0, failed = 0;
-        try
-        {
-            for (_idx = 0; _idx < picked.Count; _idx++)
-            {
-                var m = picked[_idx];
-                _current.Text = $"{m.Name} v{m.Version}  ({_idx + 1} of {_count})";
-                _modBar.Value = 0;
-                SetStage("Starting...", 3);
-                Append($"--- {m.Name} ---", Color.DeepSkyBlue);
-                PublishResult res;
-                try { res = await pub.RunAsync(m, !dry, _cts.Token); }
-                catch (OperationCanceledException) { Append("Cancelled.", Color.Orange); break; }
-                catch (Exception e) { res = new PublishResult(false, e.Message); }
-                if (!res.Ok) Append($"SKIPPED {m.Name}: {res.Message}", Color.Tomato);
-                else if (!dry && (m.WorkshopId ?? res.NewId) is { } id) UploadedVersions.Remember(id, m.Version);
-                if (res.Ok) ok++; else failed++;
-                SetStage(res.Ok ? res.Message : "Failed - see the log", res.Ok ? 100 : 0);
-                _overall.Value = Math.Min(100, (int)((_idx + 1) * 100.0 / _count));
-            }
-        }
+        List<BatchItem> results;
+        try { results = await batch.RunAsync(picked, !dry, _cts.Token); }
         finally
         {
             _cts?.Dispose(); _cts = null;
             SetBusy(false);
         }
-        var verb = dry ? "checked" : "uploaded";
-        _current.Text = $"Finished: {ok} {verb}, {failed} failed";
-        Append($"Finished: {ok} {verb}, {failed} failed.", failed == 0 ? Color.LightGreen : Color.Orange);
+        var counts = BatchUpload.Counts(results);
+        var allOk = results.All(r => r.Ok);
+        _current.Text = "Finished: " + counts;
+        Append(BatchUpload.Summary(results), allOk ? Color.LightGreen : Color.Orange);
         RefreshAll();
+        if (picked.Count > 1 || !allOk)
+            MessageBox.Show(this, BatchUpload.Summary(results), Text, MessageBoxButtons.OK, allOk ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
     }
 
     void SetStage(string text, int pct)
