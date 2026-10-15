@@ -61,7 +61,7 @@ dotnet build SteamCmdHelper.csproj -c Release
 
 The program is `bin\Release\net8.0-windows\SteamCmdHelper.exe`. Make a shortcut to it.
 
-CI builds and tests every push to `main` and every pull request. For pull requests it also builds the base branch,
+Branches: `main` is the released version and `test` is where new work comes together; pull requests go to `test`, and `test` is merged into `main` for each release. CI builds and tests every push to `main` or `test` and every pull request. For pull requests it also builds the base branch,
 takes the same `--shot` screenshots, and lists in the job summary which windows changed (the changed pixels are in red
 in the `screenshot-diffs` artifact). That step is informational and never fails the build. To release, bump `<Version>` in
 `SteamCmdHelper.csproj`, add a matching `## <version>` section to `CHANGELOG.md`, then push a tag such as `v1.2.0`;
