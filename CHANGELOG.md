@@ -35,6 +35,9 @@
 - Windows scale to the display's DPI (150%, 200%) instead of clipping text, and the main window fits small screens.
   Screen readers get names for inputs, progress values and the full status of each mod.
 - CI compares each pull request's screenshots with the base branch's and lists the windows that changed.
+- Install with `winget install AzraelGodKing.SteamCMDHelper` or from the Scoop bucket in this repository; releases
+  keep both up to date. Releases can be code-signed through SignPath, and the standalone exe is now compressed (about
+  half the download).
 - Batch uploads: **Tick all** / **Tick none** buttons, one login check for the whole batch, and a summary of what
   happened to each mod (uploaded, created, failed and why, not run) at the end, in the log and in a dialog. If Steam
   refuses the login part-way, the remaining mods are not tried.
