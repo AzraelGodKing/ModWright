@@ -54,7 +54,10 @@ the release workflow checks both, runs the tests and publishes the release with 
 5. **Log in** happens automatically on the first upload. A SteamCMD window opens; type your password and the
    Steam Guard code there. This app never sees your password. Afterwards the login is cached.
    Logging in through SteamCMD can knock the regular Steam client offline; use Steam > Go Online afterwards.
-6. Tick the mods and press **Upload**. **Dry run** does every check and builds the package but uploads nothing.
+6. Tick the mods (**Tick all** picks every mod that is ready) and press **Upload**. Several mods upload one after
+   another with a single login check; if Steam refuses the login part-way, the rest are not tried. When more than
+   one mod was picked, or anything failed, a summary lists what happened to each mod (it is also in the log).
+   **Dry run** does every check and builds the package but uploads nothing.
 
 The app uses a dark theme by default. Switch to the light theme under **Options > Appearance**; the choice is saved
 for your Windows user.
@@ -84,6 +87,29 @@ The list columns:
 - **Workshop ID**: from the mod's own id file (`About/PublishedFileId.txt` for RimWorld); `0` means the upload creates a new item.
 - **Preview**: ✔ when the preview image exists and is within Steam's 1 MB limit, ✖ otherwise (hover for the size).
 - **Status**: `Ready`, `Fix`, or `Ready to create (private)`.
+
+### Command line (scripts and CI)
+
+The same exe uploads without opening the window. It uses the repo, account and SteamCMD picked in the window
+unless you pass them, runs the same checks and upload code, and prints a summary at the end.
+
+```powershell
+SteamCmdHelper upload MyMod OtherMod          # by folder or display name
+SteamCmdHelper upload --all --dry-run         # check and package every ready mod, upload nothing
+SteamCmdHelper upload --all --repo D:\mods --account mysteamname --log upload.log
+SteamCmdHelper list                           # each mod's version, Workshop id and status
+SteamCmdHelper help                           # every option
+```
+
+- The Steam login must already be saved: log in once from the window (**Options > Log in...**). The command checks
+  it once, then uploads each mod in turn.
+- A named mod that needs fixing, or does not exist, stops the command before anything is uploaded. `--all` skips
+  such mods and says why. New items need `--allow-create`; experimental layouts need `--allow-experimental`.
+- Exit codes: `0` everything worked, `1` a mod failed or was not run, `2` bad arguments or nothing to upload,
+  `3` SteamCMD missing or not logged in.
+- The app is a Windows program, so in a `cmd` window the prompt comes back before the output finishes. Use
+  `start /wait SteamCmdHelper upload ...` (or `Start-Process -Wait` in PowerShell) when the next line needs the result,
+  or `--log <file>`. Redirected output (CI steps, `> out.txt`) and exit codes work as usual.
 
 ### Mods not on Steam yet
 

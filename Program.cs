@@ -44,14 +44,67 @@ static class Program
 
     static bool Throws(Action a) { try { a(); return false; } catch { return true; } }
 
-    [STAThread]
-    static void Main(string[] args)
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    static extern bool AttachConsole(int processId);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    static extern IntPtr GetStdHandle(int which);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    static extern uint GetFileType(IntPtr handle);
+
+    /// <summary>True when standard output already goes to a file or pipe (a CI step, "> out.txt", "| more").</summary>
+    static bool OutputToFileOrPipe()
     {
-        // Headless checks used for testing:
+        const uint Disk = 1, Pipe = 3;
+        var h = GetStdHandle(-11); // STD_OUTPUT_HANDLE
+        if (h == IntPtr.Zero || h == new IntPtr(-1)) return false;
+        var type = GetFileType(h);
+        return type == Disk || type == Pipe;
+    }
+
+    /// <summary>
+    /// The command line (<see cref="Cli"/>). The app is a Windows (not console) program, so it attaches to the console it
+    /// was started from to print there; in a CI step or with redirected output the text goes to the pipe or file as usual.
+    /// </summary>
+    static int RunCommandLine(string[] args)
+    {
+        // -1: the parent's console. The prompt there has already come back, so start on a fresh line.
+        var attached = !OutputToFileOrPipe() && AttachConsole(-1);
+        var o = Cli.Parse(args);
+        var settings = AppSettings.Load(); // overrides below are for this run only, never saved
+        if (o.Repo != null) settings.RepoPath = Path.GetFullPath(o.Repo);
+        if (o.Account != null) settings.Account = o.Account;
+        if (o.SteamCmd != null) settings.SteamCmdPath = Path.GetFullPath(o.SteamCmd);
+
+        using var cts = new CancellationTokenSource();
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+        var console = Console.Out;
+        if (attached) console.WriteLine();
+        using var log = o.LogFile != null ? new StreamWriter(o.LogFile, false) { AutoFlush = true } : null;
+        using var output = new TeeWriter(console, log);
+        return Cli.RunAsync(o, settings.RepoPath, settings.EffectiveSteamCmd, settings.Account, TextWriter.Synchronized(output), cts.Token)
+            .GetAwaiter().GetResult();
+    }
+
+    /// <summary>Writes to the console and, when given, a log file.</summary>
+    sealed class TeeWriter(TextWriter a, TextWriter? b) : TextWriter
+    {
+        public override System.Text.Encoding Encoding => a.Encoding;
+        public override void Write(char value) { a.Write(value); b?.Write(value); }
+        public override void Write(string? value) { a.Write(value); b?.Write(value); }
+        public override void WriteLine(string? value) { a.WriteLine(value); b?.WriteLine(value); }
+        public override void Flush() { a.Flush(); b?.Flush(); }
+    }
+
+    [STAThread]
+    static int Main(string[] args)
+    {
+        if (Cli.IsCommand(args)) return RunCommandLine(args);
+
+        // Headless checks used for testing (the real command line is "SteamCmdHelper upload ...", see Cli):
         //   SteamCmdHelper.exe --selftest <output.txt>                       list what the scanner sees
         //   SteamCmdHelper.exe --package <ModFolder> <output.txt> [--create] stage a dry-run package, write the .vdf path and file list
         var lt = Array.IndexOf(args, "--layouttest");
-        if (lt >= 0 && lt + 1 < args.Length) { File.WriteAllText(args[lt + 1], LayoutTest()); return; }
+        if (lt >= 0 && lt + 1 < args.Length) { File.WriteAllText(args[lt + 1], LayoutTest()); return 0; }
 
         if (Array.IndexOf(args, "--sendtest") is var st and >= 0 && st + 1 < args.Length)
         {
@@ -75,14 +128,14 @@ static class Program
             var (ok, msg) = RequestSender.SendAsync("Game layout request: Test \"Q\"", "line1\nline2 \\ x", endpointOverride: prefix).GetAwaiter().GetResult();
             served.Wait(5000);
             File.AppendAllText(outFile, $"available={RequestSender.Available} ok={ok} msg={msg}\r\n");
-            return;
+            return 0;
         }
         if (Array.IndexOf(args, "--urltest") is var ut and >= 0 && ut + 1 < args.Length)
         {
             var (u1, c1) = RequestForm.BuildIssueUrl("Test & Game", "123", "Custom", "line1\r\nline2 = \"x\" & y");
             var (u2, c2) = RequestForm.BuildIssueUrl("Big Game", "456", "Generic", string.Join("\r\n", Enumerable.Range(0, 3000).Select(n => "folder/sub/file_" + n + ".json")));
             File.WriteAllText(args[ut + 1], $"short: len={u1.Length} cut={c1}\r\n{u1}\r\nlong: len={u2.Length} cut={c2}\r\n{u2.Substring(0, 160)}...\r\n");
-            return;
+            return 0;
         }
 
         if (Array.IndexOf(args, "--shot") is var sh and >= 0 && sh + 1 < args.Length)
@@ -108,7 +161,7 @@ static class Program
                 Snap(options, Path.Combine(args[sh + 1], $"options{suffix}.png"));
                 Snap(new RequestForm("RimWorld", "294100", "RimWorld", "About/About.xml\r\nAbout/Preview.png\r\nAssemblies/Mod.dll"), Path.Combine(args[sh + 1], $"request{suffix}.png"));
             }
-            return;
+            return 0;
         }
 
         var i = Array.IndexOf(args, "--selftest");
@@ -137,17 +190,18 @@ static class Program
                 var folder = args[j + 1];
                 var outFile = args[j + 2];
                 var mod = mods.FirstOrDefault(x => x.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
-                if (mod == null) { File.WriteAllText(outFile, "mod not found: " + folder); return; }
+                if (mod == null) { File.WriteAllText(outFile, "mod not found: " + folder); return 0; }
                 var pub = new Publisher(settings.RepoPath, cfg, settings.EffectiveSteamCmd, settings.Account);
                 pub.Log += l => sb.AppendLine(l);
                 var res = pub.RunAsync(mod, false, CancellationToken.None).GetAwaiter().GetResult();
                 sb.AppendLine("RESULT ok=" + res.Ok + " " + res.Message);
                 File.WriteAllText(outFile, sb.ToString());
             }
-            return;
+            return 0;
         }
 
         ApplicationConfiguration.Initialize();
         Application.Run(new MainForm());
+        return 0;
     }
 }

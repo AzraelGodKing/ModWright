@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Batch uploads: **Tick all** / **Tick none** buttons, one login check for the whole batch, and a summary of what
+  happened to each mod (uploaded, created, failed and why, not run) at the end, in the log and in a dialog. If Steam
+  refuses the login part-way, the remaining mods are not tried.
+- Command line for scripts and CI: `SteamCmdHelper upload <mod>... | --all`, `SteamCmdHelper list` and
+  `SteamCmdHelper help`, with `--repo`, `--account`, `--steamcmd`, `--dry-run`, `--allow-create`,
+  `--allow-experimental` and `--log`. Same checks and upload code as the window; exit code 0 (all done), 1 (a mod
+  failed), 2 (bad arguments or nothing to upload) or 3 (SteamCMD missing or not logged in).
+
 ## 1.0.0
 
 First release.
