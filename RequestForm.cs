@@ -5,9 +5,9 @@ using System.Text;
 namespace SteamCmdHelper;
 
 /// <summary>
-/// "Request a game layout": collects a few details and opens a pre-filled Linear issue in the browser.
-/// Nothing is sent from here; the person reviews the issue in Linear and creates it themselves.
-/// Only people signed in to the Linear workspace can create it.
+/// The "?" form: ask for a layout for another game, report a bug or ask for a feature. Builds with a request key send
+/// it straight to Linear (labelled by kind and area, see <see cref="RequestSender"/>); other builds open a pre-filled
+/// Linear issue in the browser, which only people signed in to the Linear workspace can create.
 /// </summary>
 public sealed class RequestForm : Form
 {
@@ -17,16 +17,39 @@ public sealed class RequestForm : Form
     public const string TeamKey = "AZR";
     const int MaxUrl = 7000; // browsers reject much longer URLs
 
+    static readonly (RequestSender.RequestKind kind, string text)[] Kinds =
+    {
+        (RequestSender.RequestKind.Layout, "Support another game (layout request)"),
+        (RequestSender.RequestKind.Bug, "Report a bug"),
+        (RequestSender.RequestKind.Feature, "Suggest a feature"),
+    };
+    const string AnyArea = "Not sure / other";
+
+    readonly ComboBox _kind = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 280 };
+    readonly ComboBox _area = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
+    readonly Label _areaLabel = new() { Text = "About", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(12, 6, 8, 0) };
+    readonly TextBox _summary = new() { Dock = DockStyle.Fill };
+    readonly TableLayoutPanel _summaryRow = new() { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Margin = new Padding(0, 4, 0, 0) };
     readonly TextBox _game = new() { Dock = DockStyle.Fill };
     readonly TextBox _appId = new() { Width = 120 };
-    readonly TextBox _layout = new() { Dock = DockStyle.Fill, Multiline = true, ScrollBars = ScrollBars.Vertical, AcceptsReturn = true, Font = new Font("Consolas", 9f) };
+    readonly Label _appIdHint = new Label
+    {
+        AutoSize = true, MaximumSize = new Size(560, 0), Margin = new Padding(0, 0, 0, 4),
+        Text = "The app ID is the number in the game's store URL, e.g. store.steampowered.com/app/294100/ is 294100."
+    }.Role(ThemeRole.Muted);
+    readonly TextBox _details = new() { Dock = DockStyle.Fill, Multiline = true, ScrollBars = ScrollBars.Vertical, AcceptsReturn = true, Font = new Font("Consolas", 9f) };
+    readonly Label _intro = new() { AutoSize = true, MaximumSize = new Size(560, 0) };
     readonly Label _note = new Label { AutoSize = true, MaximumSize = new Size(560, 0) }.Role(ThemeRole.Muted);
+    readonly string _modFileNames;
+    readonly bool _direct;
+    readonly HashSet<string> _templates = new();
 
     public RequestForm(string gameName, string appId, string layoutName, string modFileNames)
     {
-        var direct = RequestSender.Available; // this build can send requests itself (no browser, no login)
-        Text = "Request a layout for another game";
-        Width = 620; Height = 560; MinimumSize = new Size(520, 480);
+        _direct = RequestSender.Available; // this build can send requests itself (no browser, no login)
+        _modFileNames = modFileNames;
+        Text = "Send a request";
+        Width = 640; Height = 600; MinimumSize = new Size(540, 520);
         StartPosition = FormStartPosition.CenterParent;
         Font = new Font("Segoe UI", 9.5f);
         FormBorderStyle = FormBorderStyle.Sizable;
@@ -34,26 +57,31 @@ public sealed class RequestForm : Form
 
         _game.Text = gameName;
         _appId.Text = appId;
-        _layout.Text = modFileNames.Length > 0
-            ? "Here is what one mod folder looks like (file names only):\r\n\r\n" + modFileNames + "\r\n\r\nExtra notes (where the title, version and changelog live, how a mod is published in the game, ...):\r\n"
-            : "Describe what one mod folder looks like: the files in it, where the title, version and changelog live, and how a mod is published in the game.\r\n";
+        foreach (var (_, text) in Kinds) _kind.Items.Add(text);
+        _area.Items.Add(AnyArea);
+        foreach (var (_, text) in RequestSender.Areas) _area.Items.Add(text);
+        _area.SelectedIndex = 0;
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(12) };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 8, Padding = new Padding(12) };
+        for (var i = 0; i < 8; i++) root.RowStyles.Add(i == 5 ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.AutoSize));
 
-        root.Controls.Add(new Label
-        {
-            AutoSize = true, MaximumSize = new Size(560, 0),
-            Text = direct ? "Want this tool to support another game? Fill this in and press Send request. It goes straight to the developer over the internet; you do not need any account."
-                 : "Want this tool to support another game? Fill this in and it opens a new issue in Linear for you to review and create (you must be signed in to the AzraelGodKing Linear workspace). Nothing is sent from this window."
-        }, 0, 0);
+        root.Controls.Add(_intro, 0, 0);
 
-        var top = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 4, Margin = new Padding(0, 8, 0, 4) };
+        var type = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 4, Margin = new Padding(0, 8, 0, 0) };
+        for (var i = 0; i < 4; i++) type.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        type.Controls.Add(new Label { Text = "Request", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 8, 0) });
+        type.Controls.Add(_kind);
+        type.Controls.Add(_areaLabel);
+        type.Controls.Add(_area);
+        root.Controls.Add(type, 0, 1);
+
+        _summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        _summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _summaryRow.Controls.Add(new Label { Text = "Summary", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 8, 0) });
+        _summaryRow.Controls.Add(_summary);
+        root.Controls.Add(_summaryRow, 0, 2);
+
+        var top = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 4, Margin = new Padding(0, 4, 0, 4) };
         top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -62,34 +90,28 @@ public sealed class RequestForm : Form
         top.Controls.Add(_game);
         top.Controls.Add(new Label { Text = "Steam app ID", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(12, 6, 8, 0) });
         top.Controls.Add(_appId);
-        root.Controls.Add(top, 0, 1);
+        root.Controls.Add(top, 0, 3);
+        root.Controls.Add(_appIdHint, 0, 4);
+        root.Controls.Add(_details, 0, 5);
+        root.Controls.Add(_note, 0, 6);
 
-        root.Controls.Add(new Label
-        {
-            AutoSize = true, MaximumSize = new Size(560, 0), Margin = new Padding(0, 0, 0, 4),
-            Text = "The app ID is the number in the game's store URL, e.g. store.steampowered.com/app/294100/ is 294100."
-        }.Role(ThemeRole.Muted), 0, 2);
-
-        root.Controls.Add(_layout, 0, 3);
-
-        _note.Text = direct ? "Pressing Send request creates an issue with exactly the game, app ID and text shown above, plus this program's version. Nothing else is sent. Edit or delete anything you don't want to share."
-                         : "Only the text in the box above goes into the issue, and only after you create it in Linear. Edit or delete anything you don't want to share.";
-        root.Controls.Add(_note, 0, 4);
-
-        var open = new Button { Text = direct ? "Send request" : "Open Linear issue", AutoSize = true, Padding = new Padding(8, 2, 8, 2) }.Role(ThemeRole.Accent);
+        var open = new Button { Text = _direct ? "Send request" : "Open Linear issue", AutoSize = true, Padding = new Padding(8, 2, 8, 2) }.Role(ThemeRole.Accent);
         var copy = new Button { Text = "Copy text instead", AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
         var cancel = new Button { Text = "Cancel", AutoSize = true, Padding = new Padding(8, 2, 8, 2), DialogResult = DialogResult.Cancel };
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
         buttons.Controls.Add(cancel);
         buttons.Controls.Add(open);
         buttons.Controls.Add(copy);
-        root.Controls.Add(buttons, 0, 5);
+        root.Controls.Add(buttons, 0, 7);
         Controls.Add(root);
         CancelButton = cancel;
         AcceptButton = null;
+
+        _kind.SelectedIndexChanged += (_, _) => ShowKind();
+        _kind.SelectedIndex = 0;
         Theme.Apply(this);
 
-        open.Click += async (_, _) => { if (direct) await SendRequestAsync(layoutName, open); else OpenIssue(layoutName); };
+        open.Click += async (_, _) => { if (_direct) await SendRequestAsync(layoutName, open); else OpenIssue(layoutName); };
         copy.Click += (_, _) =>
         {
             try { Clipboard.SetText(BuildBody(layoutName)); MessageBox.Show(this, "Copied. Paste it into a new issue in Linear.", Text); }
@@ -97,25 +119,88 @@ public sealed class RequestForm : Form
         };
     }
 
+    RequestSender.RequestKind Kind => Kinds[Math.Max(0, _kind.SelectedIndex)].kind;
+
+    /// <summary>The selected area's label-map key, or null for "not sure" (and for layout requests).</summary>
+    string? AreaKey => Kind != RequestSender.RequestKind.Layout && _area.SelectedIndex > 0 ? RequestSender.Areas[_area.SelectedIndex - 1].key : null;
+
+    string AreaText => _area.SelectedIndex > 0 ? RequestSender.Areas[_area.SelectedIndex - 1].text : AnyArea;
+
+    /// <summary>Shows the fields for the selected kind and swaps the starter text, unless the person already wrote their own.</summary>
+    void ShowKind()
+    {
+        var layout = Kind == RequestSender.RequestKind.Layout;
+        _summaryRow.Visible = !layout;
+        _areaLabel.Visible = _area.Visible = !layout;
+        _appIdHint.Visible = layout;
+
+        var what = Kind switch
+        {
+            RequestSender.RequestKind.Bug => "Found something that doesn't work? Describe it below.",
+            RequestSender.RequestKind.Feature => "Have an idea that would make this tool better? Describe it below.",
+            _ => "Want this tool to support another game? Fill this in.",
+        };
+        _intro.Text = what + (_direct
+            ? " Press Send request and it goes straight to the developer over the internet; you do not need any account."
+            : " It opens a new issue in Linear for you to review and create (you must be signed in to the AzraelGodKing Linear workspace). Nothing is sent from this window.");
+        _note.Text = _direct
+            ? "Pressing Send request creates an issue with exactly the details shown above, plus this program's version and layout. Nothing else is sent. Edit or delete anything you don't want to share."
+            : "Only the details above go into the issue, and only after you create it in Linear. Edit or delete anything you don't want to share.";
+
+        var current = _details.Text.Trim();
+        if (current.Length == 0 || _templates.Contains(current))
+        {
+            _details.Text = Template(Kind, _modFileNames);
+            _templates.Add(_details.Text.Trim());
+        }
+    }
+
+    /// <summary>Starter text for the details box.</summary>
+    public static string Template(RequestSender.RequestKind kind, string modFileNames) => kind switch
+    {
+        RequestSender.RequestKind.Bug => "What happened:\r\n\r\nWhat you expected:\r\n\r\nSteps to make it happen again:\r\n1. \r\n",
+        RequestSender.RequestKind.Feature => "What would you like the tool to do?\r\n\r\nWhy would it help?\r\n",
+        _ => modFileNames.Length > 0
+            ? "Here is what one mod folder looks like (file names only):\r\n\r\n" + modFileNames + "\r\n\r\nExtra notes (where the title, version and changelog live, how a mod is published in the game, ...):\r\n"
+            : "Describe what one mod folder looks like: the files in it, where the title, version and changelog live, and how a mod is published in the game.\r\n",
+    };
+
     static string Version =>
         (Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "?").Split('+')[0];
 
     string BuildBody(string layoutName) =>
-        $"Game: {_game.Text.Trim()}\r\nSteam app ID: {_appId.Text.Trim()}\r\nHelper version: {Version}\r\nLayout in use: {layoutName}\r\n\r\n{_layout.Text.Trim()}";
+        (Title() + "\n\n" + BuildDescription(Kind, _game.Text.Trim(), _appId.Text.Trim(), layoutName, AreaText, _details.Text.Trim())).Replace("\n", "\r\n");
+
+    string Title() => BuildTitle(Kind, _game.Text.Trim(), _summary.Text.Trim());
+
+    /// <summary>The issue title for a request.</summary>
+    public static string BuildTitle(RequestSender.RequestKind kind, string game, string summary) => kind switch
+    {
+        RequestSender.RequestKind.Bug => "Bug: " + summary,
+        RequestSender.RequestKind.Feature => "Feature request: " + summary,
+        _ => "Game layout request: " + game,
+    };
+
+    /// <summary>Checks the fields; shows a message and returns false when something required is missing.</summary>
+    bool CheckFields(out string game, out string app)
+    {
+        game = _game.Text.Trim();
+        app = _appId.Text.Trim();
+        if (Kind == RequestSender.RequestKind.Layout && game.Length == 0) { MessageBox.Show(this, "Enter the game's name.", Text); _game.Focus(); return false; }
+        if (Kind != RequestSender.RequestKind.Layout && _summary.Text.Trim().Length == 0) { MessageBox.Show(this, "Enter a one-line summary.", Text); _summary.Focus(); return false; }
+        if (app.Length > 0 && !app.All(char.IsDigit)) { MessageBox.Show(this, "The app ID is a number.", Text); _appId.Focus(); return false; }
+        return true;
+    }
 
     void OpenIssue(string layoutName)
     {
-        var game = _game.Text.Trim();
-        var app = _appId.Text.Trim();
-        if (game.Length == 0) { MessageBox.Show(this, "Enter the game's name.", Text); _game.Focus(); return; }
-        if (app.Length > 0 && !app.All(char.IsDigit)) { MessageBox.Show(this, "The app ID is a number.", Text); _appId.Focus(); return; }
-
-        var (url, cut) = BuildIssueUrl(game, app, layoutName, _layout.Text.Trim());
+        if (!CheckFields(out var game, out var app)) return;
+        var (url, cut) = BuildIssueUrl(game, app, layoutName, _details.Text.Trim(), Kind, _summary.Text.Trim(), AreaText);
 
         try
         {
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-            if (cut) MessageBox.Show(this, "The file list was long, so it was trimmed. Add the rest in the Linear issue if it matters.", Text);
+            if (cut) MessageBox.Show(this, "The text was long, so it was trimmed. Add the rest in the Linear issue if it matters.", Text);
             DialogResult = DialogResult.OK;
         }
         catch (Exception e)
@@ -125,26 +210,31 @@ public sealed class RequestForm : Form
         }
     }
 
-    /// <summary>The issue text (Markdown) shared by the pre-filled link and the direct send.</summary>
+    /// <summary>The layout-request issue text (Markdown).</summary>
     public static string BuildDescription(string game, string app, string layoutName, string layout) =>
-        $"**Game:** {game}\n**Steam app ID:** {app}\n**Helper:** {Version} (layout: {layoutName})\n\n### What does one mod look like?\n\n{layout}".Replace("\r\n", "\n");
+        BuildDescription(RequestSender.RequestKind.Layout, game, app, layoutName, AnyArea, layout);
+
+    /// <summary>The issue text (Markdown) shared by the pre-filled link and the direct send.</summary>
+    public static string BuildDescription(RequestSender.RequestKind kind, string game, string app, string layoutName, string area, string details) =>
+        (kind == RequestSender.RequestKind.Layout
+            ? $"**Game:** {game}\n**Steam app ID:** {app}\n**Helper:** {Version} (layout: {layoutName})\n\n### What does one mod look like?\n\n{details}"
+            : $"**Type:** {(kind == RequestSender.RequestKind.Bug ? "Bug report" : "Feature request")}\n**About:** {area}\n**Game:** {(game.Length > 0 ? game : "-")}"
+              + $"{(app.Length > 0 ? " (app " + app + ")" : "")}\n**Helper:** {Version} (layout: {layoutName})\n\n### Details\n\n{details}")
+        .Replace("\r\n", "\n");
 
     static DateTime _lastSend = DateTime.MinValue;
 
     async Task SendRequestAsync(string layoutName, Button button)
     {
-        var game = _game.Text.Trim();
-        var app = _appId.Text.Trim();
-        if (game.Length == 0) { MessageBox.Show(this, "Enter the game's name.", Text); _game.Focus(); return; }
-        if (app.Length > 0 && !app.All(char.IsDigit)) { MessageBox.Show(this, "The app ID is a number.", Text); _appId.Focus(); return; }
+        if (!CheckFields(out var game, out var app)) return;
         if (DateTime.UtcNow - _lastSend < TimeSpan.FromSeconds(60)) { MessageBox.Show(this, "A request was just sent. Please wait a minute before sending another.", Text); return; }
 
         button.Enabled = false;
         var oldText = button.Text; button.Text = "Sending...";
         try
         {
-            var title = "Game layout request: " + game;
-            var (ok, message) = await RequestSender.SendAsync(title, BuildDescription(game, app, layoutName, _layout.Text.Trim()));
+            var description = BuildDescription(Kind, game, app, layoutName, AreaText, _details.Text.Trim());
+            var (ok, message) = await RequestSender.SendAsync(Title(), description, Kind, AreaKey);
             if (ok)
             {
                 _lastSend = DateTime.UtcNow;
@@ -159,23 +249,24 @@ public sealed class RequestForm : Form
     }
 
     /// <summary>The pre-filled "new issue" address. The text is trimmed until the whole address fits (cut = true when that happened).</summary>
-    public static (string url, bool cut) BuildIssueUrl(string game, string app, string layoutName, string layout)
+    public static (string url, bool cut) BuildIssueUrl(string game, string app, string layoutName, string details,
+        RequestSender.RequestKind kind = RequestSender.RequestKind.Layout, string summary = "", string area = AnyArea)
     {
-        string Url(string layoutText)
+        string Url(string text)
         {
-            var description = BuildDescription(game, app, layoutName, layoutText);
+            var description = BuildDescription(kind, game, app, layoutName, area, text);
             return NewIssueUrl + "?team=" + TeamKey
-                + "&title=" + Uri.EscapeDataString("Game layout request: " + game)
+                + "&title=" + Uri.EscapeDataString(BuildTitle(kind, game, summary))
                 + "&description=" + Uri.EscapeDataString(description.Replace("\r\n", "\n"));
         }
 
-        var url = Url(layout);
+        var url = Url(details);
         var cut = false;
-        while (url.Length > MaxUrl && layout.Length > 200)
+        while (url.Length > MaxUrl && details.Length > 200)
         {
-            layout = layout.Substring(0, (int)(layout.Length * 0.8));
+            details = details.Substring(0, (int)(details.Length * 0.8));
             cut = true;
-            url = Url(layout + "\n\n[trimmed: paste the rest of the file list here]");
+            url = Url(details + "\n\n[trimmed: paste the rest here]");
         }
         return (url, cut);
     }

@@ -72,7 +72,7 @@ static class Program
                 await ctx.Response.OutputStream.WriteAsync(reply);
                 ctx.Response.Close();
             });
-            var (ok, msg) = RequestSender.SendAsync("Game layout request: Test \"Q\"", "line1\nline2 \\ x", prefix).GetAwaiter().GetResult();
+            var (ok, msg) = RequestSender.SendAsync("Game layout request: Test \"Q\"", "line1\nline2 \\ x", endpointOverride: prefix).GetAwaiter().GetResult();
             served.Wait(5000);
             File.AppendAllText(outFile, $"available={RequestSender.Available} ok={ok} msg={msg}\r\n");
             return;

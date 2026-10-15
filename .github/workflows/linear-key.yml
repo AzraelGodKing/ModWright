@@ -23,4 +23,5 @@ jobs:
           LINEAR_TEAM_UUID: ${{ secrets.LINEAR_TEAM_UUID }}
           PROJECTID: ${{ secrets.PROJECTID }}
           LABELIDS: ${{ secrets.LABELIDS }}
+          LABELMAP: ${{ secrets.LABELMAP }}
         run: dotnet test tests/SteamCmdHelper.Tests -c Release --filter "FullyQualifiedName~LinearLiveTests" --logger "console;verbosity=detailed"

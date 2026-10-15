@@ -9,7 +9,8 @@ namespace SteamCmdHelper;
 /// Creates a "game layout request" issue in Linear straight from the app, using a key that can ONLY create issues
 /// in one team. The key is never stored in git: it is baked into the program at build time from the
 /// LINEAR_CREATE_API_KEY / LINEAR_TEAM_UUID secrets, or a git-ignored request.key for local builds (see RequestKey.targets).
-/// The optional PROJECTID / LABELIDS secrets (or request.key lines) pick the project and labels the request is filed under.
+/// The optional PROJECTID / LABELIDS secrets (or request.key lines) pick the project and the labels every request gets;
+/// LABELMAP ("Bug=id, Feature=id, Layout=id, UI=id, ...") adds a label per request kind and area.
 /// Without it the request form falls back to a pre-filled link / copy-to-clipboard.
 /// </summary>
 public static class RequestSender
@@ -41,6 +42,57 @@ public static class RequestSender
             GuidPattern.Matches(text ?? "").Select(m => m.Value.ToLowerInvariant());
     }
 
+    /// <summary>What a request is about. Each kind (and each area) maps to a Linear label through the label map.</summary>
+    public enum RequestKind { Layout, Bug, Feature }
+
+    /// <summary>The areas a bug or feature request can be about, as (label-map key, text shown in the form).</summary>
+    public static readonly (string key, string text)[] Areas =
+    {
+        ("UI", "Windows and layout (UI)"),
+        ("Upload", "Uploading to the Workshop"),
+        ("SteamCMD", "SteamCMD and Steam login"),
+    };
+
+    /// <summary>The label-map key for a request kind.</summary>
+    public static string KindKey(RequestKind kind) => kind switch
+    {
+        RequestKind.Bug => "Bug",
+        RequestKind.Feature => "Feature",
+        _ => "Layout",
+    };
+
+    static readonly System.Text.RegularExpressions.Regex LabelMapPattern = new(
+        @"([A-Za-z][A-Za-z ]*?)[""']?\s*[=:]\s*[""']?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b");
+
+    /// <summary>Reads "Name=id" pairs (separated by commas, semicolons or lines; ':' works too, and quotes or JSON
+    /// around them are ignored). Names are case-insensitive; the last pair for a name wins.</summary>
+    public static IReadOnlyDictionary<string, string> ParseLabelMap(string? text)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (System.Text.RegularExpressions.Match m in LabelMapPattern.Matches(text ?? ""))
+            map[MapKey(m.Groups[1].Value)] = m.Groups[2].Value.ToLowerInvariant();
+        return map;
+    }
+
+    /// <summary>"Layout Request", "Bug report" and "Feature request" all mean the plain kind name.</summary>
+    static string MapKey(string name)
+    {
+        var key = name.Replace(" ", "").Trim();
+        foreach (var suffix in new[] { "Request", "Report" })
+            if (key.Length > suffix.Length && key.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) key = key[..^suffix.Length];
+        return key;
+    }
+
+    /// <summary>The route for one request: the always-on project and labels, plus the labels the map gives its kind
+    /// and area (if any). Kinds or areas missing from the map simply add nothing.</summary>
+    public static Route RouteFor(Route always, IReadOnlyDictionary<string, string> map, RequestKind kind, string? area)
+    {
+        var labels = new List<string>(always.LabelIds);
+        if (map.TryGetValue(KindKey(kind), out var k)) labels.Add(k);
+        if (!string.IsNullOrEmpty(area) && map.TryGetValue(area, out var a)) labels.Add(a);
+        return always with { LabelIds = labels.Distinct().ToArray() };
+    }
+
     static string[] BakedLines()
     {
         var text = BakedRequestKey.Read();
@@ -62,6 +114,13 @@ public static class RequestSender
         return Route.Parse(lines.Length > 2 ? lines[2] : null, lines.Length > 3 ? lines[3] : null);
     }
 
+    /// <summary>The kind/area label map baked in from the LABELMAP secret (line 5), if any.</summary>
+    public static IReadOnlyDictionary<string, string> BakedLabelMap()
+    {
+        var lines = BakedLines();
+        return ParseLabelMap(lines.Length > 4 ? lines[4] : null);
+    }
+
     public static bool Available => Credentials() != null;
 
     /// <summary>The GraphQL request body (separate so it can be checked without sending). The project and labels of
@@ -81,11 +140,13 @@ public static class RequestSender
     }
 
     /// <summary>Creates the issue. Returns (true, "REQ-12") on success or (false, reason).</summary>
-    public static Task<(bool ok, string message)> SendAsync(string title, string description, string? endpointOverride = null, CancellationToken ct = default)
+    public static Task<(bool ok, string message)> SendAsync(string title, string description, RequestKind kind = RequestKind.Layout,
+        string? area = null, string? endpointOverride = null, CancellationToken ct = default)
     {
         var creds = Credentials();
         if (creds == null) return Task.FromResult((false, "This build has no request key."));
-        return SendAsync(creds.Value.key, creds.Value.teamId, BakedRoute(), title, description, endpointOverride ?? Endpoint, ct);
+        var route = RouteFor(BakedRoute(), BakedLabelMap(), kind, area);
+        return SendAsync(creds.Value.key, creds.Value.teamId, route, title, description, endpointOverride ?? Endpoint, ct);
     }
 
     /// <summary>Files the issue into the route's project with its labels. If Linear refuses that (say the project or a

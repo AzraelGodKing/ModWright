@@ -68,6 +68,65 @@ public class RequestSenderTests
         Assert.Equal(Project, RequestSender.Route.Parse("\"" + Project.ToUpperInvariant() + "\"\n", null).ProjectId);
     }
 
+    const string LayoutId = "55555555-0000-0000-0000-000000000001";
+    const string BugId = "55555555-0000-0000-0000-000000000002";
+    const string FeatureId = "55555555-0000-0000-0000-000000000003";
+    const string UiId = "55555555-0000-0000-0000-000000000004";
+    const string UploadId = "55555555-0000-0000-0000-000000000005";
+
+    [Theory]
+    [InlineData("Layout=55555555-0000-0000-0000-000000000001,Bug=55555555-0000-0000-0000-000000000002,Feature=55555555-0000-0000-0000-000000000003,UI=55555555-0000-0000-0000-000000000004,Upload=55555555-0000-0000-0000-000000000005")]
+    [InlineData("layout: 55555555-0000-0000-0000-000000000001\nbug : 55555555-0000-0000-0000-000000000002\nfeature= \"55555555-0000-0000-0000-000000000003\"; ui=55555555-0000-0000-0000-000000000004 upload=55555555-0000-0000-0000-000000000005")]
+    [InlineData("{\"Layout Request\": \"55555555-0000-0000-0000-000000000001\", \"Bug report\": \"55555555-0000-0000-0000-000000000002\", \"Feature request\": \"55555555-0000-0000-0000-000000000003\", \"UI\": \"55555555-0000-0000-0000-000000000004\", \"Upload\": \"55555555-0000-0000-0000-000000000005\"}")]
+    public void ParseLabelMap_reads_name_id_pairs(string text)
+    {
+        var map = RequestSender.ParseLabelMap(text);
+        Assert.Equal(LayoutId, map["Layout"]);
+        Assert.Equal(BugId, map["bug"]);
+        Assert.Equal(FeatureId, map["FEATURE"]);
+        Assert.Equal(UiId, map["UI"]);
+        Assert.Equal(UploadId, map["Upload"]);
+        Assert.False(map.ContainsKey("SteamCMD"));
+    }
+
+    [Fact]
+    public void ParseLabelMap_ignores_bare_ids_and_empty_text()
+    {
+        Assert.Empty(RequestSender.ParseLabelMap(null));
+        Assert.Empty(RequestSender.ParseLabelMap(""));
+        Assert.Empty(RequestSender.ParseLabelMap(LayoutId + "," + BugId));
+    }
+
+    [Fact]
+    public void RouteFor_adds_the_kind_and_area_labels_to_the_always_labels()
+    {
+        var map = RequestSender.ParseLabelMap($"Layout={LayoutId},Bug={BugId},Feature={FeatureId},UI={UiId},Upload={UploadId}");
+        var always = new RequestSender.Route(Project, new[] { Labels[0] });
+
+        Assert.Equal(new[] { Labels[0], LayoutId }, RequestSender.RouteFor(always, map, RequestSender.RequestKind.Layout, null).LabelIds);
+        Assert.Equal(new[] { Labels[0], BugId, UiId }, RequestSender.RouteFor(always, map, RequestSender.RequestKind.Bug, "UI").LabelIds);
+        Assert.Equal(new[] { Labels[0], FeatureId, UploadId }, RequestSender.RouteFor(always, map, RequestSender.RequestKind.Feature, "Upload").LabelIds);
+        // An area missing from the map adds nothing; the project is kept.
+        var route = RequestSender.RouteFor(always, map, RequestSender.RequestKind.Bug, "SteamCMD");
+        Assert.Equal(new[] { Labels[0], BugId }, route.LabelIds);
+        Assert.Equal(Project, route.ProjectId);
+    }
+
+    [Fact]
+    public void RouteFor_without_a_map_keeps_the_always_route()
+    {
+        var empty = RequestSender.ParseLabelMap(null);
+        Assert.Equal(Routed.LabelIds, RequestSender.RouteFor(Routed, empty, RequestSender.RequestKind.Bug, "UI").LabelIds);
+        Assert.True(RequestSender.RouteFor(RequestSender.Route.None, empty, RequestSender.RequestKind.Feature, null).IsEmpty);
+    }
+
+    [Fact]
+    public void RouteFor_does_not_repeat_a_label()
+    {
+        var map = RequestSender.ParseLabelMap($"Layout={Labels[0]}");
+        Assert.Equal(Labels, RequestSender.RouteFor(Routed, map, RequestSender.RequestKind.Layout, null).LabelIds);
+    }
+
     const string Created = "{\"data\":{\"issueCreate\":{\"success\":true,\"issue\":{\"identifier\":\"AZR-9\"}}}}";
     const string Refused = "{\"errors\":[{\"message\":\"Entity not found: Project\"}]}";
 
