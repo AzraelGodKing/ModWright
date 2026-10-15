@@ -42,6 +42,46 @@ static class Program
         return sb.ToString();
     }
 
+    /// <summary>A throwaway RimWorld mods folder for the --shot screenshots: one mod per kind of row.</summary>
+    static string DemoRepo()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "steamcmd_helper_shot_repo");
+        try { Directory.Delete(root, true); } catch { }
+        void Mod(string folder, string name, string version, string? id, string? changelogVersion, Color? preview, bool built = true)
+        {
+            var about = Path.Combine(root, folder, "About");
+            Directory.CreateDirectory(about);
+            File.WriteAllText(Path.Combine(about, "About.xml"), $"<?xml version=\"1.0\"?><ModMetaData><name>{name}</name><modVersion>{version}</modVersion><description>Demo.</description></ModMetaData>");
+            if (changelogVersion != null) File.WriteAllText(Path.Combine(about, "changelog.txt"), $"{changelogVersion}\n- Demo change.");
+            if (id != null) File.WriteAllText(Path.Combine(about, "PublishedFileId.txt"), id);
+            if (preview is { } c)
+            {
+                using var bmp = new Bitmap(640, 360);
+                using (var g = Graphics.FromImage(bmp))
+                using (var b = new System.Drawing.Drawing2D.LinearGradientBrush(new Rectangle(0, 0, 640, 360), c, Color.FromArgb(20, 22, 30), 35f))
+                {
+                    g.FillRectangle(b, 0, 0, 640, 360);
+                    using var f = new Font("Segoe UI Semibold", 54f);
+                    TextRenderer.DrawText(g, name, f, new Rectangle(0, 0, 640, 360), Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
+                }
+                bmp.Save(Path.Combine(about, "Preview.png"), System.Drawing.Imaging.ImageFormat.Png);
+            }
+            if (built)
+            {
+                Directory.CreateDirectory(Path.Combine(root, folder, "Assemblies"));
+                File.WriteAllText(Path.Combine(root, folder, "Assemblies", folder + ".dll"), "demo");
+            }
+        }
+        Mod("BetterStorage", "Better Storage", "1.4.0", "2000000001", "1.4.0", Color.FromArgb(48, 132, 230));
+        Mod("FasterHauling", "Faster Hauling", "2.1.3", "2000000002", "2.1.3", Color.FromArgb(98, 170, 110), built: false);
+        Mod("QuietNights", "Quiet Nights", "0.9.0", null, "0.9.0", Color.FromArgb(170, 110, 200));
+        Mod("BrokenThing", "Broken Thing", "1.1.0", "2000000004", "1.0.0", null);
+        var cfg = new ProjectConfig();
+        cfg.ApplyPreset("RimWorld");
+        cfg.Save(root);
+        return root;
+    }
+
     static bool Throws(Action a) { try { a(); return false; } catch { return true; } }
 
     [System.Runtime.InteropServices.DllImport("kernel32.dll")]
@@ -156,6 +196,9 @@ static class Program
             {
                 var suffix = theme == Theme.DarkName ? "" : "-light";
                 Snap(new MainForm(theme) { NoStartupPrompts = true }, Path.Combine(args[sh + 1], $"main{suffix}.png"));
+                var demo = new MainForm(theme, new AppSettings { RepoPath = DemoRepo(), Account = "demo_account", AllowCreate = true, DoNotSave = true }) { NoStartupPrompts = true };
+                demo.Shown += (_, _) => demo.SelectFirstMod();
+                Snap(demo, Path.Combine(args[sh + 1], $"main-mods{suffix}.png"));
                 var options = new MainForm(theme) { NoStartupPrompts = true };
                 options.Shown += (_, _) => options.ShowOptions();
                 Snap(options, Path.Combine(args[sh + 1], $"options{suffix}.png"));

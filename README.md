@@ -46,7 +46,12 @@ the release workflow checks both, runs the tests and publishes the release with 
 
 ## Using it
 
-1. **Mods repo**: press **Browse...** (or double-click the path) and pick the folder that holds your mods (one sub-folder per mod). The path cannot be typed in, so it cannot be mistyped.
+Until everything below is in place, a **Get set up** box at the top of the Upload tab lists the four steps
+(SteamCMD, Steam account, mods folder, app ID), each a link that does it, and goes away once they are done.
+
+1. **Mods repo**: press **Browse...** (or Ctrl+O) and pick the folder that holds your mods (one sub-folder per mod), or
+   drop the folder onto the window. Folders you used before are in the drop-down, so switching repos is one click.
+   The path cannot be typed in, so it cannot be mistyped.
 2. **Steam app ID**: the number in the game's store URL (`store.steampowered.com/app/294100/...` = RimWorld).
    The game name is looked up from Steam to confirm it. RimWorld-shaped repos are detected automatically.
 3. **Layout**: pick a built-in layout (**Generic**, **RimWorld**, **Golf With Your Friends**). Built-in layouts are part of the program and are **locked**: they cannot be edited, and the layout fixes the app ID. For anything else pick **Custom**, then **Edit layout file...** (below).
@@ -61,7 +66,19 @@ the release workflow checks both, runs the tests and publishes the release with 
 6. Tick the mods (**Tick all** picks every mod that is ready) and press **Upload**. Several mods upload one after
    another with a single login check; if Steam refuses the login part-way, the rest are not tried. When more than
    one mod was picked, or anything failed, a summary lists what happened to each mod (it is also in the log).
-   **Dry run** does every check and builds the package but uploads nothing.
+   **Dry run** does every check and builds the package but uploads nothing. The taskbar button shows the progress
+   and flashes when a run ends while the window is in the background. If anything failed or was not reached,
+   **Retry failed** uploads just those mods again.
+
+The list can be filtered by name, folder or Workshop ID (Ctrl+F), **Hide up to date** drops the mods Steam already
+has, and clicking a column header sorts by it (again to reverse, a third time for folder order). Right-click a mod
+to open its folder or changelog, copy its Workshop ID or link, see its upload history, or open it on Steam.
+
+Shortcuts: **F5** refresh, **Ctrl+O** pick the mods folder, **Ctrl+F** filter, **Ctrl+Enter** upload the ticked mods.
+
+The log at the bottom stamps each line with the time and colours it by kind (blue notes, green success,
+orange warnings, red errors). **Copy** and **Save...** take the whole log, **Clear** empties it, and **SteamCMD logs**
+opens SteamCMD's own log folder, which is where to look when Steam turns an upload down.
 
 The app uses a dark theme by default. Switch to the light theme under **Options > Appearance**; the choice is saved
 for your Windows user.
@@ -94,8 +111,12 @@ The list columns:
   `About/Changelog.txt` (newest first, or at the end if the file lists the oldest version first), so the upload is
   not refused for a missing entry. If you skip it, double-click the row's **Status** to write it later.
 - **Workshop ID**: from the mod's own id file (`About/PublishedFileId.txt` for RimWorld); `0` means the upload creates a new item.
-- **Preview**: ✔ when the preview image exists and is within Steam's 1 MB limit, ✖ otherwise (hover for the size).
-- **Status**: `Ready`, `Fix`, or `Ready to create (private)`.
+- **Preview**: a thumbnail of the preview image; a red frame means it is over Steam's 1 MB limit, ✖ that it is
+  missing (hover for the size).
+- **Status**: a badge, followed by the first problem or warning when there is one:
+  `Fix` (red, can't be uploaded), `Failed` (red, failed in the last run), `Changed` (amber, Steam has an older
+  version), `New` (blue, not on Steam yet), `Up to date` (green, Steam already has this version) or `Ready` (the
+  version on Steam is not known yet).
 
 ### Workshop page: title, description and visibility
 

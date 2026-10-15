@@ -55,6 +55,25 @@ public static class Theme
     public static void Set(string? name) =>
         Current = string.Equals(name, LightName, StringComparison.OrdinalIgnoreCase) ? LightPalette : DarkPalette;
 
+    /// <summary>Mixes <paramref name="amount"/> (0..1) of <paramref name="over"/> into <paramref name="under"/>.</summary>
+    public static Color Blend(Color under, Color over, double amount) => Color.FromArgb(
+        (int)(under.R + (over.R - under.R) * amount),
+        (int)(under.G + (over.G - under.G) * amount),
+        (int)(under.B + (over.B - under.B) * amount));
+
+    /// <summary>The app icon (Assets/app.ico, embedded), shown on every window and on the taskbar.</summary>
+    public static Icon? AppIcon { get; } = LoadIcon();
+
+    static Icon? LoadIcon()
+    {
+        try
+        {
+            using var s = typeof(Theme).Assembly.GetManifestResourceStream("SteamCmdHelper.app.ico");
+            return s == null ? null : new Icon(s);
+        }
+        catch { return null; }
+    }
+
     public static Color Of(Tone t) => t switch
     {
         Tone.Muted => Current.Muted,
@@ -95,6 +114,7 @@ public static class Theme
             case Form f:
                 back = p.Back;
                 f.BackColor = back; f.ForeColor = p.Text;
+                if (AppIcon != null) f.Icon = AppIcon;
                 Native(f, OnFormHandle);
                 break;
             case NavButton nb:
@@ -111,6 +131,8 @@ public static class Theme
                 StyleButton(b, role == ThemeRole.Accent);
                 b.EnabledChanged -= OnButtonEnabled;
                 b.EnabledChanged += OnButtonEnabled;
+                b.Paint -= PaintDisabled;
+                b.Paint += PaintDisabled;
                 break;
             case RichTextBox r:
                 r.BackColor = role == ThemeRole.Log ? LogBack : p.Input;
@@ -184,6 +206,43 @@ public static class Theme
         if (s is Button b) StyleButton(b, RoleOf(b) == ThemeRole.Accent);
     }
 
+    /// <summary>
+    /// Windows draws a disabled flat button's text in a fixed grey that almost vanishes on the dark theme. Paint it
+    /// again in the theme's muted colour on a slightly sunken face, so it reads as "not now" but stays legible.
+    /// </summary>
+    static void PaintDisabled(object? s, PaintEventArgs e)
+    {
+        if (s is not Button b || b.Enabled) return;
+        var p = Current;
+        var r = b.ClientRectangle;
+        using (var bg = new SolidBrush(Blend(p.Button, p.Surface, 0.5))) e.Graphics.FillRectangle(bg, r);
+        using (var pen = new Pen(p.Border)) e.Graphics.DrawRectangle(pen, 0, 0, r.Width - 1, r.Height - 1);
+        TextRenderer.DrawText(e.Graphics, b.Text, b.Font, r, p.Muted,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.HidePrefix);
+    }
+
+    /// <summary>Right-click menus in the theme's colours.</summary>
+    public static void StyleMenu(ToolStrip menu)
+    {
+        menu.Renderer = new ToolStripProfessionalRenderer(new MenuColors(Current)) { RoundedEdges = false };
+        menu.BackColor = Current.Surface;
+        menu.ForeColor = Current.Text;
+        foreach (ToolStripItem i in menu.Items) i.ForeColor = Current.Text;
+    }
+
+    sealed class MenuColors(Palette p) : ProfessionalColorTable
+    {
+        public override Color ToolStripDropDownBackground => p.Surface;
+        public override Color ImageMarginGradientBegin => p.Surface;
+        public override Color ImageMarginGradientMiddle => p.Surface;
+        public override Color ImageMarginGradientEnd => p.Surface;
+        public override Color MenuBorder => p.Border;
+        public override Color MenuItemBorder => p.ButtonHover;
+        public override Color MenuItemSelected => p.ButtonHover;
+        public override Color SeparatorDark => p.Border;
+        public override Color SeparatorLight => p.Surface;
+    }
+
     /// <summary>Tooltips are drawn in the theme's colours.</summary>
     public static void Style(ToolTip tip)
     {
@@ -235,8 +294,16 @@ public static class Theme
             align | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
 
-    static void DrawItemDefault(object? s, DrawListViewItemEventArgs e) => e.DrawDefault = true;
-    static void DrawSubItemDefault(object? s, DrawListViewSubItemEventArgs e) => e.DrawDefault = true;
+    static readonly ConditionalWeakTable<ListView, Func<DrawListViewSubItemEventArgs, bool>> Painters = new();
+
+    /// <summary>Lets a list draw its own cells; <paramref name="paint"/> returns false to leave a cell to Windows.</summary>
+    public static void PaintCells(this ListView lv, Func<DrawListViewSubItemEventArgs, bool> paint) => Painters.AddOrUpdate(lv, paint);
+
+    static void DrawItemDefault(object? s, DrawListViewItemEventArgs e) =>
+        e.DrawDefault = !(s is ListView lv && Painters.TryGetValue(lv, out _));
+
+    static void DrawSubItemDefault(object? s, DrawListViewSubItemEventArgs e) =>
+        e.DrawDefault = !(s is ListView lv && Painters.TryGetValue(lv, out var paint) && paint(e));
 
     // ------------------------------------------------------------ native: dark title bar and scroll bars
 
@@ -255,7 +322,23 @@ public static class Theme
         // 20 = DWMWA_USE_IMMERSIVE_DARK_MODE; Windows 10 before 20H1 used 19.
         if (DwmSetWindowAttribute(f.Handle, 20, ref on, sizeof(int)) != 0)
             DwmSetWindowAttribute(f.Handle, 19, ref on, sizeof(int));
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
+        {
+            // Windows 11 can colour the caption itself: match the app's header bar so the window reads as one piece.
+            int caption = ColorRef(Current.Header), text = ColorRef(Current.Text), border = ColorRef(Current.Border);
+            DwmSetWindowAttribute(f.Handle, 35, ref caption, sizeof(int)); // DWMWA_CAPTION_COLOR
+            DwmSetWindowAttribute(f.Handle, 36, ref text, sizeof(int));    // DWMWA_TEXT_COLOR
+            DwmSetWindowAttribute(f.Handle, 34, ref border, sizeof(int));  // DWMWA_BORDER_COLOR
+        }
+        // A window that is already on screen keeps its old caption until the frame is redrawn (a live theme switch).
+        const uint NoSize = 0x1, NoMove = 0x2, NoZOrder = 0x4, NoActivate = 0x10, FrameChanged = 0x20;
+        SetWindowPos(f.Handle, IntPtr.Zero, 0, 0, 0, 0, NoSize | NoMove | NoZOrder | NoActivate | FrameChanged);
     }
+
+    static int ColorRef(Color c) => c.R | (c.G << 8) | (c.B << 16);
+
+    [DllImport("user32.dll")]
+    static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
     static void OnScrollHandle(object? s, EventArgs e) => SetScrollTheme(s as Control, Current.Dark);
     static void OnDarkScrollHandle(object? s, EventArgs e) => SetScrollTheme(s as Control, true);

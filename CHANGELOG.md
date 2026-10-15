@@ -26,6 +26,22 @@
 - **Uploaded version** falls back to that history, and shows `?` when Steam has a newer update than this PC's last
   upload. The tooltip says where the version came from.
 
+- A **Get set up** box lists what is still missing (SteamCMD, Steam account, mods folder, app ID), each a link that
+  does it, and goes away when all four are done. Missing pieces are pointed out next to where they are fixed instead
+  of in pop-ups.
+- Mods folder: recent folders are in a drop-down, and a folder can be dropped onto the window to open it.
+- Mod list: a filter box, **Hide up to date**, sorting by any column, status badges (`Fix`, `Failed`, `Changed`,
+  `New`, `Up to date`, `Ready`) with the first problem or warning beside them, preview thumbnails, and an empty
+  state that says what to do. Right-click adds **Open mod folder**, **Open changelog**, **Copy Workshop ID** and
+  **Copy Workshop link**.
+- **Retry failed** uploads only the mods that failed or were not reached in the last run.
+- Upload progress shows on the taskbar button, which flashes when a run ends in the background.
+- The log has timestamps, **Copy**, **Save...**, **Clear** and **SteamCMD logs**.
+- Shortcuts: F5 refresh, Ctrl+O pick the mods folder, Ctrl+F filter, Ctrl+Enter upload.
+- Look: an app icon, a title bar that matches the theme on Windows 11, readable disabled buttons, themed right-click
+  menus, the progress card only while it has something to show, **Dry run** and **Create new items** next to the
+  Upload button, and an Options tab with its own SteamCMD and **Your data** cards.
+
 ## 1.0.0
 
 First release.

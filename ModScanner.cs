@@ -18,6 +18,8 @@ public sealed class ModInfo
     /// <summary>Preview image: true = present and within Steam's 1 MB limit, false = missing or too big, null = the layout has none.</summary>
     public bool? PreviewOk;
     public string PreviewNote = "";
+    /// <summary>Full path of the preview image when it exists, for the thumbnail in the list.</summary>
+    public string PreviewPath = "";
     public readonly List<string> Problems = new();
     public readonly List<string> Warnings = new();
 
@@ -315,6 +317,7 @@ public static class ModScanner
             {
                 var preview = new FileInfo(Path.Combine(dir, ProjectConfig.Norm(cfg.Preview)));
                 m.PreviewOk = preview.Exists && preview.Length <= MaxPreviewBytes;
+                if (preview.Exists) m.PreviewPath = preview.FullName;
                 m.PreviewNote = !preview.Exists ? "no " + cfg.Preview
                     : $"{cfg.Preview}: {preview.Length / 1024.0:0} KB of {MaxPreviewBytes / 1024} KB" + (m.PreviewOk == true ? "" : " (over Steam's limit)");
                 if (!m.OnSteam && !preview.Exists) m.Problems.Add("needs " + cfg.Preview + " to create on Steam");
