@@ -150,6 +150,8 @@ Builds that carry a Linear key send requests straight from the app, with no brow
 - **GitHub builds** (CI and releases) read the repository secrets `LINEAR_CREATE_API_KEY` (a Linear personal API key restricted to **Create issues** in one dedicated team) and `LINEAR_TEAM_UUID` (that team's ID).
 - **Local builds** read the same two names from a git-ignored `request.key` file in the project folder, one `NAME=value` per line. Environment variables with those names win over the file.
 
+Requests land in the **SteamCMD Helper** project with the **Layout Request** and **SteamCMD Helper** labels (IDs in `RequestSender.cs`). If Linear refuses those, for example because the project or a label was removed, the request is filed into the team alone instead, so it is never lost.
+
 The key is stored masked, but anyone with the exe could still extract it. Keep its scope that narrow and revoke it if it is abused. A build without a key opens a pre-filled issue instead; the build log says which (`Linear request key: baked in` or `none found`).
 
 ## Safety
