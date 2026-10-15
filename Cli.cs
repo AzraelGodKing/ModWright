@@ -5,7 +5,7 @@ public sealed class CliOptions
 {
     public string Command = "help";
     public readonly List<string> Mods = new();
-    public bool All, DryRun, AllowCreate, AllowExperimental;
+    public bool All, DryRun, AllowCreate, AllowExperimental, CheckOnly;
     public string? Repo, Account, SteamCmd, LogFile;
     /// <summary>Set when the arguments could not be understood; the command is then not run.</summary>
     public string? Error;
@@ -19,7 +19,7 @@ public static class Cli
 {
     public const int ExitOk = 0, ExitFailed = 1, ExitUsage = 2, ExitSteam = 3;
 
-    static readonly string[] Commands = { "upload", "list", "help" };
+    static readonly string[] Commands = { "upload", "list", "update", "help" };
 
     public const string Usage = """
         SteamCMD Helper command line
@@ -28,6 +28,8 @@ public static class Cli
           SteamCmdHelper upload <mod> [<mod>...] [options]   upload these mods (folder or display name)
           SteamCmdHelper upload --all [options]              upload every ready mod that is on Steam
           SteamCmdHelper list [options]                      show the mods and whether they are ready
+          SteamCmdHelper update [--check]                    install the newest release of this program
+                                                             (--check: only say whether there is one)
           SteamCmdHelper help                                show this text
 
         Options:
@@ -74,6 +76,7 @@ public static class Cli
                 case "--account": o.Account = Value(); break;
                 case "--steamcmd": o.SteamCmd = Value(); break;
                 case "--log": o.LogFile = Value(); break;
+                case "--check": o.CheckOnly = true; break;
                 default:
                     if (a.StartsWith("--")) o.Error ??= $"Unknown option {a}.";
                     else o.Mods.Add(a);
@@ -85,7 +88,37 @@ public static class Cli
         if (o.Command == "upload" && o.All && o.Mods.Count > 0) o.Error = "Give mod names or --all, not both.";
         else if (o.Command == "upload" && !o.All && o.Mods.Count == 0) o.Error = "Name at least one mod to upload, or use --all.";
         else if (o.Command != "upload" && o.Mods.Count > 0) o.Error = $"\"{o.Command}\" does not take mod names.";
+        else if (o.CheckOnly && o.Command != "update") o.Error = "--check only goes with \"update\".";
         return o;
+    }
+
+    /// <summary>
+    /// "update": installs the newest release over this program, checked against the release's SHA-256 checksums. The
+    /// new version is used from the next start. Exit code 0 when up to date or updated, 1 when it could not update.
+    /// </summary>
+    static async Task<int> UpdateAsync(bool checkOnly, Action<string> say, CancellationToken ct)
+    {
+        var current = UpdateCheck.CurrentVersion;
+        var r = await UpdateCheck.FindNewerAsync(current, ct);
+        if (r == null) { say($"SteamCMD Helper {current} is the newest version (or GitHub could not be reached)."); return ExitOk; }
+        say($"SteamCMD Helper {r.Version} is available (you have {current}): {r.PageUrl}");
+        if (checkOnly) return ExitOk;
+
+        var dir = SelfUpdate.AppDir;
+        var cannot = SelfUpdate.CannotUpdateReason(r, dir);
+        if (cannot != null) { say("Cannot update in place: " + cannot + " Download it from the release page."); return ExitFailed; }
+        try
+        {
+            var last = -10;
+            var progress = new Progress<int>(p => { if (p >= last + 10) { last = p - p % 10; say($"  downloading... {last}%"); } });
+            var u = await SelfUpdate.PrepareAsync(r, SelfUpdate.KindOf(dir), progress, ct);
+            var exe = Environment.ProcessPath ?? Path.Combine(dir, SelfUpdate.ExeName);
+            SelfUpdate.Apply(u, dir, Path.GetFileName(exe));
+            say($"Updated to {r.Version}. It is used from the next start.");
+            return ExitOk;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { say("Update cancelled; nothing was changed."); return ExitFailed; }
+        catch (Exception e) { say("Error: could not update: " + e.Message); return ExitFailed; }
     }
 
     /// <summary>Finds a mod by folder name, path in the repo, or display name (case-insensitive).</summary>
@@ -107,6 +140,7 @@ public static class Cli
 
         if (o.Error != null) { Say("Error: " + o.Error); Say(""); Say(Usage); return ExitUsage; }
         if (o.Command == "help") { Say(Usage); return ExitOk; }
+        if (o.Command == "update") return await UpdateAsync(o.CheckOnly, Say, ct);
 
         if (string.IsNullOrWhiteSpace(repo) || !Directory.Exists(repo))
         {

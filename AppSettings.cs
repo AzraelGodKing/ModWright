@@ -13,6 +13,8 @@ public sealed class AppSettings
     public string Theme { get; set; } = "Dark"; // Theme.DarkName; spelled out so the tests can compile this file without WinForms
     /// <summary>Look for a newer release on GitHub at start-up.</summary>
     public bool CheckForUpdates { get; set; } = true;
+    /// <summary>Opt-in: download a newer release in the background and install it when the window closes.</summary>
+    public bool AutoUpdate { get; set; }
     /// <summary>A release version the user said not to be reminded about again.</summary>
     public string SkippedUpdate { get; set; } = "";
     /// <summary>Mods folders opened before, newest first (the drop-down next to Mods repo).</summary>

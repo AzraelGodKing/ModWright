@@ -28,9 +28,16 @@ Each [GitHub Release](../../releases) has:
   [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0). Use it if Windows or your antivirus
   refuses to launch the large unsigned exe.
 
-At start-up the app asks GitHub for the latest release and, when it is newer, offers **Download** (the standalone exe,
-through your browser), **Release notes**, or **Later**, with a box to stop reminding you about that version. Only the
-public releases list is read; nothing about you or your mods is sent. Turn it off, or **Check now**, under **Options > About**.
+At start-up the app asks GitHub for the latest release and, when it is newer, offers **Update now**, **Release notes**,
+or **Later**, with a box to stop reminding you about that version. **Update now** downloads the release file that matches
+how you run the app (the standalone exe, or the framework-dependent zip for the folder build), checks it against the
+release's `SHA256SUMS.txt`, swaps it in and restarts. If anything fails, the old files are put back. When the app's folder
+cannot be written to (for example under Program Files), it offers **Download** through your browser instead.
+
+Tick **Install new versions automatically** under **Options > About** to skip the question: a newer release is then
+downloaded and checked in the background and installed when you close the app (or press **Restart now** there). It is off
+by default. Only the public releases list and the release files are read; nothing about you or your mods is sent. Turn
+the check off, or **Check now**, under **Options > About**. From a script, `SteamCmdHelper update` does the same.
 
 ## Build and run
 
@@ -139,6 +146,7 @@ SteamCmdHelper upload MyMod OtherMod          # by folder or display name
 SteamCmdHelper upload --all --dry-run         # check and package every ready mod, upload nothing
 SteamCmdHelper upload --all --repo D:\mods --account mysteamname --log upload.log
 SteamCmdHelper list                           # each mod's version, Workshop id and status
+SteamCmdHelper update                         # install the newest release of the helper (--check: only report it)
 SteamCmdHelper help                           # every option
 ```
 
@@ -228,6 +236,12 @@ The key is stored masked, but anyone with the exe could still extract it. Keep i
 
 - Password and Steam Guard code are typed into SteamCMD's own window, never into this app, and not saved.
 - Settings (repo path, account name, theme) live in `%LocalAppData%\SteamCmdHelper\settings.json`.
+- If the app hits an unexpected error it saves a report to `%LocalAppData%\SteamCmdHelper\crashes` (the newest 20) and
+  offers **Report it**, which opens the request form as a bug report with the details filled in for you to review.
+  Nothing is sent unless you press Send.
+- Only one window opens at a time, so two copies never run SteamCMD against the same login; starting it again brings
+  the open window to the front. The command line is not affected.
+- Self-updates are installed only when the download matches the release's SHA-256 checksum and version.
 - The upload history lives in `%LocalAppData%\SteamCmdHelper\history.json` (the newest 1000 uploads).
 - SteamCMD keeps the login cache in its own folder; keep it out of git.
 - The layout file holds no secrets, but it is a new file in your repo: commit it or git-ignore it.
