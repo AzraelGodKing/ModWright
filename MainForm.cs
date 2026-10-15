@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Drawing.Drawing2D;
 using System.Reflection;
 using System.Text;
 
@@ -6,38 +7,59 @@ namespace SteamCmdHelper;
 
 public sealed class MainForm : Form
 {
-    readonly AppSettings _s = AppSettings.Load();
+    readonly AppSettings _s;
     ProjectConfig _cfg = new();
 
-    readonly TextBox _repo = new() { Tag = "fill", ReadOnly = true, TabStop = false, Cursor = Cursors.Hand };
+    readonly ComboBox _repo = new() { Tag = "fill", DropDownStyle = ComboBoxStyle.DropDownList };
     readonly TextBox _account = new() { Width = 220 };
     readonly Label _branch = new Label { AutoSize = true, AutoEllipsis = true, MaximumSize = new Size(240, 0) }.Role(ThemeRole.Muted);
     readonly TextBox _appId = new() { Width = 90 };
     readonly ComboBox _preset = new() { Width = 150, DropDownStyle = ComboBoxStyle.DropDownList };
     readonly Label _game = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Keep);
+    /// <summary>Says what to do when something can't be done yet ("pick the mods folder first"); hidden when empty.</summary>
+    readonly Label _projectNote = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill", Visible = false }.Role(ThemeRole.Keep);
+    readonly Label _accountNote = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill", Visible = false }.Role(ThemeRole.Keep);
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(8) };
     readonly ToolTip _tip = new();
     readonly Label _login = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Keep);
-    readonly LinkLabel _loginLink = new LinkLabel { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill", LinkBehavior = LinkBehavior.HoverUnderline }.Role(ThemeRole.Keep);
+    readonly LinkLabel _loginLink = new LinkLabel { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleRight, Tag = "fill", LinkBehavior = LinkBehavior.HoverUnderline }.Role(ThemeRole.Keep);
     readonly Label _steamCmdPath = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Muted);
     readonly RadioButton _themeDark = new() { AutoSize = true, Text = "Dark" };
     readonly RadioButton _themeLight = new() { AutoSize = true, Text = "Light" };
     readonly CheckBox _checkUpdates = new() { AutoSize = true, Text = "Check for a newer version at start-up" };
     readonly ListView _list = new();
+    readonly TextBox _filter = new() { Width = 170, PlaceholderText = "Filter mods  (Ctrl+F)" };
+    readonly CheckBox _hideUpToDate = new() { AutoSize = true, Text = "Hide up to date" };
     readonly FlatProgressBar _modBar = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 6) };
     readonly FlatProgressBar _overall = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 2) };
     readonly Label _current = new() { AutoSize = true, Text = "Idle", Tag = "fill" };
     readonly Label _stage = new Label { AutoSize = true }.Role(ThemeRole.Muted);
-    readonly CheckBox _dry = new() { AutoSize = true, Text = "Dry run (check everything, upload nothing)" };
-    readonly CheckBox _allowCreate = new() { AutoSize = true, Text = "Allow creating new items (private) for mods not on Steam yet" };
+    readonly CheckBox _dry = new() { AutoSize = true, Text = "Dry run" };
+    readonly CheckBox _allowCreate = new() { AutoSize = true, Text = "Create new items (private)" };
     readonly RichTextBox _log = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None }.Role(ThemeRole.Log);
 
-    Button _help = null!, _checkUpdateNow = null!, _editPage = null!, _browse = null!, _refresh = null!, _all = null!, _none = null!, _go = null!, _cancel = null!, _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!;
+    // The empty mod list: what to do next, with the button that does it.
+    readonly Panel _empty = new() { Dock = DockStyle.Fill, Visible = false };
+    readonly Label _emptyTitle = new() { AutoSize = true, Font = new Font("Segoe UI Semibold", 12f), Anchor = AnchorStyles.None };
+    readonly Label _emptyText = new Label { AutoSize = true, MaximumSize = new Size(520, 0), TextAlign = ContentAlignment.MiddleCenter, Anchor = AnchorStyles.None }.Role(ThemeRole.Muted);
+
+    // "Get set up": the steps a new user still has to do, each a link that does it.
+    readonly LinkLabel[] _steps = Enumerable.Range(0, 4).Select(_ => new LinkLabel { AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(0, 2, 24, 2) }.Role(ThemeRole.Keep)).ToArray();
+
+    Button _help = null!, _checkUpdateNow = null!, _editPage = null!, _browse = null!, _refresh = null!, _all = null!, _none = null!, _go = null!, _cancel = null!, _retry = null!,
+        _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!, _emptyBrowse = null!, _emptyLayout = null!, _emptyClear = null!;
     NavButton _navUpload = null!, _navOptions = null!;
-    Control _uploadPage = null!, _optionsPage = null!;
+    Control _uploadPage = null!, _optionsPage = null!, _setup = null!, _progress = null!;
     Tone _loginTone = Tone.Muted;
 
     List<ModInfo> _mods = new();
+    /// <summary>Every row, shown or filtered out; the list view holds only the shown ones.</summary>
+    readonly List<ListViewItem> _rows = new();
+    /// <summary>Mod folders whose upload failed in the last run (badge "Failed"), and those to try again (failed or not run).</summary>
+    readonly HashSet<string> _failed = new(StringComparer.OrdinalIgnoreCase), _retrySet = new(StringComparer.OrdinalIgnoreCase);
+    int _sortCol = -1;
+    bool _sortDesc;
+    readonly Dictionary<string, (DateTime Stamp, Image? Image)> _thumbs = new(StringComparer.OrdinalIgnoreCase);
     CancellationTokenSource? _cts;
     bool _busy, _populating;
     int _idx, _count;
@@ -47,14 +69,20 @@ public sealed class MainForm : Form
 
     public const string Disclaimer = "Not affiliated with or endorsed by Valve Corporation or Steam.";
 
+    static readonly string[] ColumnNames = { "Mod", "Uploaded version", "Updated on Steam", "Version to upload", "Workshop ID", "Preview", "Status" };
+
     /// <param name="theme">Overrides the saved theme without saving it (used by --shot).</param>
-    public MainForm(string? theme = null)
+    /// <param name="settings">Used instead of the saved settings (used by --shot).</param>
+    public MainForm(string? theme = null, AppSettings? settings = null)
     {
+        _s = settings ?? AppSettings.Load();
+        if (_s.RecentRepos.Count == 0 && _s.RepoPath.Length > 0) _s.Remember(_s.RepoPath); // settings from before the recent list
         Theme.Set(theme ?? _s.Theme);
         BuildUi();
-        _repo.Text = _s.RepoPath;
+        FillRecent();
         _account.Text = _s.Account;
         _allowCreate.Checked = _s.AllowCreate;
+        _hideUpToDate.Checked = _s.HideUpToDate;
         Shown += async (_, _) =>
         {
             RefreshAll();
@@ -62,6 +90,7 @@ public sealed class MainForm : Form
             else if (SteamLogin.LooksCached(_s.EffectiveSteamCmd, _s.Account)) _ = VerifyLoginAsync(false);
             if (_s.CheckForUpdates && !NoStartupPrompts) await CheckForUpdateAsync(false);
         };
+        Activated += (_, _) => { if (!_busy) Taskbar.Progress(this, 0, Taskbar.State.None); };
         FormClosing += (_, e) =>
         {
             if (!_busy) return;
@@ -79,6 +108,7 @@ public sealed class MainForm : Form
         Width = Math.Min(1000, screen.Width); Height = Math.Min(800, screen.Height); MinimumSize = new Size(840, 640);
         Font = new Font("Segoe UI", 9.5f);
         StartPosition = FormStartPosition.CenterScreen;
+        KeyPreview = true;
         Theme.Style(_tip);
 
         _browse = Btn("Browse...", (_, _) => BrowseRepo());
@@ -94,7 +124,12 @@ public sealed class MainForm : Form
         _go.Font = new Font(Font, FontStyle.Bold);
         _go.Padding = new Padding(14, 4, 14, 4);
         _cancel = Btn("Cancel", (_, _) => Cancel());
-        _cancel.Enabled = false;
+        _cancel.Visible = false;
+        _retry = Btn("Retry failed", async (_, _) => await RetryFailedAsync());
+        _retry.Visible = false;
+        _emptyBrowse = Btn("Browse...", (_, _) => BrowseRepo()).Role(ThemeRole.Accent);
+        _emptyLayout = Btn("Edit layout file...", (_, _) => EditLayout());
+        _emptyClear = Btn("Clear the filter", (_, _) => { _filter.Text = ""; _hideUpToDate.Checked = false; });
 
         _uploadPage = BuildUploadPage();
         _optionsPage = BuildOptionsPage();
@@ -110,9 +145,11 @@ public sealed class MainForm : Form
         ShowPage(_uploadPage);
 
         Theme.Apply(this);
+        EnableFolderDrop(this);
 
-        _repo.DoubleClick += (_, _) => { if (!_busy) BrowseRepo(); };
-        _account.Leave += (_, _) => { SaveFields(); UpdateLoginHint(); };
+        _repo.SelectionChangeCommitted += (_, _) => { if (_repo.SelectedItem is string p && !_busy) OpenRepo(p); };
+        _account.Leave += (_, _) => { SaveFields(); UpdateLoginHint(); UpdateSetup(); };
+        _account.TextChanged += (_, _) => ShowNote(_accountNote, null);
         _allowCreate.CheckedChanged += (_, _) => { if (!_populating) { SaveFields(); RefreshAll(); } };
         _appId.Leave += async (_, _) => await ApplyAppIdAsync();
         _appId.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await ApplyAppIdAsync(); } };
@@ -121,6 +158,9 @@ public sealed class MainForm : Form
         _themeLight.CheckedChanged += (_, _) => { if (_themeLight.Checked) SetTheme(Theme.LightName); };
         _loginLink.LinkClicked += (_, _) => ShowPage(_optionsPage);
         _checkUpdates.CheckedChanged += (_, _) => { if (!_populating) { _s.CheckForUpdates = _checkUpdates.Checked; _s.Save(); } };
+        _filter.TextChanged += (_, _) => ApplyFilter();
+        _filter.KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape && _filter.Text.Length > 0) { _filter.Text = ""; e.SuppressKeyPress = true; } };
+        _hideUpToDate.CheckedChanged += (_, _) => { if (_populating) return; _s.HideUpToDate = _hideUpToDate.Checked; _s.Save(); ApplyFilter(); };
     }
 
     /// <summary>The top bar: app name on the left, the Upload / Options tabs and the "?" button on the right.</summary>
@@ -134,6 +174,8 @@ public sealed class MainForm : Form
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         var title = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 0, 0, 6), Anchor = AnchorStyles.Left };
+        if (Theme.AppIcon != null)
+            title.Controls.Add(new PictureBox { Image = new Icon(Theme.AppIcon, 32, 32).ToBitmap(), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(26, 26), Margin = new Padding(0, 1, 8, 0) });
         title.Controls.Add(new Label { Text = "SteamCMD Helper", AutoSize = true, Font = new Font("Segoe UI Semibold", 13f), Margin = new Padding(0, 0, 8, 0) });
         title.Controls.Add(new Label { Text = "Steam Workshop uploads", AutoSize = true, Margin = new Padding(0, 7, 0, 0) }.Role(ThemeRole.Muted));
         bar.Controls.Add(title, 0, 0);
@@ -158,17 +200,32 @@ public sealed class MainForm : Form
 
     Control BuildUploadPage()
     {
-        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(14, 12, 14, 12) };
+        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(14, 12, 14, 12) };
+        page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         page.RowStyles.Add(new RowStyle(SizeType.Percent, 65));
         page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         page.RowStyles.Add(new RowStyle(SizeType.Percent, 35)); // the list and the log share what is left, so neither vanishes on small screens
 
+        // Shown until SteamCMD, the account, the mods folder and the app id are all set.
+        var steps = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, WrapContents = true, Margin = Padding.Empty };
+        foreach (var l in _steps)
+        {
+            l.LinkClicked += (_, _) => (l.Tag as Action)?.Invoke();
+            steps.Controls.Add(l);
+        }
+        _setup = Card("Get set up", null, steps, Hint("Uploads need all four. This box goes away once they are done."));
+        page.Controls.Add(_setup, 0, 0);
+
         _preset.Items.AddRange(ProjectConfig.PresetNames.Cast<object>().Append("Custom").ToArray());
+        _tip.SetToolTip(_repo, "Your mods folders; pick one you used before, press Browse, or drop a folder onto this window");
+        _tip.SetToolTip(_browse, "Pick the folder that holds your mods (Ctrl+O)");
         page.Controls.Add(Card("Project", null,
             Row(Lbl("Mods repo"), _repo, _browse, _branch),
-            Row(Lbl("Steam app ID"), _appId, Lbl("Layout"), _preset, _editLayout, _game)), 0, 0);
+            Row(Lbl("Steam app ID"), _appId, Lbl("Layout"), _preset, _editLayout),
+            Row(_game),
+            Row(_projectNote)), 0, 1);
 
         _list.View = View.Details;
         _list.CheckBoxes = true;
@@ -176,63 +233,120 @@ public sealed class MainForm : Form
         _list.HideSelection = false;
         _list.Dock = DockStyle.Fill;
         _list.ShowItemToolTips = true;
-        _list.Columns.Add("Mod", 200);
-        _list.Columns.Add("Uploaded version", 135);
-        _list.Columns.Add("Updated on Steam", 125);
-        _list.Columns.Add("Version to upload", 135);
-        _list.Columns.Add("Workshop ID", 105);
-        _list.Columns.Add("Preview", 65, HorizontalAlignment.Center);
-        _list.Columns.Add("Status", 190);
+        // Taller rows leave room for the preview thumbnail and the status badge.
+        _list.SmallImageList = new ImageList { ImageSize = new Size(1, LogicalToDeviceUnits(28)) };
+        int[] widths = { 200, 125, 120, 125, 105, 70, 190 };
+        for (var i = 0; i < ColumnNames.Length; i++)
+            _list.Columns.Add(ColumnNames[i], widths[i], i == PreviewCol ? HorizontalAlignment.Center : HorizontalAlignment.Left);
+        _list.PaintCells(PaintCell);
         _list.ItemCheck += OnItemCheck;
         _list.ItemChecked += (_, _) => UpdateGoButton();
         _list.MouseDoubleClick += OnListDoubleClick;
+        _list.ColumnClick += (_, e) => SortBy(e.Column);
+        _list.SelectedIndexChanged += (_, _) => UpdateSelectionButtons();
+        _list.GotFocus += (_, _) => _list.Invalidate();
+        _list.LostFocus += (_, _) => _list.Invalidate();
         _list.Resize += (_, _) => StretchLastColumn();
         _list.ColumnWidthChanged += (_, e) => { if (e.ColumnIndex < _list.Columns.Count - 1) StretchLastColumn(); };
         _tip.SetToolTip(_editPage, "Change the selected mod's title, description or visibility on Steam with its next upload");
-        var menu = new ContextMenuStrip();
-        menu.Items.Add("Edit Workshop page...", null, (_, _) => EditWorkshopPage(SelectedMod()));
-        menu.Items.Add("Upload history...", null, (_, _) => { if (SelectedMod() is { } m) ShowHistory(m); });
-        var onSteam = menu.Items.Add("Open on Steam", null, (_, _) =>
-        {
-            if (SelectedMod() is { OnSteam: true } m) OpenUrl($"https://steamcommunity.com/sharedfiles/filedetails/?id={m.WorkshopId}");
-        });
-        menu.Opening += (_, e) =>
-        {
-            e.Cancel = _busy || SelectedMod() == null;
-            onSteam.Enabled = SelectedMod()?.OnSteam == true;
-        };
-        _list.ContextMenuStrip = menu;
-        var mods = Card("Mods", new Control[] { _editPage, _all, _none, _refresh }, _list);
-        mods.AutoSize = false; mods.Dock = DockStyle.Fill;
-        page.Controls.Add(mods, 0, 1);
+        _tip.SetToolTip(_hideUpToDate, "Hide the mods whose version on Steam is already the one to upload");
+        _tip.SetToolTip(_refresh, "Read the mods folder again (F5)");
+        _list.ContextMenuStrip = BuildRowMenu();
 
-        var progress = Card(null, null,
+        // The list and its empty state share one spot; only one of them is visible.
+        var emptyBox = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Anchor = AnchorStyles.None };
+        var emptyButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Anchor = AnchorStyles.None, Margin = new Padding(0, 10, 0, 0) };
+        foreach (var b in new[] { _emptyBrowse, _emptyLayout, _emptyClear }) { b.Margin = new Padding(4, 0, 4, 0); emptyButtons.Controls.Add(b); }
+        _emptyTitle.Margin = new Padding(0, 0, 0, 6);
+        emptyBox.Controls.AddRange(new Control[] { _emptyTitle, _emptyText, emptyButtons });
+        var center = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+        center.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        center.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        center.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        center.Controls.Add(emptyBox, 0, 1);
+        _empty.Controls.Add(center);
+        var listHost = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
+        listHost.Controls.Add(_list);
+        listHost.Controls.Add(_empty);
+
+        var mods = Card("Mods", new Control[] { _filter, _hideUpToDate, _editPage, _all, _none, _refresh }, listHost);
+        mods.AutoSize = false; mods.Dock = DockStyle.Fill;
+        page.Controls.Add(mods, 0, 2);
+
+        // Only while uploading and afterwards (with the result); nothing to show before the first run.
+        _progress = Card(null, null,
             Row(_current, _stage),
             _modBar,
             Lbl("Overall").Role(ThemeRole.Muted),
-            _overall,
-            Row(_allowCreate, _dry));
-        page.Controls.Add(progress, 0, 2);
+            _overall);
+        _progress.Visible = false;
+        page.Controls.Add(_progress, 0, 3);
 
         _tip.SetToolTip(_loginLink, "Steam login settings are on the Options tab");
         _tip.SetToolTip(_all, "Tick every mod that is ready to upload, then upload them in one go");
-        var actions = Row(_loginLink, _cancel, _go);
+        _tip.SetToolTip(_dry, "Check everything and build the upload, but send nothing to Steam");
+        _tip.SetToolTip(_allowCreate, "Mods that are not on Steam yet are created as new private Workshop items");
+        _tip.SetToolTip(_go, "Upload the ticked mods (Ctrl+Enter)");
+        _tip.SetToolTip(_retry, "Upload again only the mods that failed or were not reached in the last run");
+        var actions = Row(_dry, _allowCreate, _loginLink, _retry, _cancel, _go);
         actions.Margin = new Padding(0, 2, 0, 8);
-        page.Controls.Add(actions, 0, 3);
+        page.Controls.Add(actions, 0, 4);
 
-        var log = Card(null, null, _log);
+        var copy = SmallBtn("Copy", (_, _) => CopyLog());
+        var save = SmallBtn("Save...", (_, _) => SaveLog());
+        var clear = SmallBtn("Clear", (_, _) => _log.Clear());
+        var steamLogs = SmallBtn("SteamCMD logs", (_, _) => OpenSteamCmdLogs());
+        _tip.SetToolTip(copy, "Copy the whole log");
+        _tip.SetToolTip(steamLogs, "Open SteamCMD's own log folder (workshop_log.txt and others)");
+        var log = Card("Log", new Control[] { copy, save, clear, steamLogs }, _log);
         log.AutoSize = false; log.Dock = DockStyle.Fill;
-        log.Padding = new Padding(1); // a thin frame; the log has its own console background
         log.Margin = Padding.Empty;
-        page.Controls.Add(log, 0, 4);
+        page.Controls.Add(log, 0, 5);
         return page;
+    }
+
+    ContextMenuStrip BuildRowMenu()
+    {
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Edit Workshop page...", null, (_, _) => EditWorkshopPage(SelectedMod()));
+        menu.Items.Add("Upload history...", null, (_, _) => { if (SelectedMod() is { } m) ShowHistory(m); });
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Open mod folder", null, (_, _) => { if (SelectedMod() is { } m) OpenPath(m.Dir); });
+        var changelog = menu.Items.Add("Open changelog", null, (_, _) => { if (ChangelogOf(SelectedMod()) is { } p) OpenPath(p); });
+        menu.Items.Add(new ToolStripSeparator());
+        var onSteam = menu.Items.Add("Open on Steam", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) OpenUrl(WorkshopUrl(m)); });
+        var copyId = menu.Items.Add("Copy Workshop ID", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(m.WorkshopId!, "Workshop ID"); });
+        var copyLink = menu.Items.Add("Copy Workshop link", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(WorkshopUrl(m), "Workshop link"); });
+        menu.Opening += (_, e) =>
+        {
+            e.Cancel = _busy || SelectedMod() == null;
+            onSteam.Enabled = copyId.Enabled = copyLink.Enabled = SelectedMod()?.OnSteam == true;
+            changelog.Enabled = ChangelogOf(SelectedMod()) != null;
+        };
+        Theme.StyleMenu(menu);
+        return menu;
+    }
+
+    static string WorkshopUrl(ModInfo m) => $"https://steamcommunity.com/sharedfiles/filedetails/?id={m.WorkshopId}";
+
+    string? ChangelogOf(ModInfo? m)
+    {
+        if (m == null || string.IsNullOrWhiteSpace(_cfg.Changelog)) return null;
+        var p = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Changelog));
+        return File.Exists(p) ? p : null;
     }
 
     Control BuildOptionsPage()
     {
-        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(14, 12, 14, 12), AutoScroll = true };
-        for (var i = 0; i < 3; i++) page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(14, 12, 14, 12), AutoScroll = true };
+        for (var i = 0; i < 5; i++) page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         page.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        // Settings read best as one column; on a wide window keep it from stretching across the screen.
+        page.Resize += (_, _) =>
+        {
+            var right = Math.Max(14, page.ClientSize.Width - 14 - LogicalToDeviceUnits(820));
+            if (page.Padding.Right != right) page.Padding = new Padding(14, 12, right, 12);
+        };
 
         _themeDark.Checked = Theme.Current.Dark;
         _themeLight.Checked = !Theme.Current.Dark;
@@ -243,20 +357,48 @@ public sealed class MainForm : Form
         page.Controls.Add(Card("Steam account", null,
             Row(Lbl("Account name"), _account, _checkLogin, _doLogin),
             Row(Lbl("Status"), _login),
-            Row(Lbl("SteamCMD"), _steamCmdPath, _install),
+            Row(_accountNote),
             Hint("You log in once in SteamCMD's own window and Steam keeps the login. This program never sees your password.")), 0, 1);
+
+        var openSteam = Btn("Open folder", (_, _) => OpenPath(Path.GetDirectoryName(_s.EffectiveSteamCmd)!));
+        var openLogs = Btn("Open logs", (_, _) => OpenSteamCmdLogs());
+        page.Controls.Add(Card("SteamCMD", null,
+            Row(Lbl("Location"), _steamCmdPath, _install, openSteam, openLogs),
+            Hint("SteamCMD is Valve's command-line Steam client; every upload goes through it. Its own logs (workshop_log.txt and others) help when Steam turns an upload down.")), 0, 2);
+
+        var openData = Btn("Open data folder", (_, _) => OpenPath(AppSettings.Folder));
+        var forget = Btn("Forget recent folders", (_, _) =>
+        {
+            _s.RecentRepos.Clear();
+            if (_s.RepoPath.Length > 0) _s.RecentRepos.Add(_s.RepoPath);
+            _s.Save();
+            FillRecent();
+            Append("Recent mods folders forgotten (the current one is kept).", LogKind.Note);
+        });
+        page.Controls.Add(Card("Your data", null,
+            Hint("Settings, the recent folders list and the upload history are kept in %LocalAppData%\\SteamCmdHelper for your Windows user only."),
+            Row(openData, forget)), 0, 3);
 
         var version = (typeof(MainForm).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "").Split('+')[0];
         _checkUpdates.Checked = _s.CheckForUpdates;
         _checkUpdateNow = Btn("Check now", async (_, _) => await CheckForUpdateAsync(true));
         page.Controls.Add(Card("About", null,
-            Hint($"SteamCMD Helper {version}. Settings are stored in %LocalAppData%\\SteamCmdHelper\\settings.json."),
+            Hint($"SteamCMD Helper {version}."),
             Row(_checkUpdates, _checkUpdateNow),
-            Hint(Disclaimer + " Steam and SteamCMD are trademarks of Valve Corporation.")), 0, 2);
+            Hint("Shortcuts: F5 refresh, Ctrl+O pick the mods folder, Ctrl+F filter the list, Ctrl+Enter upload."),
+            Hint(Disclaimer + " Steam and SteamCMD are trademarks of Valve Corporation.")), 0, 4);
         return page;
     }
 
     public void ShowOptions() => ShowPage(_optionsPage);
+
+    /// <summary>Selects the first row, to show the selection colours (used by --shot).</summary>
+    public void SelectFirstMod()
+    {
+        if (_list.Items.Count == 0) return;
+        _list.Items[0].Selected = true;
+        _list.Focus();
+    }
 
     void ShowPage(Control page)
     {
@@ -276,11 +418,15 @@ public sealed class MainForm : Form
         _s.Save();
         SuspendLayout();
         Theme.Apply(this);
+        Theme.StyleMenu(_list.ContextMenuStrip!);
         _navUpload.Selected = _uploadPage.Visible;
         _navOptions.Selected = _optionsPage.Visible;
-        foreach (ListViewItem it in _list.Items) if (it.Tag is ModInfo m) ColorRow(it, m);
+        foreach (var it in _rows) ColorRow(it, (ModInfo)it.Tag!);
         SetLogin(_login.Text, _loginTone);
         ShowGame();
+        UpdateSetup();
+        ShowNote(_projectNote, _projectNote.Text);
+        ShowNote(_accountNote, _accountNote.Text);
         ResumeLayout(true);
         Invalidate(true);
     }
@@ -294,13 +440,49 @@ public sealed class MainForm : Form
         var w = Math.Max(120, _list.ClientSize.Width - others);
         if (last.Width != w) last.Width = w;
     }
+
+    // ---------------------------------------------------------------- keyboard and drag-and-drop
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        switch (keyData)
+        {
+            case Keys.F5 when !_busy:
+                RefreshAll(); return true;
+            case Keys.Control | Keys.O when !_busy:
+                BrowseRepo(); return true;
+            case Keys.Control | Keys.F:
+                ShowPage(_uploadPage); _filter.Focus(); _filter.SelectAll(); return true;
+            case Keys.Control | Keys.Enter when _go.Enabled:
+                _go.PerformClick(); return true;
+        }
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    /// <summary>Dropping a folder (or a file inside one) anywhere on the window opens it as the mods folder.</summary>
+    void EnableFolderDrop(Control c)
+    {
+        c.AllowDrop = true;
+        c.DragEnter += (_, e) => e.Effect = !_busy && DroppedFolder(e.Data) != null ? DragDropEffects.Link : DragDropEffects.None;
+        c.DragDrop += (_, e) => { if (!_busy && DroppedFolder(e.Data) is { } dir) OpenRepo(dir); };
+        foreach (Control child in c.Controls) EnableFolderDrop(child);
+    }
+
+    static string? DroppedFolder(IDataObject? data)
+    {
+        if (data?.GetData(DataFormats.FileDrop) is not string[] { Length: > 0 } paths) return null;
+        var p = paths[0];
+        if (Directory.Exists(p)) return p;
+        return File.Exists(p) ? Path.GetDirectoryName(p) : null;
+    }
+
     // ---------------------------------------------------------------- game / layout
 
     /// <summary>The "?" button: a layout request, bug report or feature request, sent to Linear.</summary>
     void OpenRequest()
     {
         // Show one mod's file names (never contents) so the request says what a mod looks like.
-        var mod = (_list.SelectedItems.Count > 0 ? _list.SelectedItems[0].Tag : _list.Items.Count > 0 ? _list.Items[0].Tag : null) as ModInfo;
+        var mod = (_list.SelectedItems.Count > 0 ? _list.SelectedItems[0].Tag : _rows.Count > 0 ? _rows[0].Tag : null) as ModInfo;
         var names = mod != null ? RequestForm.ListFileNames(mod.Dir) : "";
         using var f = new RequestForm(_cfg.GameName, _cfg.AppId, _cfg.PresetName(), names);
         f.ShowDialog(this);
@@ -313,21 +495,24 @@ public sealed class MainForm : Form
         if (_cfg.AppIdLocked) { _appId.Text = _cfg.AppId; return; }
         var id = _appId.Text.Trim();
         if (id == _cfg.AppId) return;
-        if (id.Length > 0 && !id.All(char.IsDigit)) { Append("The app ID is a number, e.g. 294100 for RimWorld (it is in the game's Steam store URL).", Color.Orange); return; }
-        if (!Directory.Exists(_s.RepoPath)) { MessageBox.Show(this, "Pick the mods repo folder first.", Text); _appId.Text = _cfg.AppId; return; }
+        if (id.Length > 0 && !id.All(char.IsDigit)) { Nudge(_appId, _projectNote, "The app ID is a number, e.g. 294100 for RimWorld (it is in the game's Steam store URL)."); return; }
+        if (!Directory.Exists(_s.RepoPath)) { _appId.Text = _cfg.AppId; Nudge(_repo, _projectNote, "Pick the mods folder first; the app ID is saved in it."); return; }
 
+        ShowNote(_projectNote, null);
         _cfg.AppId = id;
         _cfg.GameName = "";
         if (id.Length > 0) _cfg.GameName = await LookupGameNameAsync(id) ?? "";
         SaveLayout(id.Length > 0 ? $"App ID set to {id}{(_cfg.GameName.Length > 0 ? " (" + _cfg.GameName + ")" : "")}." : "App ID cleared.");
         ShowGame();
+        UpdateSetup();
         UpdateGoButton();
     }
 
     void ApplyPresetChoice()
     {
         var name = _preset.SelectedItem as string ?? "";
-        if (!Directory.Exists(_s.RepoPath)) { MessageBox.Show(this, "Pick the mods repo folder first.", Text); ShowGame(); return; }
+        if (!Directory.Exists(_s.RepoPath)) { ShowGame(); Nudge(_repo, _projectNote, "Pick the mods folder first; the layout is saved in it."); return; }
+        ShowNote(_projectNote, null);
         if (name == ProjectConfig.CustomName)
         {
             if (_cfg.PresetName() == ProjectConfig.CustomName) { ShowGame(); return; }
@@ -343,8 +528,8 @@ public sealed class MainForm : Form
 
     void SaveLayout(string what)
     {
-        try { _cfg.Save(_s.RepoPath); Append(what + " Saved to " + ProjectConfig.FileName + " in the repo.", Color.DeepSkyBlue); }
-        catch (Exception e) { Append("Could not save " + ProjectConfig.FileName + ": " + e.Message, Color.Tomato); }
+        try { _cfg.Save(_s.RepoPath); Append(what + " Saved to " + ProjectConfig.FileName + " in the repo.", LogKind.Note); }
+        catch (Exception e) { Append("Could not save " + ProjectConfig.FileName + ": " + e.Message, LogKind.Error); }
     }
 
     static async Task<string?> LookupGameNameAsync(string appId)
@@ -387,6 +572,7 @@ public sealed class MainForm : Form
     {
         _editLayout.Enabled = !_busy && !_cfg.IsBuiltIn;
         _appId.Enabled = !_busy && !_cfg.AppIdLocked;
+        _tip.SetToolTip(_editLayout, _cfg.IsBuiltIn ? "Built-in layouts are locked; choose Custom in the Layout box to edit one" : "Open the layout file (" + ProjectConfig.FileName + ") in your editor");
     }
 
     static Label Lbl(string t) => new() { Text = t, AutoSize = true };
@@ -421,6 +607,15 @@ public sealed class MainForm : Form
         return b;
     }
 
+    /// <summary>A compact button for a card's title row.</summary>
+    static Button SmallBtn(string text, EventHandler h)
+    {
+        var b = Btn(text, h);
+        b.Padding = new Padding(4, 0, 4, 0);
+        b.Font = new Font("Segoe UI", 8.5f);
+        return b;
+    }
+
     static TableLayoutPanel Row(params Control[] cs)
     {
         var t = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = cs.Length, RowCount = 1, Margin = new Padding(0, 0, 0, 6) };
@@ -435,34 +630,107 @@ public sealed class MainForm : Form
         return t;
     }
 
+    // ---------------------------------------------------------------- inline notes instead of message boxes
+
+    /// <summary>Shows <paramref name="text"/> in a note line under a card (warning colour), or hides the line when null.</summary>
+    void ShowNote(Label note, string? text)
+    {
+        note.Text = text ?? "";
+        note.Visible = !string.IsNullOrEmpty(text);
+        note.ForeColor = Theme.Of(Tone.Warn);
+        _tip.SetToolTip(note, note.Text);
+    }
+
+    /// <summary>
+    /// Says what is missing next to where it is fixed, instead of a pop-up: switches to the right tab, shows the note,
+    /// puts the cursor on <paramref name="target"/> and briefly lights it up.
+    /// </summary>
+    void Nudge(Control target, Label note, string text)
+    {
+        ShowPage(note == _accountNote ? _optionsPage : _uploadPage);
+        ShowNote(note, text);
+        if (target.CanFocus) target.Focus();
+        Flash(target);
+    }
+
+    readonly HashSet<Control> _flashing = new();
+
+    async void Flash(Control c)
+    {
+        if (!_flashing.Add(c)) return;
+        var old = c.BackColor;
+        try
+        {
+            for (var i = 0; i < 2; i++)
+            {
+                c.BackColor = Theme.Blend(old, Theme.Of(Tone.Warn), 0.45);
+                await Task.Delay(220);
+                if (c.IsDisposed) return;
+                c.BackColor = old;
+                await Task.Delay(160);
+                if (c.IsDisposed) return;
+            }
+        }
+        finally
+        {
+            _flashing.Remove(c);
+            if (!c.IsDisposed) c.BackColor = old;
+        }
+    }
+
     // ---------------------------------------------------------------- state
 
     void SaveFields()
     {
-        _s.RepoPath = _repo.Text.Trim();
         _s.Account = _account.Text.Trim();
         _s.AllowCreate = _allowCreate.Checked;
         _s.Save();
     }
 
+    /// <summary>Fills the mods folder drop-down from the recent list, the current folder selected.</summary>
+    void FillRecent()
+    {
+        _populating = true;
+        _repo.BeginUpdate();
+        _repo.Items.Clear();
+        foreach (var p in _s.RecentThatExist()) _repo.Items.Add(p);
+        var i = _repo.Items.IndexOf(_s.RepoPath);
+        if (i < 0 && _s.RepoPath.Length > 0) i = _repo.Items.Add(_s.RepoPath); // gone from disk: still show what is set
+        _repo.SelectedIndex = i;
+        _repo.EndUpdate();
+        _populating = false;
+        _tip.SetToolTip(_repo, _s.RepoPath.Length > 0 ? _s.RepoPath : "Pick the folder that holds your mods");
+    }
+
     void BrowseRepo()
     {
-        using var d = new FolderBrowserDialog { Description = "Pick the folder that holds your mods (the repo)", SelectedPath = _repo.Text };
+        if (_busy) return;
+        using var d = new FolderBrowserDialog { Description = "Pick the folder that holds your mods (the repo)", SelectedPath = _s.RepoPath, UseDescriptionForTitle = true };
         if (d.ShowDialog(this) != DialogResult.OK) return;
-        _repo.Text = d.SelectedPath;
-        SaveFields();
+        OpenRepo(d.SelectedPath);
+    }
+
+    /// <summary>Makes <paramref name="path"/> the mods folder, remembers it in the recent list, and reads it.</summary>
+    void OpenRepo(string path)
+    {
+        var changed = !string.Equals(path, _s.RepoPath, StringComparison.OrdinalIgnoreCase);
+        _s.Remember(path);
+        _s.Save();
+        FillRecent();
+        if (changed) { _failed.Clear(); _retrySet.Clear(); _progress.Visible = false; _filter.Text = ""; }
+        ShowNote(_projectNote, null);
         RefreshAll();
     }
 
     void EditLayout()
     {
         SaveFields();
-        if (!Directory.Exists(_s.RepoPath)) { MessageBox.Show(this, "Pick the mods repo folder first.", Text); return; }
-        if (_cfg.IsBuiltIn) { MessageBox.Show(this, "Built-in layouts are locked. Choose \"Custom\" in the Layout box to make your own.", Text); return; }
+        if (!Directory.Exists(_s.RepoPath)) { Nudge(_repo, _projectNote, "Pick the mods folder first; the layout file lives in it."); return; }
+        if (_cfg.IsBuiltIn) { Nudge(_preset, _projectNote, "Built-in layouts are locked. Choose \"Custom\" in the Layout box to make your own."); return; }
         var path = _cfg.EnsureFile(_s.RepoPath);
-        Append($"Opened {path}. Save it, then press Refresh.", Color.DeepSkyBlue);
+        Append($"Opened {path}. Save it, then press Refresh.", LogKind.Note);
         try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
-        catch (Exception e) { Append("Could not open the file: " + e.Message, Color.Tomato); }
+        catch (Exception e) { Append("Could not open the file: " + e.Message, LogKind.Error); }
     }
 
     void RefreshAll()
@@ -470,17 +738,16 @@ public sealed class MainForm : Form
         SaveFields();
         _cfg = ProjectConfig.Load(_s.RepoPath);
         var branch = ModScanner.GitBranch(_s.RepoPath);
-        _branch.Text = branch == null ? "(not a git repo)" : "branch: " + branch;
+        _branch.Text = !Directory.Exists(_s.RepoPath) ? "" : branch == null ? "(not a git repo)" : "branch: " + branch;
         ShowGame();
-        if (_cfg.Error != null) Append(_cfg.Error, Color.Orange);
+        if (_cfg.Error != null) Append(_cfg.Error, LogKind.Warn);
 
-        _populating = true;
-        _list.Items.Clear();
         _mods = ModScanner.Scan(_s.RepoPath, _cfg);
         foreach (var m in _mods)
             if (WorkshopPage.Get(m.Dir) is { } page) m.Warnings.Add("Workshop page changes go out with the next upload: " + page.Summary());
         var uploaded = UploadedVersions.LoadRecord();
         var history = UploadHistory.Latest(UploadHistory.Load());
+        _rows.Clear();
         foreach (var m in _mods)
         {
             var it = new ListViewItem(m.Name) { UseItemStyleForSubItems = false };
@@ -489,31 +756,155 @@ public sealed class MainForm : Form
             it.SubItems.Add(m.Version.Length > 0 ? m.Version : "?");
             it.SubItems.Add(m.WorkshopId ?? "0"); // 0 = not on Steam yet, so uploading creates it
             it.SubItems.Add(m.PreviewOk == null ? "-" : m.PreviewOk == true ? "✔" : "✖");
-            it.SubItems.Add(m.StatusLabel);
+            it.SubItems.Add("");
             it.ToolTipText = RowTip(m);
             it.Tag = m;
-            var usable = m.Ready && (m.OnSteam || _s.AllowCreate);
-            it.Checked = usable && m.OnSteam;
-            ColorRow(it, m);
-            _list.Items.Add(it);
-            if (!m.Ready) Append($"{m.Name}: fix {string.Join("; ", m.Problems)}", Color.Orange);
+            it.Checked = CanTick(m) && m.OnSteam;
+            UpdateRowState(it);
+            _rows.Add(it);
+            if (!m.Ready) Append($"{m.Name}: fix {string.Join("; ", m.Problems)}", LogKind.Warn);
         }
-        _populating = false;
+        ApplyFilter();
         _ = LoadUploadedVersionsAsync(_mods.Where(m => m.OnSteam).ToList(), uploaded, history);
 
-        if (_mods.Count == 0)
-            Append(string.IsNullOrWhiteSpace(_cfg.ModMarker)
-                ? "No mod folders found. Pick the folder that contains one sub-folder per mod, or press Edit layout file to point at them."
-                : $"No mods found. Pick the folder that contains the mod folders (each needs {_cfg.ModMarker}), choose a different Layout, or press Edit layout file.", Color.Orange);
-
         UpdateLoginHint();
+        UpdateSetup();
         UpdateGoButton();
+        UpdateSelectionButtons();
         StretchLastColumn();
+    }
+
+    bool CanTick(ModInfo m) => m.Ready && (m.OnSteam || _allowCreate.Checked);
+
+    RowState StateOf(ListViewItem it)
+    {
+        var m = (ModInfo)it.Tag!;
+        return ModRows.State(m, it.SubItems[UploadedCol].Text, _failed.Contains(m.Dir));
+    }
+
+    /// <summary>Sets the Status text (the badge) and the row colours from the mod's current state.</summary>
+    void UpdateRowState(ListViewItem it)
+    {
+        it.SubItems[StatusCol].Text = ModRows.Label(StateOf(it));
+        ColorRow(it, (ModInfo)it.Tag!);
+    }
+
+    static Tone ToneOf(RowState s) => s switch
+    {
+        RowState.Fix or RowState.Failed => Tone.Error,
+        RowState.Changed => Tone.Warn,
+        RowState.New => Tone.Info,
+        RowState.UpToDate => Tone.Ok,
+        _ => Tone.Muted,
+    };
+
+    /// <summary>Shows the rows that pass the filter box and "Hide up to date", in the chosen sort order.</summary>
+    void ApplyFilter()
+    {
+        var visible = _rows.Where(it => ModRows.Show((ModInfo)it.Tag!, StateOf(it), _filter.Text, _hideUpToDate.Checked)).ToList();
+        if (_sortCol >= 0)
+        {
+            visible.Sort(CompareRows);
+            if (_sortDesc) visible.Reverse();
+        }
+        var selected = SelectedMod();
+        _populating = true;
+        _list.BeginUpdate();
+        _list.Items.Clear();
+        _list.Items.AddRange(visible.ToArray());
+        foreach (var it in visible) it.Selected = ReferenceEquals(it.Tag, selected);
+        _list.EndUpdate();
+        _populating = false;
+        UpdateEmptyState();
+        UpdateGoButton();
+        UpdateSelectionButtons();
+    }
+
+    int CompareRows(ListViewItem a, ListViewItem b)
+    {
+        var c = _sortCol switch
+        {
+            StatusCol => ModRows.CompareState(StateOf(a), StateOf(b)),
+            SteamCol => Nullable.Compare(a.SubItems[SteamCol].Tag as DateTimeOffset?, b.SubItems[SteamCol].Tag as DateTimeOffset?),
+            PreviewCol => Nullable.Compare(((ModInfo)a.Tag!).PreviewOk, ((ModInfo)b.Tag!).PreviewOk),
+            _ => ModRows.CompareNatural(a.SubItems[_sortCol].Text, b.SubItems[_sortCol].Text),
+        };
+        return c != 0 ? c : ModRows.CompareNatural(a.Text, b.Text);
+    }
+
+    /// <summary>Clicking a column header sorts by it; clicking it again reverses; a third time goes back to folder order.</summary>
+    void SortBy(int col)
+    {
+        if (_sortCol != col) { _sortCol = col; _sortDesc = false; }
+        else if (!_sortDesc) _sortDesc = true;
+        else _sortCol = -1;
+        for (var i = 0; i < _list.Columns.Count; i++)
+            _list.Columns[i].Text = ColumnNames[i] + (i == _sortCol ? (_sortDesc ? "  ▼" : "  ▲") : "");
+        ApplyFilter();
+    }
+
+    /// <summary>The empty mod list says why it is empty and offers the button that fixes it.</summary>
+    void UpdateEmptyState()
+    {
+        var empty = _list.Items.Count == 0;
+        _empty.Visible = empty;
+        _list.Visible = !empty;
+        if (!empty) return;
+        _emptyLayout.Visible = _emptyClear.Visible = false;
+        _emptyBrowse.Visible = true;
+        if (!Directory.Exists(_s.RepoPath))
+        {
+            _emptyTitle.Text = "Pick your mods folder";
+            _emptyText.Text = "Choose the folder that holds your mods, one sub-folder per mod.\nYou can also drop the folder onto this window.";
+        }
+        else if (_rows.Count == 0)
+        {
+            _emptyTitle.Text = "No mods found in this folder";
+            _emptyText.Text = string.IsNullOrWhiteSpace(_cfg.ModMarker)
+                ? "Pick the folder that contains one sub-folder per mod, or edit the layout file to point at them."
+                : $"Each mod folder needs {_cfg.ModMarker}. Pick the folder that contains the mod folders, or choose a different Layout above.";
+            _emptyLayout.Visible = !_cfg.IsBuiltIn;
+        }
+        else
+        {
+            _emptyTitle.Text = "No mods match";
+            var n = _rows.Count;
+            _emptyText.Text = $"All {n} mod{(n == 1 ? " is" : "s are")} hidden by the filter{(_hideUpToDate.Checked ? " or by Hide up to date" : "")}.";
+            _emptyBrowse.Visible = false;
+            _emptyClear.Visible = true;
+        }
+        _emptyTitle.ForeColor = Theme.Current.Text;
+    }
+
+    /// <summary>The "Get set up" card: one line per step, a link while it still needs doing; hidden once all are done.</summary>
+    void UpdateSetup()
+    {
+        var installed = SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd);
+        var hasRepo = Directory.Exists(_s.RepoPath);
+        Step(0, installed, "SteamCMD installed", "Install SteamCMD", async () => await InstallAsync());
+        Step(1, _s.Account.Length > 0, "Steam account: " + _s.Account, "Set your Steam account", () => { ShowPage(_optionsPage); _account.Focus(); Flash(_account); });
+        Step(2, hasRepo && _rows.Count > 0, $"{_rows.Count} mod{(_rows.Count == 1 ? "" : "s")} found",
+            hasRepo ? "Point at the folder with your mods" : "Pick your mods folder", BrowseRepo);
+        Step(3, _cfg.AppIdValid, "App ID " + _cfg.AppId, "Enter the game's app ID", () => { _appId.Focus(); Flash(_appId); });
+        _setup.Visible = !(installed && _s.Account.Length > 0 && hasRepo && _rows.Count > 0 && _cfg.AppIdValid);
+    }
+
+    void Step(int i, bool done, string doneText, string todoText, Action act)
+    {
+        var l = _steps[i];
+        var mark = done ? "✔  " : $"{i + 1}  ";
+        l.Text = mark + (done ? doneText : todoText);
+        l.Links.Clear();
+        if (!done) l.Links.Add(mark.Length, todoText.Length);
+        l.ForeColor = Theme.Of(done ? Tone.Ok : Tone.Muted);
+        l.LinkColor = l.ActiveLinkColor = l.VisitedLinkColor = Theme.Current.Accent;
+        l.Tag = done ? null : act;
+        l.Cursor = done ? Cursors.Default : Cursors.Hand;
     }
 
     const int UploadedCol = 1, SteamCol = 2, VersionCol = 3, PreviewCol = 5, StatusCol = 6;
 
-    /// <summary>Row text colour: red when it needs fixing, dimmed when it can't be picked, the preview mark green or red.</summary>
+    /// <summary>Row text colour: red when it needs fixing, dimmed when it can't be picked.</summary>
     void ColorRow(ListViewItem it, ModInfo m)
     {
         var tone = !m.Ready ? Tone.Error : (!m.OnSteam && !_s.AllowCreate) ? Tone.Muted : Tone.Normal;
@@ -521,8 +912,150 @@ public sealed class MainForm : Form
         {
             var sub = it.SubItems[i];
             sub.BackColor = _list.BackColor;
-            sub.ForeColor = Theme.Of(i == PreviewCol && m.PreviewOk != null ? (m.PreviewOk == true ? Tone.Ok : Tone.Error) : tone);
+            if (i != SteamCol || sub.Tag == null) sub.ForeColor = Theme.Of(tone);
         }
+    }
+
+    // ---------------------------------------------------------------- drawing the list
+
+    bool PaintCell(DrawListViewSubItemEventArgs e)
+    {
+        if (e.Item?.Tag is not ModInfo m || e.SubItem == null) return false;
+        var p = Theme.Current;
+        var g = e.Graphics;
+        var bounds = e.ColumnIndex == 0 ? new Rectangle(e.Bounds.X, e.Bounds.Y, _list.Columns[0].Width, e.Bounds.Height) : e.Bounds;
+        var back = e.Item.Selected ? Theme.Blend(_list.BackColor, p.Accent, _list.Focused ? 0.40 : 0.22) : _list.BackColor;
+        using (var b = new SolidBrush(back)) g.FillRectangle(b, bounds);
+
+        if (e.ColumnIndex == 0)
+        {
+            // Our own tick box, drawn where Windows keeps the clickable one (left of the icon), so clicks still toggle it.
+            var size = LogicalToDeviceUnits(14);
+            var icon = e.Item.GetBounds(ItemBoundsPortion.Icon);
+            var x = bounds.Left + Math.Max(LogicalToDeviceUnits(3), (icon.Left - bounds.Left - size) / 2);
+            var box = new Rectangle(x, bounds.Top + (bounds.Height - size) / 2, size, size);
+            DrawTick(g, box, e.Item.Checked, CanTick(m));
+            bounds = Rectangle.FromLTRB(Math.Max(box.Right + LogicalToDeviceUnits(4), icon.Right), bounds.Top, bounds.Right, bounds.Bottom);
+        }
+        var text = Rectangle.FromLTRB(bounds.Left + LogicalToDeviceUnits(e.ColumnIndex == 0 ? 2 : 6), bounds.Top, bounds.Right - 2, bounds.Bottom);
+        const TextFormatFlags Flags = TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
+
+        if (e.ColumnIndex == StatusCol)
+        {
+            var state = StateOf(e.Item);
+            var badge = DrawBadge(g, text, ModRows.Label(state), Theme.Of(ToneOf(state)), back);
+            // Beside the badge, the first thing that needs doing or knowing; the tooltip has the rest.
+            var (detail, tone) = !m.Ready ? (m.Problems[0], Tone.Error) : m.Warnings.Count > 0 ? (m.Warnings[0], Tone.Warn) : ("", Tone.Muted);
+            if (detail.Length > 0)
+                TextRenderer.DrawText(g, detail, _list.Font, Rectangle.FromLTRB(badge.Right + LogicalToDeviceUnits(8), text.Top, text.Right, text.Bottom), Theme.Of(tone), Flags);
+            return true;
+        }
+        if (e.ColumnIndex == PreviewCol)
+        {
+            DrawPreview(g, bounds, m);
+            return true;
+        }
+        TextRenderer.DrawText(g, e.SubItem.Text, _list.Font, text, e.SubItem.ForeColor, Flags);
+        return true;
+    }
+
+    void DrawTick(Graphics g, Rectangle box, bool on, bool enabled)
+    {
+        var p = Theme.Current;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using var path = Rounded(box, LogicalToDeviceUnits(3));
+        if (on)
+        {
+            using var fill = new SolidBrush(enabled ? p.Accent : p.Muted);
+            g.FillPath(fill, path);
+            using var pen = new Pen(p.AccentText, Math.Max(1.6f, LogicalToDeviceUnits(2) * 0.9f)) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+            g.DrawLines(pen, new[]
+            {
+                new PointF(box.Left + box.Width * 0.24f, box.Top + box.Height * 0.52f),
+                new PointF(box.Left + box.Width * 0.43f, box.Top + box.Height * 0.70f),
+                new PointF(box.Left + box.Width * 0.77f, box.Top + box.Height * 0.32f),
+            });
+        }
+        else
+        {
+            using var pen = new Pen(enabled ? p.Muted : Theme.Blend(_list.BackColor, p.Muted, 0.45), 1.2f);
+            g.DrawPath(pen, path);
+        }
+        g.SmoothingMode = SmoothingMode.Default;
+    }
+
+    /// <summary>A rounded pill with the text in the tone's colour on a faint tint of it. Returns where it was drawn.</summary>
+    Rectangle DrawBadge(Graphics g, Rectangle area, string label, Color color, Color back)
+    {
+        var size = TextRenderer.MeasureText(g, label, _list.Font, Size.Empty, TextFormatFlags.NoPadding);
+        var h = Math.Min(area.Height - LogicalToDeviceUnits(6), size.Height + LogicalToDeviceUnits(4));
+        var r = new Rectangle(area.Left, area.Top + (area.Height - h) / 2, size.Width + LogicalToDeviceUnits(14), h);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using (var path = Rounded(r, h / 2))
+        using (var fill = new SolidBrush(Theme.Blend(back, color, 0.18)))
+        using (var pen = new Pen(Theme.Blend(back, color, 0.55)))
+        {
+            g.FillPath(fill, path);
+            g.DrawPath(pen, path);
+        }
+        g.SmoothingMode = SmoothingMode.Default;
+        TextRenderer.DrawText(g, label, _list.Font, r, color, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+        return r;
+    }
+
+    void DrawPreview(Graphics g, Rectangle cell, ModInfo m)
+    {
+        const TextFormatFlags Center = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine;
+        if (m.PreviewOk == null) { TextRenderer.DrawText(g, "-", _list.Font, cell, Theme.Of(Tone.Muted), Center); return; }
+        var thumb = m.PreviewPath.Length > 0 ? Thumbnail(m.PreviewPath, cell.Height - LogicalToDeviceUnits(6), cell.Width - LogicalToDeviceUnits(10)) : null;
+        if (thumb == null)
+        {
+            TextRenderer.DrawText(g, m.PreviewOk == true ? "✔" : "✖", _list.Font, cell, Theme.Of(m.PreviewOk == true ? Tone.Ok : Tone.Error), Center);
+            return;
+        }
+        var r = new Rectangle(cell.Left + (cell.Width - thumb.Width) / 2, cell.Top + (cell.Height - thumb.Height) / 2, thumb.Width, thumb.Height);
+        g.DrawImage(thumb, r);
+        // Over Steam's 1 MB limit: a red frame (the tooltip says why).
+        using var pen = new Pen(m.PreviewOk == true ? Theme.Current.Border : Theme.Of(Tone.Error), m.PreviewOk == true ? 1 : 2);
+        g.DrawRectangle(pen, r.X, r.Y, r.Width - 1, r.Height - 1);
+    }
+
+    /// <summary>A small copy of the preview image, made once per file version and kept for the session.</summary>
+    Image? Thumbnail(string path, int height, int maxWidth)
+    {
+        DateTime stamp;
+        try { stamp = File.GetLastWriteTimeUtc(path); } catch { return null; }
+        if (_thumbs.TryGetValue(path, out var c) && c.Stamp == stamp && (c.Image == null || c.Image.Height == height)) return c.Image;
+        Image? img = null;
+        try
+        {
+            using var fs = File.OpenRead(path);
+            using var src = Image.FromStream(fs, false, false);
+            var w = Math.Max(1, Math.Min(maxWidth, (int)Math.Round(src.Width * (double)height / src.Height)));
+            var bmp = new Bitmap(w, height);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.DrawImage(src, 0, 0, w, height);
+            }
+            img = bmp;
+        }
+        catch { /* not an image Windows can read: the list shows a tick or cross instead */ }
+        if (_thumbs.TryGetValue(path, out var old)) old.Image?.Dispose();
+        _thumbs[path] = (stamp, img);
+        return img;
+    }
+
+    static GraphicsPath Rounded(Rectangle r, int radius)
+    {
+        var d = Math.Max(1, Math.Min(radius * 2, Math.Min(r.Width, r.Height)));
+        var path = new GraphicsPath();
+        path.AddArc(r.Left, r.Top, d, d, 180, 90);
+        path.AddArc(r.Right - d, r.Top, d, d, 270, 90);
+        path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+        path.AddArc(r.Left, r.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
     string RowTip(ModInfo m)
@@ -531,7 +1064,7 @@ public sealed class MainForm : Form
         lines.AddRange(m.Problems.Select(p => "Fix: " + p));
         lines.AddRange(m.Warnings.Select(w => "Note: " + w));
         if (m.PreviewNote.Length > 0) lines.Add("Preview: " + m.PreviewNote);
-        lines.Add("Double-click the version to upload to change it, or the name to edit the Workshop page. Right-click for upload history.");
+        lines.Add("Double-click the version to upload to change it, or the name to edit the Workshop page. Right-click for more.");
         if (ModScanner.NeedsChangelogEntry(m, _cfg)) lines.Add("Double-click the status to write the changelog entry for " + m.Version + ".");
         return string.Join("\n", lines);
     }
@@ -543,20 +1076,23 @@ public sealed class MainForm : Form
     /// </summary>
     async Task LoadUploadedVersionsAsync(List<ModInfo> mods, Dictionary<string, string> uploaded, Dictionary<string, UploadEntry> history)
     {
-        ListViewItem? Row(ModInfo m) => IsDisposed ? null : _list.Items.Cast<ListViewItem>().FirstOrDefault(i => ReferenceEquals(i.Tag, m));
+        ListViewItem? Row(ModInfo m) => IsDisposed ? null : _rows.FirstOrDefault(i => ReferenceEquals(i.Tag, m));
 
         var live = await WorkshopStatus.FetchAsync(mods.Select(m => m.WorkshopId!));
         foreach (var m in mods)
         {
             var it = Row(m);
             if (it == null) return; // closed, or the list was refreshed meanwhile; that refresh fills it in
+            var steam = it.SubItems[SteamCol];
             if (live.TryGetValue(m.WorkshopId!, out var item))
             {
-                it.SubItems[SteamCol].Text = item.UpdatedText;
-                it.SubItems[SteamCol].ForeColor = Theme.Of(!m.Ready ? Tone.Error : item.Banned ? Tone.Error : item.Public ? Tone.Normal : Tone.Muted);
+                steam.Text = item.UpdatedText;
+                steam.Tag = item.Updated;
+                steam.ForeColor = Theme.Of(!m.Ready ? Tone.Error : item.Banned ? Tone.Error : item.Public ? Tone.Normal : Tone.Muted);
             }
-            else it.SubItems[SteamCol].Text = "?";
+            else steam.Text = "?";
         }
+        _list.Invalidate();
 
         // One at a time: Steam rate-limits its community pages.
         foreach (var m in mods)
@@ -567,16 +1103,40 @@ public sealed class MainForm : Form
             live.TryGetValue(m.WorkshopId!, out var item);
             var (text, note) = UploadedVersions.Resolve(fromNote, item, history.GetValueOrDefault(m.WorkshopId!), uploaded.GetValueOrDefault(m.WorkshopId!));
             it.SubItems[UploadedCol].Text = text;
+            UpdateRowState(it);
             var extra = new List<string> { note };
             extra.Add(item?.Summary ?? "On Steam: could not be read (offline, or Steam did not answer).");
             it.ToolTipText = string.Join("\n", extra) + "\n" + RowTip(m);
+            // Now known to be up to date: drop it from view when those are hidden.
+            if (_hideUpToDate.Checked && StateOf(it) == RowState.UpToDate && it.ListView != null)
+            {
+                _populating = true;
+                _list.Items.Remove(it);
+                _populating = false;
+                UpdateEmptyState();
+            }
+            UpdateSetup();
         }
     }
 
     void OpenUrl(string url)
     {
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
-        catch (Exception e) { Append("Could not open the page: " + e.Message, Color.Tomato); }
+        catch (Exception e) { Append("Could not open the page: " + e.Message, LogKind.Error); }
+    }
+
+    /// <summary>Opens a folder in Explorer or a file in its default program.</summary>
+    void OpenPath(string path)
+    {
+        if (!File.Exists(path) && !Directory.Exists(path)) { Append("Not found: " + path, LogKind.Warn); return; }
+        try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
+        catch (Exception e) { Append("Could not open " + path + ": " + e.Message, LogKind.Error); }
+    }
+
+    void Copy(string text, string what)
+    {
+        try { Clipboard.SetText(text); Append($"{what} copied: {text}", LogKind.Note); }
+        catch (Exception e) { Append("Could not copy: " + e.Message, LogKind.Error); }
     }
 
     /// <summary>Every upload of one mod made from this PC: when, which version and the change note sent.</summary>
@@ -627,29 +1187,30 @@ public sealed class MainForm : Form
         var error = ModScanner.SetVersion(m, _cfg, entered);
         if (error != null) { MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
         var version = entered.Trim();
-        Append($"{m.Name}: version set to {version}.", Color.DeepSkyBlue);
+        Append($"{m.Name}: version set to {version}.", LogKind.Note);
         // RimWorld refuses the upload until the new version has its own changelog entry, so offer to write it now.
         m.Version = version;
         if (ModScanner.NeedsChangelogEntry(m, _cfg) && !AskChangelogEntry(m, version))
-            Append($"Add a {version} entry to {_cfg.Changelog} before uploading (double-click the Status to write it here).", Color.Orange);
+            Append($"Add a {version} entry to {_cfg.Changelog} before uploading (double-click the Status to write it here).", LogKind.Warn);
         RefreshAll();
     }
 
     ModInfo? SelectedMod() => _list.SelectedItems.Count > 0 ? _list.SelectedItems[0].Tag as ModInfo : null;
 
+    void UpdateSelectionButtons() => _editPage.Enabled = !_busy && SelectedMod() != null;
+
     /// <summary>Opens the Workshop page editor; its changes are kept for the mod's next upload.</summary>
     void EditWorkshopPage(ModInfo? m)
     {
-        if (_busy) return;
-        if (m == null) { MessageBox.Show(this, "Select a mod in the list first.", Text); return; }
+        if (_busy || m == null) return;
         var file = Publisher.DescriptionFor(m, _cfg);
         using var f = new WorkshopPageForm(m, _cfg.SteamDescriptionFile, file.Length > 0 ? file : null);
         if (f.ShowDialog(this) != DialogResult.OK) return;
         try { WorkshopPage.Set(m.Dir, f.Result); }
-        catch (Exception e) { Append("Could not save the Workshop page changes: " + e.Message, Color.Tomato); return; }
+        catch (Exception e) { Append("Could not save the Workshop page changes: " + e.Message, LogKind.Error); return; }
         Append(f.Result.IsEmpty
             ? $"{m.Name}: Workshop page changes cleared."
-            : $"{m.Name}: Workshop page changes ({f.Result.Summary()}) will be sent with the next upload.", Color.DeepSkyBlue);
+            : $"{m.Name}: Workshop page changes ({f.Result.Summary()}) will be sent with the next upload.", LogKind.Note);
         RefreshAll();
     }
 
@@ -661,7 +1222,7 @@ public sealed class MainForm : Form
         if (notes == null) return false;
         var error = ModScanner.AddChangelogEntry(m, _cfg, version, notes);
         if (error != null) { MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Information); return false; }
-        Append($"{m.Name}: added the {version} entry to {_cfg.Changelog} (commit it).", Color.DeepSkyBlue);
+        Append($"{m.Name}: added the {version} entry to {_cfg.Changelog} (commit it).", LogKind.Note);
         return true;
     }
 
@@ -700,38 +1261,43 @@ public sealed class MainForm : Form
     void OnItemCheck(object? sender, ItemCheckEventArgs e)
     {
         if (_populating || e.NewValue != CheckState.Checked) return;
-        if (_list.Items[e.Index].Tag is not ModInfo m) return;
-        if (!m.Ready) { e.NewValue = CheckState.Unchecked; return; }
-        if (!m.OnSteam && !_allowCreate.Checked) e.NewValue = CheckState.Unchecked;
+        if (_list.Items[e.Index].Tag is ModInfo m && !CanTick(m)) e.NewValue = CheckState.Unchecked;
     }
 
-    /// <summary>Ticks every mod that can be picked (the same rules as ticking by hand), or clears them all.</summary>
+    /// <summary>Ticks every shown mod that can be picked (the same rules as ticking by hand), or clears them all.</summary>
     void TickAll(bool on)
     {
         if (_busy) return;
         _list.BeginUpdate();
         foreach (ListViewItem it in _list.Items) it.Checked = on; // OnItemCheck turns down the ones that can't be picked
+        if (!on) foreach (var it in _rows) it.Checked = false; // "none" also clears the rows the filter hides
         _list.EndUpdate();
         UpdateGoButton();
     }
 
-    IEnumerable<ModInfo> Selected() => _list.CheckedItems.Cast<ListViewItem>().Select(i => (ModInfo)i.Tag!);
+    /// <summary>Ticked mods, including any the filter currently hides (the confirmation lists them all).</summary>
+    IEnumerable<ModInfo> Selected() => _rows.Where(i => i.Checked).Select(i => (ModInfo)i.Tag!);
 
     void UpdateGoButton()
     {
-        var n = _list.CheckedItems.Count;
-        _go.Text = n == 0 ? "Upload selected" : $"Upload {n} mod{(n == 1 ? "" : "s")}";
+        var n = _rows.Count(i => i.Checked);
+        var hidden = _rows.Count(i => i.Checked && i.ListView == null);
+        _go.Text = n == 0 ? "Upload selected" : $"Upload {n} mod{(n == 1 ? "" : "s")}" + (hidden > 0 ? $" ({hidden} hidden)" : "");
         _go.Enabled = !_busy && n > 0 && _cfg.AppIdValid;
+        _retry.Text = $"Retry failed ({_retrySet.Count})";
+        _retry.Visible = !_busy && _retrySet.Count > 0 && _mods.Any(m => _retrySet.Contains(m.Dir));
     }
 
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _checkUpdateNow, _editPage })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _checkUpdateNow, _filter, _hideUpToDate })
             c.Enabled = !busy;
         ApplyLocks();
+        _cancel.Visible = busy;
         _cancel.Enabled = busy;
         UpdateGoButton();
+        UpdateSelectionButtons();
     }
 
     /// <summary>Shows the login state on the Options tab and, as a link to it, next to the Upload button.</summary>
@@ -756,26 +1322,68 @@ public sealed class MainForm : Form
         else if (string.IsNullOrWhiteSpace(_s.Account)) SetLogin("No Steam account set", Tone.Warn);
         else if (SteamLogin.LooksCached(steam, _s.Account)) SetLogin($"Saved login found for {_s.Account} (not checked yet)", Tone.Info);
         else SetLogin($"No saved login for {_s.Account} - you'll be asked to log in once", Tone.Warn);
+        // Missing SteamCMD or account are on the "Get set up" card; here only the login itself.
+        _loginLink.Visible = installed && !string.IsNullOrWhiteSpace(_s.Account);
     }
 
     // ---------------------------------------------------------------- log
 
-    void Append(string line, Color? color = null)
+    enum LogKind { Plain, Note, Ok, Warn, Error }
+
+    static Color LogColor(LogKind k) => k switch
     {
-        if (InvokeRequired) { BeginInvoke(() => Append(line, color)); return; }
+        LogKind.Note => Color.DeepSkyBlue,
+        LogKind.Ok => Color.LightGreen,
+        LogKind.Warn => Color.Orange,
+        LogKind.Error => Color.Tomato,
+        _ => Theme.LogText,
+    };
+
+    static readonly Color LogTime = Color.FromArgb(118, 122, 134);
+
+    /// <summary>Adds a line with the time in front, coloured by what kind of line it is.</summary>
+    void Append(string line, LogKind kind = LogKind.Plain)
+    {
+        if (InvokeRequired) { BeginInvoke(() => Append(line, kind)); return; }
         _log.SelectionStart = _log.TextLength;
-        _log.SelectionColor = color ?? Theme.LogText;
+        _log.SelectionColor = LogTime;
+        _log.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  ");
+        _log.SelectionStart = _log.TextLength;
+        _log.SelectionColor = LogColor(kind);
         _log.AppendText(line + "\n");
         _log.SelectionColor = _log.ForeColor;
         _log.ScrollToCaret();
     }
 
-    static Color LineColor(string l)
+    static LogKind LineKind(string l)
     {
-        if (l.StartsWith("SKIPPED") || l.Contains("ERROR", StringComparison.OrdinalIgnoreCase) || l.Contains("FAILED", StringComparison.OrdinalIgnoreCase)) return Color.Tomato;
-        if (l.StartsWith("Uploaded ") || l.StartsWith("Created ") || l.Contains("Success", StringComparison.OrdinalIgnoreCase)) return Color.LightGreen;
-        if (l.StartsWith("===") || l.StartsWith("---")) return Color.DeepSkyBlue;
-        return Color.Gainsboro;
+        if (l.StartsWith("SKIPPED") || l.Contains("ERROR", StringComparison.OrdinalIgnoreCase) || l.Contains("FAILED", StringComparison.OrdinalIgnoreCase)) return LogKind.Error;
+        if (l.StartsWith("WARNING", StringComparison.OrdinalIgnoreCase)) return LogKind.Warn;
+        if (l.StartsWith("Uploaded ") || l.StartsWith("Created ") || l.Contains("Success", StringComparison.OrdinalIgnoreCase)) return LogKind.Ok;
+        if (l.StartsWith("===") || l.StartsWith("---")) return LogKind.Note;
+        return LogKind.Plain;
+    }
+
+    void CopyLog()
+    {
+        if (_log.TextLength == 0) return;
+        try { Clipboard.SetText(_log.Text.Replace("\n", Environment.NewLine)); }
+        catch (Exception e) { Append("Could not copy the log: " + e.Message, LogKind.Error); }
+    }
+
+    void SaveLog()
+    {
+        using var d = new SaveFileDialog { Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*", FileName = $"SteamCmdHelper-log-{DateTime.Now:yyyy-MM-dd-HHmm}.txt" };
+        if (d.ShowDialog(this) != DialogResult.OK) return;
+        try { File.WriteAllText(d.FileName, _log.Text.Replace("\n", Environment.NewLine)); Append("Log saved to " + d.FileName, LogKind.Note); }
+        catch (Exception e) { Append("Could not save the log: " + e.Message, LogKind.Error); }
+    }
+
+    void OpenSteamCmdLogs()
+    {
+        var logs = Path.Combine(Path.GetDirectoryName(_s.EffectiveSteamCmd)!, "logs");
+        if (!Directory.Exists(logs)) { Append("SteamCMD has no logs folder yet (" + logs + "); it appears after SteamCMD's first run.", LogKind.Warn); return; }
+        OpenPath(logs);
     }
 
     // ---------------------------------------------------------------- login
@@ -784,7 +1392,7 @@ public sealed class MainForm : Form
     {
         var steam = _s.EffectiveSteamCmd;
         if (!SteamLogin.SteamCmdInstalled(steam)) { UpdateLoginHint(); return false; }
-        if (string.IsNullOrWhiteSpace(_s.Account)) { UpdateLoginHint(); if (announce) { ShowPage(_optionsPage); MessageBox.Show(this, "Type your Steam account name first.", Text); } return false; }
+        if (string.IsNullOrWhiteSpace(_s.Account)) { UpdateLoginHint(); if (announce) Nudge(_account, _accountNote, "Type your Steam account name first."); return false; }
 
         SetLogin("Checking login...", Tone.Muted);
         var wasBusy = _busy;
@@ -794,18 +1402,18 @@ public sealed class MainForm : Form
             var (ok, _) = await SteamLogin.VerifyAsync(steam, _s.Account, CancellationToken.None);
             if (ok) SetLogin($"Logged in as {_s.Account}", Tone.Ok);
             else SetLogin($"Not logged in as {_s.Account}", Tone.Error);
-            if (announce || !ok) Append(ok ? $"Steam login OK for {_s.Account}." : $"Steam login check failed for {_s.Account} (no saved login, wrong name, or no connection).", ok ? Color.LightGreen : Color.Orange);
+            if (announce || !ok) Append(ok ? $"Steam login OK for {_s.Account}." : $"Steam login check failed for {_s.Account} (no saved login, wrong name, or no connection).", ok ? LogKind.Ok : LogKind.Warn);
             return ok;
         }
-        catch (Exception e) { SetLogin("Login check failed", Tone.Error); Append("Login check error: " + e.Message, Color.Tomato); return false; }
+        catch (Exception e) { SetLogin("Login check failed", Tone.Error); Append("Login check error: " + e.Message, LogKind.Error); return false; }
         finally { if (!wasBusy) SetBusy(false); }
     }
 
     /// <summary>Checks the saved login; if there isn't one, opens SteamCMD so you can log in, waits, then checks again.</summary>
     async Task<bool> LoginFlowAsync()
     {
-        if (string.IsNullOrWhiteSpace(_s.Account)) { ShowPage(_optionsPage); MessageBox.Show(this, "Type your Steam account name on the Options tab first.", Text); _account.Focus(); return false; }
-        if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { ShowPage(_optionsPage); MessageBox.Show(this, "SteamCMD is not installed yet. Click Install SteamCMD on the Options tab.", Text); return false; }
+        if (string.IsNullOrWhiteSpace(_s.Account)) { Nudge(_account, _accountNote, "Type your Steam account name here first."); return false; }
+        if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { Nudge(_install, _accountNote, "SteamCMD is not installed yet. Press Install SteamCMD below."); return false; }
 
         if (await VerifyLoginAsync(false)) return true;
 
@@ -818,30 +1426,30 @@ public sealed class MainForm : Form
         if (!wasBusy) SetBusy(true);
         SetLogin("Waiting for you to finish logging in...", Tone.Muted);
         try { await SteamLogin.InteractiveLoginAsync(_s.EffectiveSteamCmd, _s.Account, CancellationToken.None); }
-        catch (Exception e) { Append("Could not open SteamCMD: " + e.Message, Color.Tomato); }
+        catch (Exception e) { Append("Could not open SteamCMD: " + e.Message, LogKind.Error); }
         finally { if (!wasBusy) SetBusy(false); }
 
         return await VerifyLoginAsync(true);
     }
 
-    /// <summary>At start-up without SteamCMD: offer the one-click install, and say plainly that uploads need it.</summary>
+    /// <summary>At start-up without SteamCMD: offer the one-click install (the "Get set up" card keeps the link if declined).</summary>
     async Task OfferInstallAsync()
     {
         var r = MessageBox.Show(this,
             "SteamCMD is not installed.\n\nThis program uploads through SteamCMD (Valve's command-line Steam client) and won't work without it.\n\n" +
             $"Install it now? It is downloaded from Valve to {Path.GetDirectoryName(_s.EffectiveSteamCmd)} and checked before it is used.",
             Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-        if (r == DialogResult.Yes) { await InstallAsync(); return; }
-        Append("SteamCMD is not installed, so nothing can be uploaded. Install it from the Options tab (Install SteamCMD).", Color.Orange);
+        if (r == DialogResult.Yes) await InstallAsync();
     }
 
     async Task InstallAsync()
     {
+        if (_busy) return;
         SaveFields();
         SetBusy(true);
         try { await SteamLogin.InstallAsync(_s.EffectiveSteamCmd, l => Append(l), CancellationToken.None); }
-        catch (Exception e) { Append("Install failed: " + e.Message, Color.Tomato); }
-        finally { SetBusy(false); UpdateLoginHint(); }
+        catch (Exception e) { Append("Install failed: " + e.Message, LogKind.Error); }
+        finally { SetBusy(false); UpdateLoginHint(); UpdateSetup(); }
     }
 
     // ---------------------------------------------------------------- updates
@@ -863,7 +1471,7 @@ public sealed class MainForm : Form
             return;
         }
         if (!manual && r.Version == _s.SkippedUpdate) return;
-        Append($"SteamCMD Helper {r.Version} is available (you have {UpdateCheck.CurrentVersion}): {r.PageUrl}", Color.DeepSkyBlue);
+        Append($"SteamCMD Helper {r.Version} is available (you have {UpdateCheck.CurrentVersion}): {r.PageUrl}", LogKind.Note);
 
         var download = new TaskDialogButton("Download");
         var notes = new TaskDialogButton("Release notes");
@@ -886,18 +1494,31 @@ public sealed class MainForm : Form
         var url = picked == download ? r.DownloadUrl : picked == notes ? r.PageUrl : null;
         if (url == null) return;
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
-        catch (Exception e) { Append("Could not open the browser: " + e.Message + " Download it from " + r.PageUrl, Color.Tomato); }
+        catch (Exception e) { Append("Could not open the browser: " + e.Message + " Download it from " + r.PageUrl, LogKind.Error); }
     }
 
     // ---------------------------------------------------------------- upload
+
+    /// <summary>Ticks exactly the mods that failed or were not reached last time, and uploads them.</summary>
+    async Task RetryFailedAsync()
+    {
+        if (_busy) return;
+        foreach (var it in _rows)
+        {
+            var m = (ModInfo)it.Tag!;
+            it.Checked = _retrySet.Contains(m.Dir) && CanTick(m);
+        }
+        UpdateGoButton();
+        await GoAsync();
+    }
 
     async Task GoAsync()
     {
         SaveFields();
         var picked = Selected().ToList();
         if (picked.Count == 0) return;
-        if (!_cfg.AppIdValid) { MessageBox.Show(this, "Enter the game's Steam app ID first (the number in its store page URL).", Text); _appId.Focus(); return; }
-        if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { ShowPage(_optionsPage); MessageBox.Show(this, "SteamCMD is not installed yet. Click Install SteamCMD on the Options tab.", Text); return; }
+        if (!_cfg.AppIdValid) { Nudge(_appId, _projectNote, "Enter the game's Steam app ID first (the number in its store page URL)."); return; }
+        if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { Nudge(_install, _accountNote, "SteamCMD is not installed yet. Press Install SteamCMD below."); return; }
 
         var dry = _dry.Checked;
         var sb = new StringBuilder();
@@ -917,15 +1538,15 @@ public sealed class MainForm : Form
         {
             var warn = MessageBox.Show(this,
                 $"The \"{_cfg.PresetName()}\" layout is experimental: it has not been proven against the real game, and the game may expect its own in-game uploader's packaging.\n\n" +
-                "Updating an EXISTING item replaces its content on Steam. Try a brand-new private item first (tick Allow creating new items), and check it in the game before updating anything real.\n\nContinue?",
+                "Updating an EXISTING item replaces its content on Steam. Try a brand-new private item first (tick Create new items), and check it in the game before updating anything real.\n\nContinue?",
                 Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
             if (warn != DialogResult.Yes) return;
         }
 
-        if (!dry && !await LoginFlowAsync()) { Append("Stopped: not logged in to Steam.", Color.Orange); return; }
+        if (!dry && !await LoginFlowAsync()) { Append("Stopped: not logged in to Steam.", LogKind.Warn); return; }
 
         var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account) { PageEdits = m => WorkshopPage.Get(m.Dir), HistoryFile = UploadHistory.DefaultFile };
-        pub.Log += l => BeginInvoke(() => Append(l, LineColor(l)));
+        pub.Log += l => BeginInvoke(() => Append(l, LineKind(l)));
         pub.Stage += (t, p) => BeginInvoke(() => SetStage(t, p));
 
         // One login check above covers the batch; each mod then reuses Steam's saved login.
@@ -936,21 +1557,24 @@ public sealed class MainForm : Form
             _current.Text = $"{m.Name} v{m.Version}  ({i + 1} of {n})";
             _modBar.Value = 0;
             SetStage("Starting...", 3);
-            Append($"--- {m.Name} ---", Color.DeepSkyBlue);
+            Append($"--- {m.Name} ---", LogKind.Note);
         };
         batch.Finished += (r, i, n) =>
         {
-            if (r.Status == BatchStatus.NotRun) Append("Cancelled.", Color.Orange);
-            else if (!r.Ok) Append($"SKIPPED {r.Mod.Name}: {r.Message}", Color.Tomato);
+            if (r.Status == BatchStatus.NotRun) Append("Cancelled.", LogKind.Warn);
+            else if (!r.Ok) Append($"SKIPPED {r.Mod.Name}: {r.Message}", LogKind.Error);
             SetStage(r.Ok ? r.Message : "Failed - see the log", r.Ok ? 100 : 0);
             _overall.Value = Math.Min(100, (int)((i + 1) * 100.0 / n));
+            Taskbar.Progress(this, _overall.Value, r.Ok ? Taskbar.State.Normal : Taskbar.State.Error);
         };
 
         _cts = new CancellationTokenSource();
+        _progress.Visible = true;
         SetBusy(true);
         _overall.Value = 0;
         _idx = 0;
         _count = picked.Count;
+        Taskbar.Progress(this, 0);
         List<BatchItem> results;
         try { results = await batch.RunAsync(picked, !dry, _cts.Token); }
         finally
@@ -960,13 +1584,32 @@ public sealed class MainForm : Form
         }
         // Page changes went out with each successful upload.
         if (!dry) foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created)) WorkshopPage.Clear(r.Mod.Dir);
+        _failed.Clear(); _retrySet.Clear();
+        foreach (var r in results.Where(r => !r.Ok))
+        {
+            _retrySet.Add(r.Mod.Dir);
+            if (r.Status == BatchStatus.Failed) _failed.Add(r.Mod.Dir);
+        }
         var counts = BatchUpload.Counts(results);
         var allOk = results.All(r => r.Ok);
         _current.Text = "Finished: " + counts;
-        Append(BatchUpload.Summary(results), allOk ? Color.LightGreen : Color.Orange);
+        Append(BatchUpload.Summary(results), allOk ? LogKind.Ok : LogKind.Warn);
+        Taskbar.Progress(this, 100, allOk ? Taskbar.State.None : Taskbar.State.Error);
+        Taskbar.FlashIfInBackground(this);
         RefreshAll();
-        if (picked.Count > 1 || !allOk)
-            MessageBox.Show(this, BatchUpload.Summary(results), Text, MessageBoxButtons.OK, allOk ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+        if (!allOk)
+        {
+            var retry = new TaskDialogButton($"Retry failed ({_retrySet.Count})");
+            var close = TaskDialogButton.Close;
+            var page = new TaskDialogPage
+            {
+                Caption = Text, Heading = "Some mods were not uploaded", Text = BatchUpload.Summary(results),
+                Icon = TaskDialogIcon.Warning, Buttons = { retry, close }, DefaultButton = close,
+            };
+            if (TaskDialog.ShowDialog(this, page) == retry) await RetryFailedAsync();
+        }
+        else if (picked.Count > 1)
+            MessageBox.Show(this, BatchUpload.Summary(results), Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     void SetStage(string text, int pct)
@@ -974,6 +1617,7 @@ public sealed class MainForm : Form
         _stage.Text = text;
         _modBar.Value = Math.Clamp(Math.Max(_modBar.Value, pct), 0, 100);
         if (_count > 0) _overall.Value = Math.Clamp((int)((_idx * 100.0 + _modBar.Value) / _count), 0, 100);
+        if (_busy) Taskbar.Progress(this, _overall.Value);
     }
 
     void Cancel()

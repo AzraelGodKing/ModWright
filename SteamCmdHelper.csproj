@@ -11,9 +11,14 @@
     <Version>1.0.0</Version>
     <Product>SteamCMD Helper</Product>
     <Description>One-click Steam Workshop uploads for RimWorld mods, with login handling and progress.</Description>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <!-- The test project lives inside this folder; keep its sources out of the app. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);tests/**</DefaultItemExcludes>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The same icon for every window (Theme.AppIcon); ApplicationIcon above is the exe's own icon. -->
+    <EmbeddedResource Include="Assets\app.ico" LogicalName="SteamCmdHelper.app.ico" />
+  </ItemGroup>
   <!-- Bakes the Linear request key in when one is available at build time; see RequestKey.targets. -->
   <Import Project="RequestKey.targets" />
 </Project>
