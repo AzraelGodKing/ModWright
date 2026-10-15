@@ -166,7 +166,8 @@ The list columns:
   not refused for a missing entry. If you skip it, double-click the row's **Status** to write it later.
 - **Workshop ID**: from the mod's own id file (`About/PublishedFileId.txt` for RimWorld); `0` means the upload creates a new item.
 - **Preview**: a thumbnail of the preview image; a red frame means it is over Steam's 1 MB limit, ✖ that it is
-  missing (hover for the size).
+  missing (hover for the size). Right-click a mod and choose **Shrink preview image under 1 MB** to re-save an
+  oversized preview just small enough (the original is kept in `%LocalAppData%\SteamCmdHelper\preview-backups`).
 - **Status**: a badge, followed by the first problem or warning when there is one:
   `Fix` (red, can't be uploaded), `Failed` (red, failed in the last run), `Changed` (amber, Steam has an older
   version), `New` (blue, not on Steam yet), `Up to date` (green, Steam already has this version) or `Ready` (the
@@ -329,6 +330,8 @@ The key is stored masked, but anyone with the exe could still extract it. Keep i
 - Install SteamCMD only installs a download that arrived whole and whose `steamcmd.exe` is signed by Valve.
 - An upload counts as done only when SteamCMD exits cleanly and confirms it with `Success.` (and, for a new item,
   returns its id). Otherwise the row is marked failed and the package is kept in `%TEMP%\steamcmd_helper_*` to inspect.
+  After updating an existing public or unlisted item, the app also asks Steam whether the item's "updated" time moved:
+  that confirms the update in the log, and it counts a clean run whose `Success.` line went missing as uploaded.
 - Headless checks: `SteamCmdHelper.exe [--repo <folder>] --selftest out.txt`, `... --package <ModFolder> out.txt`.
   `--shot <folder>` saves screenshots of the main window, the Options tab and the request form in both themes.
 
