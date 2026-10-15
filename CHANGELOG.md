@@ -9,6 +9,12 @@
 - Unexpected errors are saved to `%LocalAppData%\SteamCmdHelper\crashes` and can be sent as a pre-filled bug report
   with **Report it**.
 - Only one window opens at a time; starting the app again brings the open window to the front.
+- **Options > Profiles**: save the mods folder, Steam account and SteamCMD under a name and switch between them.
+- **Options > Announcements** (per mods folder): post each successful update to a Discord channel through a webhook,
+  and optionally make a matching GitHub release with the gh tool.
+- Workshop dependencies named in a mod's metadata are checked against Steam; private, removed or banned ones are
+  warned about.
+- The row tooltip shows subscriber growth this week and since the last upload, from daily counts kept on this PC.
 - The upload confirmation is a window that lists each mod with its change note, which can be edited before it is sent
   (the changelog file is left alone). It offers to commit uncommitted changes first when git packaging would leave
   them out.
