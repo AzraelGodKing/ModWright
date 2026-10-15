@@ -18,8 +18,12 @@ public sealed class AppSettings
     public string SteamCmdPath { get; set; } = "";
     public string Account { get; set; } = "";
     public bool AllowCreate { get; set; }
-    /// <summary>"Dark" (the default) or "Light".</summary>
-    public string Theme { get; set; } = "Dark"; // Theme.DarkName; spelled out so the tests can compile this file without WinForms
+    /// <summary>"Dark" (the default), "Light" or "System" (follow Windows' app mode).</summary>
+    public string Theme { get; set; } = Display.Dark;
+    /// <summary>Text size in percent (Options > Appearance), on top of Windows' own display scaling.</summary>
+    public int TextSize { get; set; } = 100;
+    /// <summary>Height of the log on the Upload tab, in 96-DPI pixels; 0 = the default.</summary>
+    public int LogHeight { get; set; }
     /// <summary>Look for a newer release on GitHub at start-up.</summary>
     public bool CheckForUpdates { get; set; } = true;
     /// <summary>Opt-in: download a newer release in the background and install it when the window closes.</summary>

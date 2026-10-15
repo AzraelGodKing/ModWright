@@ -180,7 +180,7 @@ static class Program
 
         if (Array.IndexOf(args, "--shot") is var sh and >= 0 && sh + 1 < args.Length)
         {
-            // Render the main window, its Options tab, the request form and the Workshop page editor to PNG files, in both themes (layout check without clicking).
+            // Render the main window (also at 125% text), its Options tab, the shortcuts list, the request form and the Workshop page editor to PNG files, in both themes (layout check without clicking).
             ApplicationConfiguration.Initialize();
             // A crash while drawing would otherwise sit behind an error dialog until CI times out; write it down and stop.
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
@@ -206,9 +206,13 @@ static class Program
                 var demo = new MainForm(theme, new AppSettings { RepoPath = DemoRepo(), Account = "demo_account", AllowCreate = true, DoNotSave = true }) { NoStartupPrompts = true };
                 demo.Shown += (_, _) => demo.SelectFirstMod();
                 Snap(demo, Path.Combine(args[sh + 1], $"main-mods{suffix}.png"));
+                var large = new MainForm(theme, new AppSettings { RepoPath = DemoRepo(), Account = "demo_account", AllowCreate = true, TextSize = 125, DoNotSave = true }) { NoStartupPrompts = true };
+                large.Shown += (_, _) => large.SelectFirstMod();
+                Snap(large, Path.Combine(args[sh + 1], $"main-mods-125{suffix}.png"));
                 var options = new MainForm(theme) { NoStartupPrompts = true };
                 options.Shown += (_, _) => options.ShowOptions();
                 Snap(options, Path.Combine(args[sh + 1], $"options{suffix}.png"));
+                Snap(new ShortcutsForm(), Path.Combine(args[sh + 1], $"shortcuts{suffix}.png"));
                 Snap(new RequestForm("RimWorld", "294100", "RimWorld", "About/About.xml\r\nAbout/Preview.png\r\nAssemblies/Mod.dll"), Path.Combine(args[sh + 1], $"request{suffix}.png"));
                 var example = new ModInfo { Name = "Example Mod", Folder = "ExampleMod", Dir = Path.Combine(Path.GetTempPath(), "steamcmd_helper_shot_example") };
                 Snap(new WorkshopPageForm(example, "About/steam_description.txt", "[h1]Example Mod[/h1]\nAdds an example to the game."), Path.Combine(args[sh + 1], $"workshop-page{suffix}.png"));
