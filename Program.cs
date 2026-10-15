@@ -182,6 +182,13 @@ static class Program
         {
             // Render the main window, its Options tab, the request form and the Workshop page editor to PNG files, in both themes (layout check without clicking).
             ApplicationConfiguration.Initialize();
+            // A crash while drawing would otherwise sit behind an error dialog until CI times out; write it down and stop.
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += (_, e) =>
+            {
+                File.AppendAllText(Path.Combine(args[sh + 1], "error.txt"), e.Exception + Environment.NewLine);
+                Environment.Exit(1);
+            };
             void Snap(Form f, string file)
             {
                 // Real on-screen capture (DrawToBitmap leaves some controls blank); the window is visible for about two seconds.
