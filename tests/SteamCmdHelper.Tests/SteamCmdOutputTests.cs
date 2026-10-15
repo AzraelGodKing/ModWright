@@ -79,6 +79,43 @@ public class SteamCmdOutputTests
     }
 
     [Fact]
+    public void Success_run_on_after_committing_update_succeeds()
+    {
+        // Verbatim from a real Windows SteamCMD upload (Date Night 1.7.1): Steam took the update, but "Success." does
+        // not start a line, so it was reported as unconfirmed.
+        var lines = new[]
+        {
+            "Steam Console Client (c) Valve Corporation - version 1791918946",
+            "-- type 'quit' to exit --",
+            "Loading Steam API...OK",
+            "Logging in using cached credentials.",
+            "Logging in user 'Chase_runner34' [U:1:121796399] to Steam Public...OK",
+            "Waiting for client config...OK",
+            "Waiting for user info...OK",
+            "Preparing update...",
+            "Preparing content...",
+            "Uploading content...",
+            "Committing update...Success.Unloading Steam API...OK",
+            "Redirecting stderr to 'F:\\Repositories\\rimworld_mods\\_tools\\steamcmd\\logs\\stderr.txt'",
+            "Logging directory: 'F:\\Repositories\\rimworld_mods\\_tools\\steamcmd/logs'",
+            "[  0%] Checking for available updates...",
+            "[----] Verifying installation...",
+        };
+        var r = SteamCmdOutput.Evaluate(lines, 0, "3774158903", null);
+        Assert.True(r.Ok, r.Reason);
+        Assert.Equal("Uploaded", r.Reason);
+    }
+
+    [Theory]
+    [InlineData("Uploading Textures/Success.png")]
+    [InlineData("Copying SuccessBanner.dds")]
+    public void The_word_success_inside_another_line_does_not_count(string line)
+    {
+        var r = SteamCmdOutput.Evaluate(Run(line), 0, "2001112223", VdfUpdate);
+        Assert.False(r.Ok);
+    }
+
+    [Fact]
     public void Nonzero_exit_fails_even_with_success_line()
     {
         var r = SteamCmdOutput.Evaluate(Run("Success."), 6, "2001112223", VdfUpdate);
