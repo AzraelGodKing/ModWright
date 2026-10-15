@@ -19,6 +19,10 @@ public sealed class AppSettings
     public string SkippedUpdate { get; set; } = "";
     /// <summary>Mods folders opened before, newest first (the drop-down next to Mods repo).</summary>
     public List<string> RecentRepos { get; set; } = new();
+    /// <summary>After an upload, tag HEAD in git as "&lt;mod folder&gt;-v&lt;version&gt;".</summary>
+    public bool TagUploads { get; set; }
+    /// <summary>Commit a newly created item's Workshop id file without asking.</summary>
+    public bool CommitNewIds { get; set; }
     /// <summary>The mod list's "Hide up to date" box.</summary>
     public bool HideUpToDate { get; set; }
 

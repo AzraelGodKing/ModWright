@@ -26,6 +26,12 @@ public sealed class MainForm : Form
     readonly Label _steamCmdPath = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Muted);
     readonly RadioButton _themeDark = new() { AutoSize = true, Text = "Dark" };
     readonly RadioButton _themeLight = new() { AutoSize = true, Text = "Light" };
+    readonly CheckBox _tagUploads = new() { AutoSize = true, Text = "Tag each upload in git as <mod folder>-v<version>" };
+    readonly CheckBox _commitIds = new() { AutoSize = true, Text = "Commit a new item's Workshop ID file without asking" };
+    readonly System.Windows.Forms.Timer _clock = new() { Interval = 1000 };
+    string _currentBase = "";
+    DateTime _modStarted;
+    double? _eta;
     readonly CheckBox _checkUpdates = new() { AutoSize = true, Text = "Check for a newer version at start-up" };
     readonly CheckBox _autoUpdate = new() { AutoSize = true, Text = "Install new versions automatically (downloaded in the background, installed when you close the app)" };
     readonly LinkLabel _updateReady = new LinkLabel { AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Visible = false, Margin = new Padding(0, 4, 0, 0) }.Role(ThemeRole.Keep);
@@ -170,6 +176,9 @@ public sealed class MainForm : Form
         _themeDark.CheckedChanged += (_, _) => { if (_themeDark.Checked) SetTheme(Theme.DarkName); };
         _themeLight.CheckedChanged += (_, _) => { if (_themeLight.Checked) SetTheme(Theme.LightName); };
         _loginLink.LinkClicked += (_, _) => ShowPage(_optionsPage);
+        _tagUploads.CheckedChanged += (_, _) => { if (!_populating) { _s.TagUploads = _tagUploads.Checked; _s.Save(); } };
+        _commitIds.CheckedChanged += (_, _) => { if (!_populating) { _s.CommitNewIds = _commitIds.Checked; _s.Save(); } };
+        _clock.Tick += (_, _) => ShowClock();
         _checkUpdates.CheckedChanged += (_, _) =>
         {
             _autoUpdate.Enabled = _checkUpdates.Checked;
@@ -337,6 +346,7 @@ public sealed class MainForm : Form
         var menu = new ContextMenuStrip();
         menu.Items.Add("Edit Workshop page...", null, (_, _) => EditWorkshopPage(SelectedMod()));
         menu.Items.Add("Upload history...", null, (_, _) => { if (SelectedMod() is { } m) ShowHistory(m); });
+        menu.Items.Add("Preview package...", null, async (_, _) => { if (SelectedMod() is { } m) await PreviewPackageAsync(m); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Open mod folder", null, (_, _) => { if (SelectedMod() is { } m) OpenPath(m.Dir); });
         var changelog = menu.Items.Add("Open changelog", null, (_, _) => { if (ChangelogOf(SelectedMod()) is { } p) OpenPath(p); });
@@ -365,8 +375,8 @@ public sealed class MainForm : Form
 
     Control BuildOptionsPage()
     {
-        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(14, 12, 14, 12), AutoScroll = true };
-        for (var i = 0; i < 5; i++) page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7, Padding = new Padding(14, 12, 14, 12), AutoScroll = true };
+        for (var i = 0; i < 6; i++) page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         page.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         // Settings read best as one column; on a wide window keep it from stretching across the screen.
         page.Resize += (_, _) =>
@@ -393,6 +403,13 @@ public sealed class MainForm : Form
             Row(Lbl("Location"), _steamCmdPath, _install, openSteam, openLogs),
             Hint("SteamCMD is Valve's command-line Steam client; every upload goes through it. Its own logs (workshop_log.txt and others) help when Steam turns an upload down.")), 0, 2);
 
+        _tagUploads.Checked = _s.TagUploads;
+        _commitIds.Checked = _s.CommitNewIds;
+        page.Controls.Add(Card("Git", null,
+            _tagUploads,
+            _commitIds,
+            Hint("Used when the mods folder is a git repository. Tags are made on the commit that was uploaded and stay on this PC until you push them (git push --tags).")), 0, 3);
+
         var openData = Btn("Open data folder", (_, _) => OpenPath(AppSettings.Folder));
         var forget = Btn("Forget recent folders", (_, _) =>
         {
@@ -404,7 +421,7 @@ public sealed class MainForm : Form
         });
         page.Controls.Add(Card("Your data", null,
             Hint("Settings, the recent folders list and the upload history are kept in %LocalAppData%\\SteamCmdHelper for your Windows user only."),
-            Row(openData, forget)), 0, 3);
+            Row(openData, forget)), 0, 4);
 
         var version = (typeof(MainForm).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "").Split('+')[0];
         _checkUpdates.Checked = _s.CheckForUpdates;
@@ -417,7 +434,7 @@ public sealed class MainForm : Form
             _autoUpdate,
             _updateReady,
             Hint("Shortcuts: F5 refresh, Ctrl+O pick the mods folder, Ctrl+F filter the list, Ctrl+Enter upload."),
-            Hint(Disclaimer + " Steam and SteamCMD are trademarks of Valve Corporation.")), 0, 4);
+            Hint(Disclaimer + " Steam and SteamCMD are trademarks of Valve Corporation.")), 0, 5);
         return page;
     }
 
@@ -1681,18 +1698,29 @@ public sealed class MainForm : Form
         if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { Nudge(_install, _accountNote, "SteamCMD is not installed yet. Press Install SteamCMD below."); return; }
 
         var dry = _dry.Checked;
-        var sb = new StringBuilder();
-        sb.AppendLine(dry ? "Dry run for:" : $"Publish to the Steam Workshop ({(_cfg.GameName.Length > 0 ? _cfg.GameName : "app " + _cfg.AppId)}):");
-        sb.AppendLine();
+        var actions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var notes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var m in picked)
         {
-            var page = WorkshopPage.Get(m.Dir);
-            var create = "NEW " + WorkshopPage.VisibilityName(page?.Visibility ?? WorkshopPage.Private).ToLowerInvariant() + " item";
-            sb.AppendLine($"  {m.Name}  v{m.Version}   {(m.OnSteam ? "update " + m.WorkshopId : create)}{(m.Warnings.Count > 0 ? "   (" + m.Warnings[0] + ")" : "")}");
-            if (page != null && m.OnSteam) sb.AppendLine($"      also changes the Workshop page: {page.Summary()}");
+            var pageEdit = WorkshopPage.Get(m.Dir);
+            var create = "NEW " + WorkshopPage.VisibilityName(pageEdit?.Visibility ?? WorkshopPage.Private).ToLowerInvariant() + " item";
+            actions[m.Dir] = (m.OnSteam ? "update " + m.WorkshopId : create)
+                + (pageEdit != null && m.OnSteam ? "; also page: " + pageEdit.Summary() : "")
+                + (m.Warnings.Count > 0 ? "  (" + m.Warnings[0] + ")" : "");
+            notes[m.Dir] = Publisher.NotesFor(m, _cfg);
         }
-        if (!dry) { sb.AppendLine(); sb.AppendLine("Updates go live for subscribers right away."); }
-        if (MessageBox.Show(this, sb.ToString(), Text, MessageBoxButtons.OKCancel, dry ? MessageBoxIcon.Question : MessageBoxIcon.Warning) != DialogResult.OK) return;
+        var heading = dry ? "Dry run for:" : $"Publish to the Steam Workshop ({(_cfg.GameName.Length > 0 ? _cfg.GameName : "app " + _cfg.AppId)}):";
+        var gitPackaging = _cfg.UseGitArchive && ModScanner.IsGitRepo(_s.RepoPath);
+        Dictionary<string, string> edited;
+        bool commitFirst;
+        using (var confirm = new ConfirmUploadForm(heading, picked, actions, notes, dry, gitPackaging))
+        {
+            if (confirm.ShowDialog(this) != DialogResult.OK) return;
+            edited = confirm.EditedNotes;
+            commitFirst = confirm.CommitFirst;
+        }
+
+        if (commitFirst && !CommitBeforeUpload(picked.Where(m => m.Dirty).ToList())) return;
 
         if (!dry && _cfg.Experimental)
         {
@@ -1705,8 +1733,20 @@ public sealed class MainForm : Form
 
         if (!dry && !await LoginFlowAsync()) { Append("Stopped: not logged in to Steam.", LogKind.Warn); return; }
 
-        var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account) { PageEdits = m => WorkshopPage.Get(m.Dir), HistoryFile = UploadHistory.DefaultFile };
+        var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account)
+        {
+            PageEdits = m => WorkshopPage.Get(m.Dir),
+            NoteOverride = m => edited.TryGetValue(m.Dir, out var n) ? n : null,
+            HistoryFile = UploadHistory.DefaultFile,
+        };
+        var history = UploadHistory.Load();
         pub.Log += l => BeginInvoke(() => Append(l, LineKind(l)));
+        pub.Packaged += (m, report) => BeginInvoke(() =>
+        {
+            _eta = dry ? null : UploadHistory.EstimateSeconds(history, report.TotalBytes);
+            _currentBase += "  ·  " + PackageCheck.Size(report.TotalBytes);
+            ShowClock();
+        });
         pub.Stage += (t, p) => BeginInvoke(() => SetStage(t, p));
 
         // One login check above covers the batch; each mod then reuses Steam's saved login.
@@ -1714,7 +1754,10 @@ public sealed class MainForm : Form
         batch.Starting += (m, i, n) =>
         {
             _idx = i;
-            _current.Text = $"{m.Name} v{m.Version}  ({i + 1} of {n})";
+            _currentBase = $"{m.Name} v{m.Version}  ({i + 1} of {n})";
+            _modStarted = DateTime.Now;
+            _eta = null;
+            ShowClock();
             _modBar.Value = 0;
             SetStage("Starting...", 3);
             Append($"--- {m.Name} ---", LogKind.Note);
@@ -1736,9 +1779,11 @@ public sealed class MainForm : Form
         _count = picked.Count;
         Taskbar.Progress(this, 0);
         List<BatchItem> results;
+        _clock.Start();
         try { results = await batch.RunAsync(picked, !dry, _cts.Token); }
         finally
         {
+            _clock.Stop();
             _cts?.Dispose(); _cts = null;
             SetBusy(false);
         }
@@ -1752,24 +1797,147 @@ public sealed class MainForm : Form
         }
         var counts = BatchUpload.Counts(results);
         var allOk = results.All(r => r.Ok);
+        _currentBase = "";
         _current.Text = "Finished: " + counts;
         Append(BatchUpload.Summary(results), allOk ? LogKind.Ok : LogKind.Warn);
         Taskbar.Progress(this, 100, allOk ? Taskbar.State.None : Taskbar.State.Error);
         Taskbar.FlashIfInBackground(this);
+        if (!dry) AfterUploadGit(results);
         RefreshAll();
         if (!allOk)
         {
             var retry = new TaskDialogButton($"Retry failed ({_retrySet.Count})");
+            var relogin = new TaskDialogButton("Log in again and retry");
             var close = TaskDialogButton.Close;
+            var loginTrouble = results.Any(r => r.Status == BatchStatus.Failed && BatchUpload.IsLoginFailure(r.Message));
             var page = new TaskDialogPage
             {
-                Caption = Text, Heading = "Some mods were not uploaded", Text = BatchUpload.Summary(results),
+                Caption = Text, Heading = loginTrouble ? "Steam refused the login" : "Some mods were not uploaded", Text = BatchUpload.Summary(results),
                 Icon = TaskDialogIcon.Warning, Buttons = { retry, close }, DefaultButton = close,
             };
-            if (TaskDialog.ShowDialog(this, page) == retry) await RetryFailedAsync();
+            if (loginTrouble) { page.Buttons.Insert(0, relogin); page.DefaultButton = relogin; }
+            var picked2 = TaskDialog.ShowDialog(this, page);
+            if (picked2 == relogin)
+            {
+                if (await ForceLoginAsync()) await RetryFailedAsync();
+            }
+            else if (picked2 == retry) await RetryFailedAsync();
         }
         else if (picked.Count > 1)
             MessageBox.Show(this, BatchUpload.Summary(results), Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    /// <summary>The current mod, its package size, how long it has run and, from past uploads, about how long is left.</summary>
+    void ShowClock()
+    {
+        if (_currentBase.Length == 0) return;
+        var ran = DateTime.Now - _modStarted;
+        var text = _currentBase + "  ·  " + Clock(ran.TotalSeconds);
+        if (_eta is double eta && _busy)
+        {
+            var left = eta - ran.TotalSeconds;
+            text += left > 5 ? $"  ·  about {Clock(left)} left" : "  ·  finishing";
+        }
+        _current.Text = text;
+    }
+
+    static string Clock(double seconds) => seconds < 60 ? $"{seconds:0}s" : $"{(int)(seconds / 60)}m {seconds % 60:00}s";
+
+    /// <summary>Opens SteamCMD to log in even when a saved login exists (it may be the one Steam just turned down).</summary>
+    async Task<bool> ForceLoginAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_s.Account)) { ShowPage(_optionsPage); Nudge(_account, _accountNote, "Type your Steam account name first."); return false; }
+        var wasBusy = _busy;
+        if (!wasBusy) SetBusy(true);
+        SetLogin("Waiting for you to finish logging in...", Tone.Muted);
+        try { await SteamLogin.InteractiveLoginAsync(_s.EffectiveSteamCmd, _s.Account, CancellationToken.None); }
+        catch (Exception e) { Append("Could not open SteamCMD: " + e.Message, LogKind.Error); }
+        finally { if (!wasBusy) SetBusy(false); }
+        return await VerifyLoginAsync(true);
+    }
+
+    /// <summary>Commits each mod folder's changes (git packaging uploads only HEAD). False, after saying why, when git refused.</summary>
+    bool CommitBeforeUpload(List<ModInfo> mods)
+    {
+        foreach (var m in mods)
+        {
+            var error = GitOps.CommitPaths(_s.RepoPath, new[] { m.RelPath }, $"{m.Name} {m.Version}");
+            if (error != null)
+            {
+                Append($"Could not commit {m.Name}: {error}", LogKind.Error);
+                MessageBox.Show(this, $"Could not commit the changes in {m.Name}, so nothing was uploaded:\n\n{error}", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+            m.Dirty = false;
+            Append($"Committed the changes in {m.Name} ({m.RelPath}).", LogKind.Ok);
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// After an upload in a git repo: offers to commit the id files of newly created items (so they are never created
+    /// twice), and tags what was uploaded when that option is on.
+    /// </summary>
+    void AfterUploadGit(List<BatchItem> results)
+    {
+        if (!ModScanner.IsGitRepo(_s.RepoPath)) return;
+        var created = results.Where(r => r.Status == BatchStatus.Created).ToList();
+        if (created.Count > 0)
+        {
+            var files = created.Select(r => (r.Mod.RelPath + "/" + _cfg.WorkshopIdFile).Replace('\\', '/')).ToList();
+            var commit = _s.CommitNewIds;
+            if (!commit)
+            {
+                var yes = new TaskDialogButton("Commit");
+                var page = new TaskDialogPage
+                {
+                    Caption = Text,
+                    Heading = "Commit the new Workshop ID" + (files.Count == 1 ? "?" : "s?"),
+                    Text = "Steam gave " + string.Join(", ", created.Select(r => $"{r.Mod.Name} the id {r.WorkshopId}")) +
+                        ". Committing " + string.Join(", ", files) + " keeps anyone from creating the item a second time.",
+                    Icon = TaskDialogIcon.Information,
+                    Buttons = { yes, new TaskDialogButton("Not now") },
+                    DefaultButton = yes,
+                    Verification = new TaskDialogVerificationCheckBox("Always commit new Workshop IDs without asking"),
+                };
+                commit = TaskDialog.ShowDialog(this, page) == yes;
+                if (commit && page.Verification.Checked) { _s.CommitNewIds = true; _commitIds.Checked = true; _s.Save(); }
+            }
+            if (commit)
+            {
+                var names = string.Join(", ", created.Select(r => r.Mod.Name));
+                var error = GitOps.CommitPaths(_s.RepoPath, files, $"Add Workshop ID for {names}");
+                Append(error == null ? $"Committed the Workshop ID file for {names}." : "Could not commit the Workshop ID: " + error, error == null ? LogKind.Ok : LogKind.Error);
+            }
+        }
+
+        if (!_s.TagUploads) return;
+        if (!_cfg.UseGitArchive) { Append("Not tagging: this layout copies the working folder, so no commit matches what was uploaded.", LogKind.Note); return; }
+        foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created))
+        {
+            var tag = GitOps.TagName(r.Mod.Folder, r.Mod.Version);
+            var result = GitOps.Tag(_s.RepoPath, tag, $"{r.Mod.Name} {r.Mod.Version} uploaded to Steam Workshop item {r.WorkshopId}");
+            if (result == null) Append($"Tagged {tag}.", LogKind.Ok);
+            else if (result == "exists") Append($"Tag {tag} already exists; left as it is.", LogKind.Note);
+            else Append($"Could not tag {tag}: {result}", LogKind.Warn);
+        }
+    }
+
+    /// <summary>Packages one mod without uploading and shows what the package holds.</summary>
+    async Task PreviewPackageAsync(ModInfo m)
+    {
+        if (_busy) return;
+        PackageReport? report = null;
+        var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account);
+        pub.Packaged += (_, r) => report = r;
+        SetBusy(true);
+        PublishResult res;
+        try { res = await Task.Run(() => pub.RunAsync(m, false, CancellationToken.None)); }
+        catch (Exception e) { res = new PublishResult(false, e.Message); }
+        finally { SetBusy(false); }
+        if (report == null) { MessageBox.Show(this, $"Could not build the package for {m.Name}:\n\n{res.Message}", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+        using var f = new PackagePreviewForm(m, report);
+        f.ShowDialog(this);
     }
 
     void SetStage(string text, int pct)

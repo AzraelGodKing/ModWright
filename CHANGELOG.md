@@ -9,6 +9,18 @@
 - Unexpected errors are saved to `%LocalAppData%\SteamCmdHelper\crashes` and can be sent as a pre-filled bug report
   with **Report it**.
 - Only one window opens at a time; starting the app again brings the open window to the front.
+- The upload confirmation is a window that lists each mod with its change note, which can be edited before it is sent
+  (the changelog file is left alone). It offers to commit uncommitted changes first when git packaging would leave
+  them out.
+- Packages are checked for stray files (`.git`/`obj` folders, `.psd` and other source art, `.pdb` and leftovers,
+  archives, very large files) and warned about in the log. An empty package is refused. **Preview package...** on the
+  right-click menu shows every file and its size.
+- After creating an item in a git repo, the app offers to commit its Workshop ID file. **Options > Git** can do that
+  without asking and tag each upload as `<mod folder>-v<version>`.
+- Failed uploads say what to do (log in again, wait out a rate limit, accept the Workshop agreement, check the item's
+  owner or id), in the window and on the command line. A refused login offers **Log in again and retry**.
+- The progress card shows the package size, the time taken so far and, from this PC's recent uploads, about how long
+  is left.
 - Batch uploads: **Tick all** / **Tick none** buttons, one login check for the whole batch, and a summary of what
   happened to each mod (uploaded, created, failed and why, not run) at the end, in the log and in a dialog. If Steam
   refuses the login part-way, the remaining mods are not tried.

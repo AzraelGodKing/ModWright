@@ -30,6 +30,12 @@ public sealed class Publisher
     /// <summary>Workshop page changes to send with a mod's upload (title, description, visibility), or null for none.</summary>
     public Func<ModInfo, WorkshopPageEdit?>? PageEdits { get; set; }
 
+    /// <summary>A change note typed in the upload confirmation, used instead of the changelog entry; null keeps the entry.</summary>
+    public Func<ModInfo, string?>? NoteOverride { get; set; }
+
+    /// <summary>Raised once a mod is packaged, with what the package holds (also used by "Preview package").</summary>
+    public event Action<ModInfo, PackageReport>? Packaged;
+
     /// <summary>When set, each successful upload is added to this <see cref="UploadHistory"/> file.</summary>
     public string? HistoryFile { get; init; }
 
@@ -45,10 +51,10 @@ public sealed class Publisher
     public async Task<PublishResult> RunAsync(ModInfo m, bool upload, CancellationToken ct)
     {
         At("Reading changelog...", 5);
-        var clPath = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Changelog));
-        var notes = File.Exists(clPath) ? ModScanner.ReadChangelog(clPath, _cfg, m.Version).notes : "";
+        var typed = NoteOverride?.Invoke(m);
+        var notes = typed ?? NotesFor(m, _cfg);
         if (!_cfg.AppIdValid) return new PublishResult(false, "The Steam app ID is not set. Enter the game's app ID in the window first.");
-        if (_cfg.ChangelogByVersion && notes.Length == 0)
+        if (_cfg.ChangelogByVersion && notes.Length == 0 && typed == null)
             return new PublishResult(false, $"{_cfg.Changelog} has no entry for version {(m.Version.Length > 0 ? m.Version : "(unknown)")}.");
         if (notes.Length > 7900) notes = notes.Substring(0, 7900) + "\n[i]...see the full changelog on the project page.[/i]";
 
@@ -65,8 +71,10 @@ public sealed class Publisher
             At("Packaging...", 10);
             await PackageAsync(m, stageRoot, stage, ct);
 
-            var files = Directory.GetFiles(stage, "*", SearchOption.AllDirectories);
-            var mb = Math.Round(files.Sum(f => new FileInfo(f).Length) / 1048576.0, 2);
+            var report = PackageCheck.Inspect(stage);
+            Packaged?.Invoke(m, report);
+            if (report.Files.Count == 0) return new PublishResult(false, "The package is empty, so the upload would remove every file from the item on Steam.");
+            foreach (var w in report.Warnings) Say("Warning: the package " + w + ".");
 
             var page = PageEdits?.Invoke(m);
             if (page != null && WorkshopPage.Validate(page) is { } bad) return new PublishResult(false, "Workshop page: " + bad);
@@ -99,7 +107,7 @@ public sealed class Publisher
             await File.WriteAllTextAsync(vdfPath, vdf, new UTF8Encoding(false), ct);
 
             if (m.OnSteam && page != null) Say("Workshop page changes: " + page.Summary());
-            Say($"{(m.OnSteam ? "Workshop id " + m.WorkshopId : $"New {WorkshopPage.VisibilityName(visibility).ToLowerInvariant()} item")} | version {m.Version} | {files.Length} files, {mb} MB | notes {notes.Length} chars");
+            Say($"{(m.OnSteam ? "Workshop id " + m.WorkshopId : $"New {WorkshopPage.VisibilityName(visibility).ToLowerInvariant()} item")} | version {m.Version} | {report.Files.Count} files, {report.MegaBytes} MB | notes {notes.Length} chars");
             At("Package ready", 20);
 
             if (!upload)
@@ -108,6 +116,7 @@ public sealed class Publisher
                 return new PublishResult(true, "Dry run OK");
             }
 
+            var started = DateTimeOffset.UtcNow;
             var output = new List<string>();
             var exit = await RunProcAsync(_steamCmd,
                 new[] { "+login", _account, "+workshop_build_item", vdfPath, "+quit" },
@@ -146,7 +155,8 @@ public sealed class Publisher
 
             if ((m.WorkshopId ?? newId) is { } id)
             {
-                if (HistoryFile != null) UploadHistory.Add(new UploadEntry(DateTimeOffset.UtcNow, id, m.Name, m.Version, notes, newId != null, _cfg.AppId), HistoryFile);
+                if (HistoryFile != null) UploadHistory.Add(new UploadEntry(DateTimeOffset.UtcNow, id, m.Name, m.Version, notes, newId != null, _cfg.AppId,
+                    report.TotalBytes, (DateTimeOffset.UtcNow - started).TotalSeconds), HistoryFile);
                 WorkshopStatus.Forget(id);
             }
 
@@ -157,6 +167,14 @@ public sealed class Publisher
         {
             if (!keep) TryDelete(stageRoot);
         }
+    }
+
+    /// <summary>The change note the changelog gives for the mod's current version (empty when there is none).</summary>
+    public static string NotesFor(ModInfo m, ProjectConfig cfg)
+    {
+        var clPath = Path.Combine(m.Dir, ProjectConfig.Norm(cfg.Changelog));
+        try { return File.Exists(clPath) ? ModScanner.ReadChangelog(clPath, cfg, m.Version).notes : ""; }
+        catch (IOException) { return ""; }
     }
 
     async Task SaveIdAsync(ModInfo m, string id, CancellationToken ct)

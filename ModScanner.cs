@@ -22,6 +22,8 @@ public sealed class ModInfo
     public string PreviewPath = "";
     public readonly List<string> Problems = new();
     public readonly List<string> Warnings = new();
+    /// <summary>The mod folder has uncommitted changes (git packaging uses HEAD, so they would not be uploaded).</summary>
+    public bool Dirty;
 
     public bool OnSteam => WorkshopId != null;
     public bool Ready => Problems.Count == 0;
@@ -328,7 +330,10 @@ public static class ModScanner
                 if (MatchGlob(dir, glob).Count == 0) m.Warnings.Add($"not built (nothing matches {glob})");
 
             if (dirtyLines.Any(p => p.StartsWith(rel + "/", StringComparison.OrdinalIgnoreCase)))
+            {
+                m.Dirty = true;
                 m.Warnings.Add("uncommitted changes will NOT be uploaded");
+            }
 
             list.Add(m);
         }

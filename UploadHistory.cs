@@ -10,7 +10,9 @@ public sealed record UploadEntry(
     string Version,
     string ChangeNote,
     bool Created = false,
-    string AppId = "");
+    string AppId = "",
+    long Bytes = 0,
+    double Seconds = 0);
 
 /// <summary>
 /// A log of every upload made from this PC: when, which version and the change note sent. Kept in
@@ -25,6 +27,21 @@ public static class UploadHistory
 
     static readonly object Gate = new();
     static readonly JsonSerializerOptions Opts = new() { WriteIndented = true };
+
+    /// <summary>
+    /// Seconds an upload of <paramref name="bytes"/> is likely to take, from the speed of this PC's recent uploads that
+    /// recorded their size and time; null until there are any. Each upload also pays a roughly fixed cost (login,
+    /// commit), so the estimate is that plus the size at the median speed of those uploads.
+    /// </summary>
+    public static double? EstimateSeconds(IEnumerable<UploadEntry> history, long bytes)
+    {
+        var recent = history.Where(e => e.Bytes > 0 && e.Seconds > 0).TakeLast(20).ToList();
+        if (recent.Count == 0) return null;
+        static double Median(List<double> v) { v.Sort(); return v.Count % 2 == 1 ? v[v.Count / 2] : (v[v.Count / 2 - 1] + v[v.Count / 2]) / 2; }
+        const double Fixed = 8; // login and commit, roughly, before any bytes move
+        var speed = Median(recent.Select(e => e.Bytes / Math.Max(1, e.Seconds - Fixed)).ToList());
+        return Fixed + bytes / Math.Max(1, speed);
+    }
 
     public static List<UploadEntry> Load(string? file = null)
     {
