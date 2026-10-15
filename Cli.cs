@@ -224,6 +224,8 @@ public static class Cli
             PageEdits = m => WorkshopPage.Get(m.Dir),
             // Kept beside the uploaded-versions record, so tests that pass their own record keep their history too.
             HistoryFile = recordPath == null ? UploadHistory.DefaultFile : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(recordPath))!, "history.json"),
+            // Asks Steam whether each update landed; runs with their own record (tests) stay offline.
+            SteamCheck = recordPath == null ? Publisher.LiveSteamCheck : null,
         };
         pub.Log += l => Say("    " + l);
         var batch = new BatchUpload(pub, recordPath);

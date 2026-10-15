@@ -4,7 +4,9 @@ namespace SteamCmdHelper;
 
 /// <summary>What one "+workshop_build_item" run actually achieved.</summary>
 /// <param name="PublishedFileId">The item's Workshop id when Steam reported one, even if the run failed afterwards.</param>
-public sealed record UploadOutcome(bool Ok, string Reason, string? PublishedFileId);
+/// <param name="Unconfirmed">The run looked clean (exit 0, no failure line) but never said "Success", so Steam itself may
+/// still show that the update arrived.</param>
+public sealed record UploadOutcome(bool Ok, string Reason, string? PublishedFileId, bool Unconfirmed = false);
 
 /// <summary>
 /// Decides whether a SteamCMD Workshop upload really succeeded. SteamCMD can exit 0 after a failure and prints
@@ -51,7 +53,8 @@ public static class SteamCmdOutput
         var failure = clean.FirstOrDefault(l => FailureLine.IsMatch(l));
         if (failure != null) return Fail("SteamCMD reported a failure: " + failure);
         if (exitCode != 0) return Fail($"SteamCMD exited with code {exitCode}.");
-        if (!clean.Any(l => SuccessLine.IsMatch(l))) return Fail("SteamCMD finished without confirming the upload (no \"Success\" line).");
+        if (!clean.Any(l => SuccessLine.IsMatch(l)))
+            return new UploadOutcome(false, "SteamCMD finished without confirming the upload (no \"Success\" line).", id, Unconfirmed: true);
 
         if (expectedId != null)
         {
