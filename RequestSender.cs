@@ -78,7 +78,7 @@ public static class RequestSender
     }
 
     /// <summary>One issueCreate call. <c>refused</c> is true when Linear answered but rejected the input.</summary>
-    static async Task<(bool ok, string message, bool refused)> PostAsync(string key, string endpoint, string body, CancellationToken ct)
+    internal static async Task<(bool ok, string message, bool refused)> PostAsync(string key, string endpoint, string body, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
