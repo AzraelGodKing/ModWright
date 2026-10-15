@@ -94,6 +94,14 @@ The list columns:
 - **Preview**: ✔ when the preview image exists and is within Steam's 1 MB limit, ✖ otherwise (hover for the size).
 - **Status**: `Ready`, `Fix`, or `Ready to create (private)`.
 
+### Workshop page: title, description and visibility
+
+Select a mod and press **Workshop page...** (or right-click it, or double-click its name). The editor reads the item's
+current title, description and visibility from Steam. Tick what to change; the changes are kept and sent with that
+mod's next upload (the confirmation lists them), then cleared (an upload from the command line sends them too). Unticked fields stay as they are on Steam. For a mod not
+on Steam yet, ticked fields replace the name, description file and private visibility it would be created with.
+SteamCMD cannot change tags, so they are only shown (the game's own uploader sets them).
+
 ### Command line (scripts and CI)
 
 The same exe uploads without opening the window. It uses the repo, account and SteamCMD picked in the window

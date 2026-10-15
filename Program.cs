@@ -140,7 +140,7 @@ static class Program
 
         if (Array.IndexOf(args, "--shot") is var sh and >= 0 && sh + 1 < args.Length)
         {
-            // Render the main window, its Options tab and the request form to PNG files, in both themes (layout check without clicking).
+            // Render the main window, its Options tab, the request form and the Workshop page editor to PNG files, in both themes (layout check without clicking).
             ApplicationConfiguration.Initialize();
             void Snap(Form f, string file)
             {
@@ -160,6 +160,8 @@ static class Program
                 options.Shown += (_, _) => options.ShowOptions();
                 Snap(options, Path.Combine(args[sh + 1], $"options{suffix}.png"));
                 Snap(new RequestForm("RimWorld", "294100", "RimWorld", "About/About.xml\r\nAbout/Preview.png\r\nAssemblies/Mod.dll"), Path.Combine(args[sh + 1], $"request{suffix}.png"));
+                var example = new ModInfo { Name = "Example Mod", Folder = "ExampleMod", Dir = Path.Combine(Path.GetTempPath(), "steamcmd_helper_shot_example") };
+                Snap(new WorkshopPageForm(example, "About/steam_description.txt", "[h1]Example Mod[/h1]\nAdds an example to the game."), Path.Combine(args[sh + 1], $"workshop-page{suffix}.png"));
             }
             return 0;
         }

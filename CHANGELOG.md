@@ -12,6 +12,10 @@
 - Changing a RimWorld mod's version (double-click **Version to upload**) now asks what changed and writes the new
   version's entry into `About/Changelog.txt`, so the upload is not blocked for a missing entry. A row still missing
   its entry can be fixed by double-clicking its **Status**.
+- **Workshop page...** (also right-click or double-click a mod's name) edits the item's title, description (with a
+  counter for Steam's 8000-character limit) and visibility, starting from what Steam shows now. Ticked changes are
+  sent with the mod's next upload and listed in the upload confirmation. Tags are shown but cannot be changed, as
+  SteamCMD has no way to set them.
 - At start-up the app checks GitHub for a newer release and offers to download it (or show its notes, or skip that
   version). It can be turned off, or run on demand with **Check now**, under **Options > About**.
 
