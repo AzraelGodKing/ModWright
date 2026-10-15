@@ -1133,7 +1133,9 @@ public sealed class MainForm : Form
             text = state switch
             {
                 RowState.UpToDate => $"{m.Name}: Steam already has {m.Version}.",
-                RowState.New => $"{m.Name}: not on Steam yet; uploading creates a new private item.",
+                RowState.New => _allowCreate.Checked
+                    ? $"{m.Name}: not on Steam yet; uploading creates a new private item."
+                    : $"{m.Name}: not on Steam yet. Turn on \"Create new items (private)\" to tick it and create it on Steam.",
                 RowState.Changed => $"{m.Name}: {m.Version} is ready to upload (Steam has {row!.SubItems[UploadedCol].Text}).",
                 RowState.Failed => $"{m.Name}: the last upload failed; see the log.",
                 _ => $"{m.Name}: {m.Version} is ready to upload.",
