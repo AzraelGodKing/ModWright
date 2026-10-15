@@ -1,0 +1,24 @@
+name: Linear key check
+
+# Run by hand (Actions > Linear key check > Run workflow) after setting or rotating the
+# LINEAR_CREATE_API_KEY / LINEAR_TEAM_UUID secrets. It files one test request into the
+# SteamCMD Helper project in Linear, the same way the app does; delete that issue afterwards.
+on:
+  workflow_dispatch:
+
+jobs:
+  linear-key:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Send a test request to Linear
+        env:
+          LINEAR_LIVE_TEST: "1"
+          LINEAR_CREATE_API_KEY: ${{ secrets.LINEAR_CREATE_API_KEY }}
+          LINEAR_TEAM_UUID: ${{ secrets.LINEAR_TEAM_UUID }}
+        run: dotnet test tests/SteamCmdHelper.Tests -c Release --filter "FullyQualifiedName~LinearLiveTests" --logger "console;verbosity=detailed"
