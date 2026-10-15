@@ -12,6 +12,8 @@
 - Changing a RimWorld mod's version (double-click **Version to upload**) now asks what changed and writes the new
   version's entry into `About/Changelog.txt`, so the upload is not blocked for a missing entry. A row still missing
   its entry can be fixed by double-clicking its **Status**.
+- At start-up the app checks GitHub for a newer release and offers to download it (or show its notes, or skip that
+  version). It can be turned off, or run on demand with **Check now**, under **Options > About**.
 
 ## 1.0.0
 

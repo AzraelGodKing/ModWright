@@ -22,6 +22,7 @@ public sealed class MainForm : Form
     readonly Label _steamCmdPath = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Muted);
     readonly RadioButton _themeDark = new() { AutoSize = true, Text = "Dark" };
     readonly RadioButton _themeLight = new() { AutoSize = true, Text = "Light" };
+    readonly CheckBox _checkUpdates = new() { AutoSize = true, Text = "Check for a newer version at start-up" };
     readonly ListView _list = new();
     readonly FlatProgressBar _modBar = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 6) };
     readonly FlatProgressBar _overall = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 2) };
@@ -31,7 +32,7 @@ public sealed class MainForm : Form
     readonly CheckBox _allowCreate = new() { AutoSize = true, Text = "Allow creating new items (private) for mods not on Steam yet" };
     readonly RichTextBox _log = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None }.Role(ThemeRole.Log);
 
-    Button _help = null!, _browse = null!, _refresh = null!, _all = null!, _none = null!, _go = null!, _cancel = null!, _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!;
+    Button _help = null!, _checkUpdateNow = null!, _browse = null!, _refresh = null!, _all = null!, _none = null!, _go = null!, _cancel = null!, _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!;
     NavButton _navUpload = null!, _navOptions = null!;
     Control _uploadPage = null!, _optionsPage = null!;
     Tone _loginTone = Tone.Muted;
@@ -59,6 +60,7 @@ public sealed class MainForm : Form
             RefreshAll();
             if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { if (!NoStartupPrompts) await OfferInstallAsync(); }
             else if (SteamLogin.LooksCached(_s.EffectiveSteamCmd, _s.Account)) _ = VerifyLoginAsync(false);
+            if (_s.CheckForUpdates && !NoStartupPrompts) await CheckForUpdateAsync(false);
         };
         FormClosing += (_, e) =>
         {
@@ -117,6 +119,7 @@ public sealed class MainForm : Form
         _themeDark.CheckedChanged += (_, _) => { if (_themeDark.Checked) SetTheme(Theme.DarkName); };
         _themeLight.CheckedChanged += (_, _) => { if (_themeLight.Checked) SetTheme(Theme.LightName); };
         _loginLink.LinkClicked += (_, _) => ShowPage(_optionsPage);
+        _checkUpdates.CheckedChanged += (_, _) => { if (!_populating) { _s.CheckForUpdates = _checkUpdates.Checked; _s.Save(); } };
     }
 
     /// <summary>The top bar: app name on the left, the Upload / Options tabs and the "?" button on the right.</summary>
@@ -228,8 +231,11 @@ public sealed class MainForm : Form
             Hint("You log in once in SteamCMD's own window and Steam keeps the login. This program never sees your password.")), 0, 1);
 
         var version = (typeof(MainForm).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "").Split('+')[0];
+        _checkUpdates.Checked = _s.CheckForUpdates;
+        _checkUpdateNow = Btn("Check now", async (_, _) => await CheckForUpdateAsync(true));
         page.Controls.Add(Card("About", null,
             Hint($"SteamCMD Helper {version}. Settings are stored in %LocalAppData%\\SteamCmdHelper\\settings.json."),
+            Row(_checkUpdates, _checkUpdateNow),
             Hint(Disclaimer + " Steam and SteamCMD are trademarks of Valve Corporation.")), 0, 2);
         return page;
     }
@@ -622,7 +628,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _checkUpdateNow })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Enabled = busy;
@@ -737,6 +743,51 @@ public sealed class MainForm : Form
         try { await SteamLogin.InstallAsync(_s.EffectiveSteamCmd, l => Append(l), CancellationToken.None); }
         catch (Exception e) { Append("Install failed: " + e.Message, Color.Tomato); }
         finally { SetBusy(false); UpdateLoginHint(); }
+    }
+
+    // ---------------------------------------------------------------- updates
+
+    /// <summary>
+    /// Looks for a newer release on GitHub and offers to download it. At start-up (<paramref name="manual"/> false) it
+    /// stays quiet when up to date, offline, or the release was skipped; "Check now" always says what it found.
+    /// </summary>
+    async Task CheckForUpdateAsync(bool manual)
+    {
+        _checkUpdateNow.Enabled = false;
+        ReleaseInfo? r;
+        try { r = await UpdateCheck.FindNewerAsync(UpdateCheck.CurrentVersion); }
+        finally { _checkUpdateNow.Enabled = !_busy; }
+        if (IsDisposed) return;
+        if (r == null)
+        {
+            if (manual) MessageBox.Show(this, $"No newer version found. You have SteamCMD Helper {UpdateCheck.CurrentVersion} (or GitHub could not be reached).", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        if (!manual && r.Version == _s.SkippedUpdate) return;
+        Append($"SteamCMD Helper {r.Version} is available (you have {UpdateCheck.CurrentVersion}): {r.PageUrl}", Color.DeepSkyBlue);
+
+        var download = new TaskDialogButton("Download");
+        var notes = new TaskDialogButton("Release notes");
+        var later = new TaskDialogButton("Later");
+        var page = new TaskDialogPage
+        {
+            Caption = Text,
+            Heading = $"SteamCMD Helper {r.Version} is available",
+            Text = $"You have {UpdateCheck.CurrentVersion}. " + (r.DownloadUrl != null
+                ? "Download saves the new exe through your browser; close this one and run the new one."
+                : "Open the release page to download it."),
+            Icon = TaskDialogIcon.Information,
+            Buttons = { download, notes, later },
+            Verification = new TaskDialogVerificationCheckBox($"Don't remind me about {r.Version} again"),
+        };
+        if (r.DownloadUrl == null) page.Buttons.Remove(download);
+        var picked = TaskDialog.ShowDialog(this, page);
+        _s.SkippedUpdate = page.Verification.Checked ? r.Version : "";
+        _s.Save();
+        var url = picked == download ? r.DownloadUrl : picked == notes ? r.PageUrl : null;
+        if (url == null) return;
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Exception e) { Append("Could not open the browser: " + e.Message + " Download it from " + r.PageUrl, Color.Tomato); }
     }
 
     // ---------------------------------------------------------------- upload

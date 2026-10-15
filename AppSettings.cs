@@ -11,6 +11,10 @@ public sealed class AppSettings
     public bool AllowCreate { get; set; }
     /// <summary>"Dark" (the default) or "Light".</summary>
     public string Theme { get; set; } = SteamCmdHelper.Theme.DarkName;
+    /// <summary>Look for a newer release on GitHub at start-up.</summary>
+    public bool CheckForUpdates { get; set; } = true;
+    /// <summary>A release version the user said not to be reminded about again.</summary>
+    public string SkippedUpdate { get; set; } = "";
 
     static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SteamCmdHelper");
