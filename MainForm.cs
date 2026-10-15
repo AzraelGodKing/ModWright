@@ -178,6 +178,7 @@ public sealed class MainForm : Form
         _list.ShowItemToolTips = true;
         _list.Columns.Add("Mod", 200);
         _list.Columns.Add("Uploaded version", 135);
+        _list.Columns.Add("Updated on Steam", 125);
         _list.Columns.Add("Version to upload", 135);
         _list.Columns.Add("Workshop ID", 105);
         _list.Columns.Add("Preview", 65, HorizontalAlignment.Center);
@@ -190,7 +191,16 @@ public sealed class MainForm : Form
         _tip.SetToolTip(_editPage, "Change the selected mod's title, description or visibility on Steam with its next upload");
         var menu = new ContextMenuStrip();
         menu.Items.Add("Edit Workshop page...", null, (_, _) => EditWorkshopPage(SelectedMod()));
-        menu.Opening += (_, e) => e.Cancel = _busy || SelectedMod() == null;
+        menu.Items.Add("Upload history...", null, (_, _) => { if (SelectedMod() is { } m) ShowHistory(m); });
+        var onSteam = menu.Items.Add("Open on Steam", null, (_, _) =>
+        {
+            if (SelectedMod() is { OnSteam: true } m) OpenUrl($"https://steamcommunity.com/sharedfiles/filedetails/?id={m.WorkshopId}");
+        });
+        menu.Opening += (_, e) =>
+        {
+            e.Cancel = _busy || SelectedMod() == null;
+            onSteam.Enabled = SelectedMod()?.OnSteam == true;
+        };
         _list.ContextMenuStrip = menu;
         var mods = Card("Mods", new Control[] { _editPage, _all, _none, _refresh }, _list);
         mods.AutoSize = false; mods.Dock = DockStyle.Fill;
@@ -470,10 +480,12 @@ public sealed class MainForm : Form
         foreach (var m in _mods)
             if (WorkshopPage.Get(m.Dir) is { } page) m.Warnings.Add("Workshop page changes go out with the next upload: " + page.Summary());
         var uploaded = UploadedVersions.LoadRecord();
+        var history = UploadHistory.Latest(UploadHistory.Load());
         foreach (var m in _mods)
         {
             var it = new ListViewItem(m.Name) { UseItemStyleForSubItems = false };
-            it.SubItems.Add(!m.OnSteam ? "-" : uploaded.TryGetValue(m.WorkshopId!, out var up) ? up : "...");
+            it.SubItems.Add(!m.OnSteam ? "-" : history.TryGetValue(m.WorkshopId!, out var last) ? last.Version : uploaded.TryGetValue(m.WorkshopId!, out var up) ? up : "...");
+            it.SubItems.Add(m.OnSteam ? "..." : "-");
             it.SubItems.Add(m.Version.Length > 0 ? m.Version : "?");
             it.SubItems.Add(m.WorkshopId ?? "0"); // 0 = not on Steam yet, so uploading creates it
             it.SubItems.Add(m.PreviewOk == null ? "-" : m.PreviewOk == true ? "✔" : "✖");
@@ -487,7 +499,7 @@ public sealed class MainForm : Form
             if (!m.Ready) Append($"{m.Name}: fix {string.Join("; ", m.Problems)}", Color.Orange);
         }
         _populating = false;
-        _ = LoadUploadedVersionsAsync(_mods.Where(m => m.OnSteam).ToList(), uploaded);
+        _ = LoadUploadedVersionsAsync(_mods.Where(m => m.OnSteam).ToList(), uploaded, history);
 
         if (_mods.Count == 0)
             Append(string.IsNullOrWhiteSpace(_cfg.ModMarker)
@@ -499,7 +511,7 @@ public sealed class MainForm : Form
         StretchLastColumn();
     }
 
-    const int UploadedCol = 1, VersionCol = 2, PreviewCol = 4, StatusCol = 5;
+    const int UploadedCol = 1, SteamCol = 2, VersionCol = 3, PreviewCol = 5, StatusCol = 6;
 
     /// <summary>Row text colour: red when it needs fixing, dimmed when it can't be picked, the preview mark green or red.</summary>
     void ColorRow(ListViewItem it, ModInfo m)
@@ -519,26 +531,86 @@ public sealed class MainForm : Form
         lines.AddRange(m.Problems.Select(p => "Fix: " + p));
         lines.AddRange(m.Warnings.Select(w => "Note: " + w));
         if (m.PreviewNote.Length > 0) lines.Add("Preview: " + m.PreviewNote);
-        lines.Add("Double-click the version to upload to change it, or the name to edit the Workshop page.");
+        lines.Add("Double-click the version to upload to change it, or the name to edit the Workshop page. Right-click for upload history.");
         if (ModScanner.NeedsChangelogEntry(m, _cfg)) lines.Add("Double-click the status to write the changelog entry for " + m.Version + ".");
         return string.Join("\n", lines);
     }
 
     /// <summary>
-    /// Fills in "Uploaded version" from each item's public Steam changelog (the newest change note starts with the
-    /// version when it was sent by this app or the Add Changenote mod). Falls back to what this PC last uploaded, else "?".
+    /// Fills in "Updated on Steam" from Steam's public item details (one request for the whole list), then
+    /// "Uploaded version" from each item's public changelog (the newest change note starts with the version when it
+    /// was sent by this app or the Add Changenote mod), falling back to this PC's upload history.
     /// </summary>
-    async Task LoadUploadedVersionsAsync(List<ModInfo> mods, Dictionary<string, string> uploaded)
+    async Task LoadUploadedVersionsAsync(List<ModInfo> mods, Dictionary<string, string> uploaded, Dictionary<string, UploadEntry> history)
     {
+        ListViewItem? Row(ModInfo m) => IsDisposed ? null : _list.Items.Cast<ListViewItem>().FirstOrDefault(i => ReferenceEquals(i.Tag, m));
+
+        var live = await WorkshopStatus.FetchAsync(mods.Select(m => m.WorkshopId!));
+        foreach (var m in mods)
+        {
+            var it = Row(m);
+            if (it == null) return; // closed, or the list was refreshed meanwhile; that refresh fills it in
+            if (live.TryGetValue(m.WorkshopId!, out var item))
+            {
+                it.SubItems[SteamCol].Text = item.UpdatedText;
+                it.SubItems[SteamCol].ForeColor = Theme.Of(!m.Ready ? Tone.Error : item.Banned ? Tone.Error : item.Public ? Tone.Normal : Tone.Muted);
+            }
+            else it.SubItems[SteamCol].Text = "?";
+        }
+
         // One at a time: Steam rate-limits its community pages.
         foreach (var m in mods)
         {
-            var v = await UploadedVersions.FetchAsync(m.WorkshopId!);
-            if (IsDisposed) return;
-            var it = _list.Items.Cast<ListViewItem>().FirstOrDefault(i => ReferenceEquals(i.Tag, m));
-            if (it == null) return; // the list was refreshed meanwhile; that refresh fills it in
-            it.SubItems[UploadedCol].Text = v ?? (uploaded.TryGetValue(m.WorkshopId!, out var up) ? up : "?");
+            var fromNote = await UploadedVersions.FetchAsync(m.WorkshopId!);
+            var it = Row(m);
+            if (it == null) return;
+            live.TryGetValue(m.WorkshopId!, out var item);
+            var (text, note) = UploadedVersions.Resolve(fromNote, item, history.GetValueOrDefault(m.WorkshopId!), uploaded.GetValueOrDefault(m.WorkshopId!));
+            it.SubItems[UploadedCol].Text = text;
+            var extra = new List<string> { note };
+            extra.Add(item?.Summary ?? "On Steam: could not be read (offline, or Steam did not answer).");
+            it.ToolTipText = string.Join("\n", extra) + "\n" + RowTip(m);
         }
+    }
+
+    void OpenUrl(string url)
+    {
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Exception e) { Append("Could not open the page: " + e.Message, Color.Tomato); }
+    }
+
+    /// <summary>Every upload of one mod made from this PC: when, which version and the change note sent.</summary>
+    void ShowHistory(ModInfo m)
+    {
+        var entries = m.OnSteam ? UploadHistory.For(UploadHistory.Load(), m.WorkshopId!) : new List<UploadEntry>();
+        using var f = new Form
+        {
+            Text = $"Upload history: {m.Name}", StartPosition = FormStartPosition.CenterParent, MinimizeBox = false,
+            ClientSize = new Size(620, 420), MinimumSize = new Size(420, 300), Font = Font, ShowInTaskbar = false
+        };
+        var list = new ListView { View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = false, Dock = DockStyle.Fill };
+        list.Columns.Add("When", 170);
+        list.Columns.Add("Version", 110);
+        list.Columns.Add("", 90);
+        var note = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, WordWrap = true };
+        foreach (var e in entries)
+            list.Items.Add(new ListViewItem(new[] { e.Time.ToLocalTime().ToString("d MMM yyyy HH:mm"), e.Version, e.Created ? "created" : "update" }) { Tag = e });
+        list.SelectedIndexChanged += (_, _) =>
+            note.Text = list.SelectedItems.Count > 0 && list.SelectedItems[0].Tag is UploadEntry e ? e.ChangeNote.Replace("\n", Environment.NewLine) : "";
+        var empty = new Label
+        {
+            Text = m.OnSteam ? "No uploads of this mod from this PC yet. Uploads are recorded from now on." : "This mod is not on Steam yet.",
+            AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(4)
+        };
+        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal };
+        split.Panel1.Controls.Add(list);
+        split.Panel2.Controls.Add(note);
+        f.Controls.Add(split);
+        if (entries.Count == 0) f.Controls.Add(empty);
+        else list.Items[0].Selected = true;
+        f.Load += (_, _) => split.SplitterDistance = split.Height / 2;
+        Theme.Apply(f);
+        f.ShowDialog(this);
     }
 
     void OnListDoubleClick(object? sender, MouseEventArgs e)
@@ -852,7 +924,7 @@ public sealed class MainForm : Form
 
         if (!dry && !await LoginFlowAsync()) { Append("Stopped: not logged in to Steam.", Color.Orange); return; }
 
-        var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account) { PageEdits = m => WorkshopPage.Get(m.Dir) };
+        var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account) { PageEdits = m => WorkshopPage.Get(m.Dir), HistoryFile = UploadHistory.DefaultFile };
         pub.Log += l => BeginInvoke(() => Append(l, LineColor(l)));
         pub.Stage += (t, p) => BeginInvoke(() => SetStage(t, p));
 

@@ -185,7 +185,12 @@ public static class Cli
 
         Say((o.DryRun ? "Dry run of " : "Uploading ") + $"{picked.Count} mod{(picked.Count == 1 ? "" : "s")}.");
         // Workshop page changes saved in the window go out with the next upload, from here too.
-        var pub = new Publisher(repo, cfg, steamCmd, account, tempRoot) { PageEdits = m => WorkshopPage.Get(m.Dir) };
+        var pub = new Publisher(repo, cfg, steamCmd, account, tempRoot)
+        {
+            PageEdits = m => WorkshopPage.Get(m.Dir),
+            // Kept beside the uploaded-versions record, so tests that pass their own record keep their history too.
+            HistoryFile = recordPath == null ? UploadHistory.DefaultFile : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(recordPath))!, "history.json"),
+        };
         pub.Log += l => Say("    " + l);
         var batch = new BatchUpload(pub, recordPath);
         batch.Starting += (m, i, n) => Say($"--- {m.Name} v{m.Version} ({i + 1} of {n}) ---");

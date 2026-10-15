@@ -50,6 +50,27 @@ public static class UploadedVersions
     /// <summary>Forgets the cached page, e.g. after uploading a new version.</summary>
     public static void Forget(string workshopId) { lock (Cache) Cache.Remove(workshopId); }
 
+    /// <summary>
+    /// Picks what the "Uploaded version" column shows. The version in Steam's newest change note wins. Otherwise
+    /// this PC's last upload is used, unless Steam says the item was updated after it (an upload from somewhere
+    /// else), in which case the version is honestly unknown.
+    /// </summary>
+    public static (string text, string note) Resolve(string? fromSteamNote, WorkshopItem? live, UploadEntry? last, string? recorded)
+    {
+        if (fromSteamNote != null) return (fromSteamNote, "Uploaded version: read from the newest change note on Steam.");
+        var local = last?.Version ?? recorded;
+        if (local == null)
+            return ("?", "Uploaded version: unknown. Steam's newest change note does not start with a version, and this PC has no record of uploading it.");
+        if (last != null && live?.Updated is { } u && u > last.Time + UpdatedSlack)
+            return ("?", $"Uploaded version: unknown. Steam shows an update on {u.ToLocalTime():d MMM yyyy HH:mm}, after this PC uploaded {last.Version} on {last.Time.ToLocalTime():d MMM yyyy HH:mm}.");
+        return (local, last != null
+            ? $"Uploaded version: uploaded from this PC on {last.Time.ToLocalTime():d MMM yyyy HH:mm}."
+            : "Uploaded version: last uploaded from this PC.");
+    }
+
+    /// <summary>Steam stamps the update when the upload finishes, a little after this PC records it.</summary>
+    public static readonly TimeSpan UpdatedSlack = TimeSpan.FromMinutes(15);
+
     // ------------------------------------------------------------ local record of uploads made from this PC
 
     static string RecordPath => Path.Combine(
