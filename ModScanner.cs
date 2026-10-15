@@ -114,6 +114,74 @@ public static class ModScanner
         return string.Join("\n", picked).Trim();
     }
 
+    /// <summary>True when the layout wants a changelog entry per version and <paramref name="m"/>'s version has none yet.</summary>
+    public static bool NeedsChangelogEntry(ModInfo m, ProjectConfig cfg)
+    {
+        if (!cfg.ChangelogByVersion || m.Version.Length == 0) return false;
+        var path = Path.Combine(m.Dir, ProjectConfig.Norm(cfg.Changelog));
+        try { return !File.Exists(path) || ReadChangelog(path, cfg, m.Version).notes.Length == 0; }
+        catch (IOException) { return false; }
+    }
+
+    /// <summary>
+    /// Adds an Add Changenote style entry for <paramref name="version"/> to the mod's changelog, creating the file if
+    /// needed. Returns null on success, or why it cannot.
+    /// </summary>
+    public static string? AddChangelogEntry(ModInfo m, ProjectConfig cfg, string version, string notes)
+    {
+        version = version.Trim();
+        if (!VersionLine.IsMatch(version)) return "Use a version number like 1.2.3.";
+        if (notes.Trim().Length == 0) return "Write at least one line about what changed.";
+        var path = Path.Combine(m.Dir, ProjectConfig.Norm(cfg.Changelog));
+        var existing = File.Exists(path) ? File.ReadAllText(path) : "";
+        if (ChangenoteFor(existing.Replace("\r\n", "\n").Split('\n'), version).Length > 0)
+            return $"{cfg.Changelog} already has an entry for {version}.";
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, InsertChangelogEntry(existing, version, notes), new System.Text.UTF8Encoding(false));
+        return null;
+    }
+
+    /// <summary>
+    /// The changelog text with a new entry: the version on its own line, then the notes. It goes above the newest entry,
+    /// or at the end when the file lists the oldest version first. Note lines that would end the entry early (a line
+    /// starting with a version number) or be skipped (a line starting with #) get a "- " in front. Line endings are kept.
+    /// </summary>
+    public static string InsertChangelogEntry(string existing, string version, string notes)
+    {
+        var nl = existing.Contains("\r\n") ? "\r\n" : "\n";
+        var noteLines = notes.Replace("\r\n", "\n").Trim('\n').Split('\n')
+            .Select(l => l.TrimEnd())
+            .Select(l => l.StartsWith('#') || VersionLine.IsMatch(l) ? "- " + l : l);
+        var entry = new List<string> { version.Trim() };
+        entry.AddRange(noteLines);
+
+        var lines = existing.Replace("\r\n", "\n").Split('\n').ToList();
+        if (existing.Length == 0) lines.Clear();
+        var versionAt = lines.Select((l, i) => (l, i)).Where(x => !x.l.StartsWith('#') && VersionLine.IsMatch(x.l)).Select(x => x.i).ToList();
+
+        var oldestFirst = versionAt.Count >= 2
+            && ParseVersion(lines[versionAt[0]]) is { } first && ParseVersion(lines[versionAt[^1]]) is { } last && first < last;
+        if (versionAt.Count == 0 || oldestFirst)
+        {
+            while (lines.Count > 0 && lines[^1].Trim().Length == 0) lines.RemoveAt(lines.Count - 1);
+            if (lines.Count > 0) lines.Add("");
+            lines.AddRange(entry);
+            lines.Add("");
+        }
+        else
+        {
+            entry.Add("");
+            lines.InsertRange(versionAt[0], entry);
+        }
+        return string.Join(nl, lines);
+    }
+
+    static Version? ParseVersion(string line)
+    {
+        var m = VersionLine.Match(line);
+        return m.Success && Version.TryParse(m.Value, out var v) ? v : null;
+    }
+
     /// <summary>The version: the manifest's &lt;version&gt; when the layout has one and it is set, else the marker's.</summary>
     static string ReadVersion(string dir, string markerFile, ProjectConfig cfg)
     {
