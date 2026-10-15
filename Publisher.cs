@@ -39,6 +39,22 @@ public sealed class Publisher
     /// <summary>When set, each successful upload is added to this <see cref="UploadHistory"/> file.</summary>
     public string? HistoryFile { get; init; }
 
+    /// <summary>
+    /// Reads an item's live details from Steam after an update, to confirm it arrived. Null skips the check (tests,
+    /// offline use). Only public and unlisted items can be read this way.
+    /// </summary>
+    public Func<string, CancellationToken, Task<WorkshopItem?>>? SteamCheck { get; init; }
+
+    /// <summary>How far Steam's clock and this PC's may disagree when matching Steam's "updated" time to the upload.</summary>
+    public static readonly TimeSpan ClockSlack = TimeSpan.FromMinutes(2);
+
+    /// <summary>The standard check: Steam's public details API, skipping the cache so the answer is fresh.</summary>
+    public static async Task<WorkshopItem?> LiveSteamCheck(string id, CancellationToken ct)
+    {
+        WorkshopStatus.Forget(id);
+        return (await WorkshopStatus.FetchAsync(new[] { id }, ct)).GetValueOrDefault(id);
+    }
+
     public Publisher(string repo, ProjectConfig cfg, string steamCmd, string account, string? tempRoot = null)
     {
         _repo = repo; _cfg = cfg; _steamCmd = steamCmd; _account = account;
@@ -133,6 +149,19 @@ public sealed class Publisher
             UploadOutcome outcome;
             lock (output) outcome = SteamCmdOutput.Evaluate(output, exit, m.WorkshopId, vdfAfter);
 
+            // SteamCMD's console output is not always complete. For an existing item, ask Steam whether the update
+            // landed: a clean run that never said "Success" counts once Steam shows the item updated since it started.
+            var steamSays = m.OnSteam && (outcome.Ok || outcome.Unconfirmed) && SteamCheck != null
+                ? await ConfirmOnSteamAsync(m.WorkshopId!, started, ct)
+                : null;
+            if (!outcome.Ok && steamSays == true)
+            {
+                Say("SteamCMD did not print \"Success\", but Steam shows the item updated just now, so the upload went through.");
+                outcome = outcome with { Ok = true, Reason = "Uploaded", Unconfirmed = false };
+            }
+            else if (outcome.Ok && steamSays == false)
+                Say("Steam's page does not show this update yet. It usually appears within a minute; check the item if it does not.");
+
             // Save a new item's id as soon as Steam hands one out, even if the run then failed: creating it
             // again would make a duplicate Workshop item.
             var newId = m.OnSteam ? null : outcome.PublishedFileId;
@@ -143,6 +172,10 @@ public sealed class Publisher
                 keep = true;
                 Say("Package and build file kept for inspection in " + stageRoot);
                 var msg = outcome.Reason;
+                if (outcome.Unconfirmed && m.OnSteam && SteamCheck != null)
+                    msg += steamSays == false
+                        ? " Steam's page still shows the previous update time."
+                        : " Steam could not confirm it either (private items can't be read); check the item's change notes on Steam before uploading again.";
                 if (!m.OnSteam)
                     msg += newId != null
                         ? $" Steam did create item {newId} and its id was saved to {_cfg.WorkshopIdFile}: do NOT create it again."
@@ -167,6 +200,23 @@ public sealed class Publisher
         {
             if (!keep) TryDelete(stageRoot);
         }
+    }
+
+    /// <summary>
+    /// True when Steam shows the item updated at or after <paramref name="started"/>, false when it shows an older
+    /// time, null when Steam could not say (private item, offline, Steam down).
+    /// </summary>
+    async Task<bool?> ConfirmOnSteamAsync(string id, DateTimeOffset started, CancellationToken ct)
+    {
+        At("Checking Steam...", 97);
+        WorkshopItem? item;
+        try { item = await SteamCheck!(id, ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch { return null; }
+        if (item is not { Public: true, Updated: { } updated }) return null;
+        var ok = updated >= started - ClockSlack;
+        if (ok) Say($"Steam confirms the update (item updated {updated.ToLocalTime():HH:mm:ss}).");
+        return ok;
     }
 
     /// <summary>The change note the changelog gives for the mod's current version (empty when there is none).</summary>

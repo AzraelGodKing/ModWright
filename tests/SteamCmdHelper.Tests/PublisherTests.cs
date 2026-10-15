@@ -108,6 +108,66 @@ public sealed class PublisherTests : IDisposable
         Assert.Empty(StageDirs());
     }
 
+    static Func<string, CancellationToken, Task<WorkshopItem?>> SteamShows(WorkshopItem? item) => (_, _) => Task.FromResult(item);
+
+    [Fact]
+    public async Task Run_without_success_line_counts_when_Steam_shows_the_update()
+    {
+        if (!CanFakeSteamCmd) return;
+        var steam = FakeSteamCmd(0, null, "Uploading content...", "Committing update...");
+        var pub = new Publisher(_repo, CopyConfig(), steam, "modder", _temp)
+            { SteamCheck = SteamShows(new WorkshopItem("2001112223", true, Updated: DateTimeOffset.UtcNow)) };
+        var r = await pub.RunAsync(Mod("2001112223"), upload: true, CancellationToken.None);
+        Assert.True(r.Ok, r.Message);
+        Assert.Empty(StageDirs());
+    }
+
+    [Fact]
+    public async Task Run_without_success_line_fails_when_Steam_shows_an_older_update()
+    {
+        if (!CanFakeSteamCmd) return;
+        var steam = FakeSteamCmd(0, null, "Uploading content...", "Committing update...");
+        var pub = new Publisher(_repo, CopyConfig(), steam, "modder", _temp)
+            { SteamCheck = SteamShows(new WorkshopItem("2001112223", true, Updated: DateTimeOffset.UtcNow.AddDays(-3))) };
+        var r = await pub.RunAsync(Mod("2001112223"), upload: true, CancellationToken.None);
+        Assert.False(r.Ok);
+        Assert.Contains("previous update time", r.Message);
+    }
+
+    [Fact]
+    public async Task Run_without_success_line_fails_when_Steam_cannot_say()
+    {
+        if (!CanFakeSteamCmd) return;
+        var steam = FakeSteamCmd(0, null, "Uploading content...", "Committing update...");
+        var pub = new Publisher(_repo, CopyConfig(), steam, "modder", _temp) { SteamCheck = SteamShows(new WorkshopItem("2001112223", false)) };
+        var r = await pub.RunAsync(Mod("2001112223"), upload: true, CancellationToken.None);
+        Assert.False(r.Ok);
+        Assert.Contains("could not confirm", r.Message);
+    }
+
+    [Fact]
+    public async Task Steam_check_failing_does_not_fail_a_confirmed_upload()
+    {
+        if (!CanFakeSteamCmd) return;
+        var steam = FakeSteamCmd(0, null, "Uploading content...", "Committing update...", "Success.");
+        var pub = new Publisher(_repo, CopyConfig(), steam, "modder", _temp)
+            { SteamCheck = (_, _) => throw new HttpRequestException("offline") };
+        var r = await pub.RunAsync(Mod("2001112223"), upload: true, CancellationToken.None);
+        Assert.True(r.Ok, r.Message);
+    }
+
+    [Fact]
+    public async Task Steam_check_cannot_rescue_a_reported_failure()
+    {
+        if (!CanFakeSteamCmd) return;
+        var steam = FakeSteamCmd(0, null, "Uploading content...", "ERROR! Failed to update workshop item (Access Denied).");
+        var pub = new Publisher(_repo, CopyConfig(), steam, "modder", _temp)
+            { SteamCheck = SteamShows(new WorkshopItem("2001112223", true, Updated: DateTimeOffset.UtcNow)) };
+        var r = await pub.RunAsync(Mod("2001112223"), upload: true, CancellationToken.None);
+        Assert.False(r.Ok);
+        Assert.Contains("Access Denied", r.Message);
+    }
+
     [Fact]
     public async Task Successful_upload_is_added_to_the_history()
     {

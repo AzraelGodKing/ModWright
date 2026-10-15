@@ -497,6 +497,7 @@ public sealed class MainForm : Form
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Upload &history...", null, (_, _) => { if (SelectedMod() is { } m) ShowHistory(m); });
         menu.Items.Add("&Preview package...", null, async (_, _) => { if (SelectedMod() is { } m) await PreviewPackageAsync(m); });
+        var shrink = menu.Items.Add("S&hrink preview image under 1 MB", null, (_, _) => { if (SelectedMod() is { } m) ShrinkPreview(m); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Open mod &folder", null, (_, _) => { if (SelectedMod() is { } m) OpenPath(m.Dir); });
         var changelog = menu.Items.Add("Open change&log", null, (_, _) => { if (ChangelogOf(SelectedMod()) is { } p) OpenPath(p); });
@@ -510,9 +511,24 @@ public sealed class MainForm : Form
             onSteam.Enabled = copyId.Enabled = copyLink.Enabled = SelectedMod()?.OnSteam == true;
             changelog.Enabled = ChangelogOf(SelectedMod()) != null;
             entry.Visible = SelectedMod() is { } m && ModScanner.NeedsChangelogEntry(m, _cfg);
+            shrink.Visible = SelectedMod() is { PreviewOk: false, PreviewPath.Length: > 0 };
         };
         Theme.StyleMenu(menu);
         return menu;
+    }
+
+    /// <summary>Re-saves the mod's preview image under Steam's 1 MB limit; the original is backed up first.</summary>
+    void ShrinkPreview(ModInfo m)
+    {
+        if (m.PreviewPath.Length == 0 || _busy) return;
+        try
+        {
+            UseWaitCursor = true;
+            Append($"{m.Name}: shrank " + PreviewImage.Shrink(m.PreviewPath, m.Name, ModScanner.MaxPreviewBytes), LogKind.Ok);
+        }
+        catch (Exception e) { Append($"{m.Name}: could not shrink the preview image: {e.Message}", LogKind.Error); }
+        finally { UseWaitCursor = false; }
+        RefreshAll();
     }
 
     static string WorkshopUrl(ModInfo m) => $"https://steamcommunity.com/sharedfiles/filedetails/?id={m.WorkshopId}";
@@ -1124,7 +1140,8 @@ public sealed class MainForm : Form
         string text;
         Tone tone;
         if (m == null) { text = "Select a mod to see everything it needs. Space ticks it, Enter edits its Workshop page, F2 changes its version, F1 lists every shortcut."; tone = Tone.Muted; }
-        else if (!m.Ready) { text = $"{m.Name}: fix " + string.Join("; ", m.Problems) + (ModScanner.NeedsChangelogEntry(m, _cfg) ? ". Double-click the status (or right-click) to write the changelog entry." : "."); tone = Tone.Error; }
+        else if (!m.Ready) { text = $"{m.Name}: fix " + string.Join("; ", m.Problems) + (ModScanner.NeedsChangelogEntry(m, _cfg) ? ". Double-click the status (or right-click) to write the changelog entry."
+            : m.PreviewOk == false && m.PreviewPath.Length > 0 ? ". Right-click > Shrink preview image to bring it under 1 MB." : "."); tone = Tone.Error; }
         else if (m.Warnings.Count > 0) { text = $"{m.Name}: " + string.Join("; ", m.Warnings) + "."; tone = Tone.Warn; }
         else
         {
@@ -2155,6 +2172,7 @@ public sealed class MainForm : Form
             PageEdits = m => WorkshopPage.Get(m.Dir),
             NoteOverride = m => edited.TryGetValue(m.Dir, out var n) ? n : null,
             HistoryFile = UploadHistory.DefaultFile,
+            SteamCheck = Publisher.LiveSteamCheck,
         };
         var history = UploadHistory.Load();
         pub.Log += l => BeginInvoke(() => Append(l, Display.KindOf(l)));
