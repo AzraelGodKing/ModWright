@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Uploads are no longer reported as failed when SteamCMD prints "Success." on the same line as "Committing
+  update..." (as it does on Windows). Steam had taken those updates; the app just missed the confirmation.
+- Refreshing the list no longer repeats every mod's "fix ..." line in the log; a mod's problems are logged again only
+  when they change.
+
 ## 1.1.0
 
 - **Update now** in the new-version prompt downloads the release, checks it against the release's SHA-256 checksums,

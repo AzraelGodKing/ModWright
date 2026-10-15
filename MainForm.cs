@@ -98,6 +98,8 @@ public sealed class MainForm : Form
     readonly List<ListViewItem> _rows = new();
     /// <summary>Mod folders whose upload failed in the last run (badge "Failed"), and those to try again (failed or not run).</summary>
     readonly HashSet<string> _failed = new(StringComparer.OrdinalIgnoreCase), _retrySet = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Each mod's problems as last written to the log, so a refresh only logs what changed (by mod folder).</summary>
+    readonly Dictionary<string, string> _loggedProblems = new(StringComparer.OrdinalIgnoreCase);
     int _sortCol = -1;
     bool _sortDesc;
     readonly Dictionary<string, (DateTime Stamp, Image? Image)> _thumbs = new(StringComparer.OrdinalIgnoreCase);
@@ -1072,7 +1074,13 @@ public sealed class MainForm : Form
             it.Checked = CanTick(m) && m.OnSteam;
             UpdateRowState(it);
             _rows.Add(it);
-            if (!m.Ready) Append($"{m.Name}: fix {string.Join("; ", m.Problems)}", LogKind.Warn);
+            var problems = string.Join("; ", m.Problems);
+            if (m.Ready) _loggedProblems.Remove(m.Dir);
+            else if (!_loggedProblems.TryGetValue(m.Dir, out var logged) || logged != problems)
+            {
+                _loggedProblems[m.Dir] = problems;
+                Append($"{m.Name}: fix {problems}", LogKind.Warn);
+            }
         }
         ApplyFilter();
         _ = LoadUploadedVersionsAsync(_mods.Where(m => m.OnSteam).ToList(), uploaded, history);

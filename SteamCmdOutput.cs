@@ -16,7 +16,11 @@ public static class SteamCmdOutput
     const RegexOptions Ic = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
 
     static readonly Regex Ansi = new(@"\x1B\[[0-9;?]*[A-Za-z]");
-    static readonly Regex SuccessLine = new(@"^Success\b", Ic);
+    /// <summary>
+    /// "Success." on its own line, or run on after a step: SteamCMD on Windows prints
+    /// "Committing update...Success.Unloading Steam API...OK" as one line.
+    /// </summary>
+    static readonly Regex SuccessLine = new(@"(?:^|\.\.\.)\s*Success\b", Ic);
 
     /// <summary>
     /// SteamCMD's own failure forms: "ERROR! Failed to update workshop item (Access Denied).",
