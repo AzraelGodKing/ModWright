@@ -184,11 +184,13 @@ public static class Cli
         }
 
         Say((o.DryRun ? "Dry run of " : "Uploading ") + $"{picked.Count} mod{(picked.Count == 1 ? "" : "s")}.");
-        var pub = new Publisher(repo, cfg, steamCmd, account, tempRoot);
+        // Workshop page changes saved in the window go out with the next upload, from here too.
+        var pub = new Publisher(repo, cfg, steamCmd, account, tempRoot) { PageEdits = m => WorkshopPage.Get(m.Dir) };
         pub.Log += l => Say("    " + l);
         var batch = new BatchUpload(pub, recordPath);
         batch.Starting += (m, i, n) => Say($"--- {m.Name} v{m.Version} ({i + 1} of {n}) ---");
         var results = await batch.RunAsync(picked, !o.DryRun, ct);
+        if (!o.DryRun) foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created)) WorkshopPage.Clear(r.Mod.Dir);
 
         Say("");
         Say(BatchUpload.Summary(results));

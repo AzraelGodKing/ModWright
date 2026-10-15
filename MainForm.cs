@@ -32,7 +32,7 @@ public sealed class MainForm : Form
     readonly CheckBox _allowCreate = new() { AutoSize = true, Text = "Allow creating new items (private) for mods not on Steam yet" };
     readonly RichTextBox _log = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None }.Role(ThemeRole.Log);
 
-    Button _help = null!, _checkUpdateNow = null!, _browse = null!, _refresh = null!, _all = null!, _none = null!, _go = null!, _cancel = null!, _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!;
+    Button _help = null!, _checkUpdateNow = null!, _editPage = null!, _browse = null!, _refresh = null!, _all = null!, _none = null!, _go = null!, _cancel = null!, _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!;
     NavButton _navUpload = null!, _navOptions = null!;
     Control _uploadPage = null!, _optionsPage = null!;
     Tone _loginTone = Tone.Muted;
@@ -89,6 +89,7 @@ public sealed class MainForm : Form
         _refresh = Btn("Refresh", (_, _) => RefreshAll());
         _all = Btn("Tick all", (_, _) => TickAll(true));
         _none = Btn("Tick none", (_, _) => TickAll(false));
+        _editPage = Btn("Workshop page...", (_, _) => EditWorkshopPage(SelectedMod()));
         _go = Btn("Upload selected", async (_, _) => await GoAsync()).Role(ThemeRole.Accent);
         _go.Font = new Font(Font, FontStyle.Bold);
         _go.Padding = new Padding(14, 4, 14, 4);
@@ -186,7 +187,12 @@ public sealed class MainForm : Form
         _list.MouseDoubleClick += OnListDoubleClick;
         _list.Resize += (_, _) => StretchLastColumn();
         _list.ColumnWidthChanged += (_, e) => { if (e.ColumnIndex < _list.Columns.Count - 1) StretchLastColumn(); };
-        var mods = Card("Mods", new Control[] { _all, _none, _refresh }, _list);
+        _tip.SetToolTip(_editPage, "Change the selected mod's title, description or visibility on Steam with its next upload");
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Edit Workshop page...", null, (_, _) => EditWorkshopPage(SelectedMod()));
+        menu.Opening += (_, e) => e.Cancel = _busy || SelectedMod() == null;
+        _list.ContextMenuStrip = menu;
+        var mods = Card("Mods", new Control[] { _editPage, _all, _none, _refresh }, _list);
         mods.AutoSize = false; mods.Dock = DockStyle.Fill;
         page.Controls.Add(mods, 0, 1);
 
@@ -461,6 +467,8 @@ public sealed class MainForm : Form
         _populating = true;
         _list.Items.Clear();
         _mods = ModScanner.Scan(_s.RepoPath, _cfg);
+        foreach (var m in _mods)
+            if (WorkshopPage.Get(m.Dir) is { } page) m.Warnings.Add("Workshop page changes go out with the next upload: " + page.Summary());
         var uploaded = UploadedVersions.LoadRecord();
         foreach (var m in _mods)
         {
@@ -511,7 +519,7 @@ public sealed class MainForm : Form
         lines.AddRange(m.Problems.Select(p => "Fix: " + p));
         lines.AddRange(m.Warnings.Select(w => "Note: " + w));
         if (m.PreviewNote.Length > 0) lines.Add("Preview: " + m.PreviewNote);
-        lines.Add("Double-click the version to upload to change it.");
+        lines.Add("Double-click the version to upload to change it, or the name to edit the Workshop page.");
         if (ModScanner.NeedsChangelogEntry(m, _cfg)) lines.Add("Double-click the status to write the changelog entry for " + m.Version + ".");
         return string.Join("\n", lines);
     }
@@ -539,6 +547,7 @@ public sealed class MainForm : Form
         var hit = _list.HitTest(e.Location);
         if (hit.Item?.Tag is not ModInfo m || hit.SubItem == null) return;
         var col = hit.Item.SubItems.IndexOf(hit.SubItem);
+        if (col == 0) { EditWorkshopPage(m); return; }
         if (col == StatusCol && ModScanner.NeedsChangelogEntry(m, _cfg)) { if (AskChangelogEntry(m, m.Version)) RefreshAll(); return; }
         if (col != VersionCol) return;
         var entered = Prompt($"Version to upload for {m.Name}:", m.Version);
@@ -551,6 +560,24 @@ public sealed class MainForm : Form
         m.Version = version;
         if (ModScanner.NeedsChangelogEntry(m, _cfg) && !AskChangelogEntry(m, version))
             Append($"Add a {version} entry to {_cfg.Changelog} before uploading (double-click the Status to write it here).", Color.Orange);
+        RefreshAll();
+    }
+
+    ModInfo? SelectedMod() => _list.SelectedItems.Count > 0 ? _list.SelectedItems[0].Tag as ModInfo : null;
+
+    /// <summary>Opens the Workshop page editor; its changes are kept for the mod's next upload.</summary>
+    void EditWorkshopPage(ModInfo? m)
+    {
+        if (_busy) return;
+        if (m == null) { MessageBox.Show(this, "Select a mod in the list first.", Text); return; }
+        var file = Publisher.DescriptionFor(m, _cfg);
+        using var f = new WorkshopPageForm(m, _cfg.SteamDescriptionFile, file.Length > 0 ? file : null);
+        if (f.ShowDialog(this) != DialogResult.OK) return;
+        try { WorkshopPage.Set(m.Dir, f.Result); }
+        catch (Exception e) { Append("Could not save the Workshop page changes: " + e.Message, Color.Tomato); return; }
+        Append(f.Result.IsEmpty
+            ? $"{m.Name}: Workshop page changes cleared."
+            : $"{m.Name}: Workshop page changes ({f.Result.Summary()}) will be sent with the next upload.", Color.DeepSkyBlue);
         RefreshAll();
     }
 
@@ -628,7 +655,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _checkUpdateNow })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _checkUpdateNow, _editPage })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Enabled = busy;
@@ -805,7 +832,12 @@ public sealed class MainForm : Form
         sb.AppendLine(dry ? "Dry run for:" : $"Publish to the Steam Workshop ({(_cfg.GameName.Length > 0 ? _cfg.GameName : "app " + _cfg.AppId)}):");
         sb.AppendLine();
         foreach (var m in picked)
-            sb.AppendLine($"  {m.Name}  v{m.Version}   {(m.OnSteam ? "update " + m.WorkshopId : "NEW private item")}{(m.Warnings.Count > 0 ? "   (" + m.Warnings[0] + ")" : "")}");
+        {
+            var page = WorkshopPage.Get(m.Dir);
+            var create = "NEW " + WorkshopPage.VisibilityName(page?.Visibility ?? WorkshopPage.Private).ToLowerInvariant() + " item";
+            sb.AppendLine($"  {m.Name}  v{m.Version}   {(m.OnSteam ? "update " + m.WorkshopId : create)}{(m.Warnings.Count > 0 ? "   (" + m.Warnings[0] + ")" : "")}");
+            if (page != null && m.OnSteam) sb.AppendLine($"      also changes the Workshop page: {page.Summary()}");
+        }
         if (!dry) { sb.AppendLine(); sb.AppendLine("Updates go live for subscribers right away."); }
         if (MessageBox.Show(this, sb.ToString(), Text, MessageBoxButtons.OKCancel, dry ? MessageBoxIcon.Question : MessageBoxIcon.Warning) != DialogResult.OK) return;
 
@@ -820,7 +852,7 @@ public sealed class MainForm : Form
 
         if (!dry && !await LoginFlowAsync()) { Append("Stopped: not logged in to Steam.", Color.Orange); return; }
 
-        var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account);
+        var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account) { PageEdits = m => WorkshopPage.Get(m.Dir) };
         pub.Log += l => BeginInvoke(() => Append(l, LineColor(l)));
         pub.Stage += (t, p) => BeginInvoke(() => SetStage(t, p));
 
@@ -854,6 +886,8 @@ public sealed class MainForm : Form
             _cts?.Dispose(); _cts = null;
             SetBusy(false);
         }
+        // Page changes went out with each successful upload.
+        if (!dry) foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created)) WorkshopPage.Clear(r.Mod.Dir);
         var counts = BatchUpload.Counts(results);
         var allOk = results.All(r => r.Ok);
         _current.Text = "Finished: " + counts;

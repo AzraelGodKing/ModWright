@@ -8,8 +8,9 @@ namespace SteamCmdHelper;
 public sealed record PublishResult(bool Ok, string Message, string? NewId = null);
 
 /// <summary>
-/// Packages one mod, writes the SteamCMD build file and runs the upload. Updates send only the content and the
-/// change note (title, description and preview on Steam are left alone); creating makes a PRIVATE item.
+/// Packages one mod, writes the SteamCMD build file and runs the upload. Updates send the content and the change note,
+/// plus any Workshop page changes from <see cref="PageEdits"/> (otherwise title, description and preview on Steam are
+/// left alone); creating makes a PRIVATE item unless a page change picks another visibility.
 /// </summary>
 public sealed class Publisher
 {
@@ -25,6 +26,9 @@ public sealed class Publisher
 
     public event Action<string>? Log;
     public event Action<string, int>? Stage;
+
+    /// <summary>Workshop page changes to send with a mod's upload (title, description, visibility), or null for none.</summary>
+    public Func<ModInfo, WorkshopPageEdit?>? PageEdits { get; set; }
 
     public Publisher(string repo, ProjectConfig cfg, string steamCmd, string account, string? tempRoot = null)
     {
@@ -61,15 +65,22 @@ public sealed class Publisher
             var files = Directory.GetFiles(stage, "*", SearchOption.AllDirectories);
             var mb = Math.Round(files.Sum(f => new FileInfo(f).Length) / 1048576.0, 2);
 
-            var extra = "";
+            var page = PageEdits?.Invoke(m);
+            if (page != null && WorkshopPage.Validate(page) is { } bad) return new PublishResult(false, "Workshop page: " + bad);
+            string extra;
+            var visibility = page?.Visibility ?? WorkshopPage.Private;
             if (!m.OnSteam)
             {
-                var desc = ReadDescription(m);
+                var desc = page?.Description ?? ReadDescription(m);
                 if (desc.Length < 20) return new PublishResult(false, $"No description found. Add {_cfg.SteamDescriptionFile}.");
                 var previewLine = string.IsNullOrWhiteSpace(_cfg.Preview)
                     ? ""
                     : $"\n    \"previewfile\"     \"{Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Preview))}\"";
-                extra = $"\n    \"title\"           \"{Esc(m.Name)}\"\n    \"description\"     \"{Esc(desc)}\"{previewLine}\n    \"visibility\"      \"2\"";
+                extra = WorkshopPage.VdfLines(page?.Title ?? m.Name, desc, null) + previewLine + WorkshopPage.VdfLines(null, null, visibility);
+            }
+            else
+            {
+                extra = page == null ? "" : WorkshopPage.VdfLines(page.Title, page.Description, page.Visibility);
             }
 
             var vdf = $$"""
@@ -84,7 +95,8 @@ public sealed class Publisher
             var vdfPath = Path.Combine(stageRoot, m.Folder + ".vdf");
             await File.WriteAllTextAsync(vdfPath, vdf, new UTF8Encoding(false), ct);
 
-            Say($"{(m.OnSteam ? "Workshop id " + m.WorkshopId : "New private item")} | version {m.Version} | {files.Length} files, {mb} MB | notes {notes.Length} chars");
+            if (m.OnSteam && page != null) Say("Workshop page changes: " + page.Summary());
+            Say($"{(m.OnSteam ? "Workshop id " + m.WorkshopId : $"New {WorkshopPage.VisibilityName(visibility).ToLowerInvariant()} item")} | version {m.Version} | {files.Length} files, {mb} MB | notes {notes.Length} chars");
             At("Package ready", 20);
 
             if (!upload)
@@ -122,11 +134,11 @@ public sealed class Publisher
                 if (!m.OnSteam)
                     msg += newId != null
                         ? $" Steam did create item {newId} and its id was saved to {_cfg.WorkshopIdFile}: do NOT create it again."
-                        : $" Check your Steam profile before trying again (a new item is private); if it was created, put its number in {_cfg.WorkshopIdFile} and do NOT create it again.";
+                        : $" Check your Steam profile before trying again (a new item may not be public); if it was created, put its number in {_cfg.WorkshopIdFile} and do NOT create it again.";
                 return new PublishResult(false, msg, newId);
             }
 
-            if (newId != null) Say($"Created {m.Name} {m.Version} as PRIVATE item {newId}. Saved to {_cfg.WorkshopIdFile} (commit it).");
+            if (newId != null) Say($"Created {m.Name} {m.Version} as {WorkshopPage.VisibilityName(visibility).ToUpperInvariant()} item {newId}. Saved to {_cfg.WorkshopIdFile} (commit it).");
             else Say($"Uploaded {m.Name} {m.Version}");
 
             At("Uploaded", 100);
@@ -200,13 +212,16 @@ public sealed class Publisher
             if (!Skip(Path.GetFileName(d))) CopyDir(d, Path.Combine(dst, Path.GetFileName(d)), exclude);
     }
 
-    string ReadDescription(ModInfo m)
+    string ReadDescription(ModInfo m) => DescriptionFor(m, _cfg);
+
+    /// <summary>The description a new item is created with: the Steam description file, else the layout's description field.</summary>
+    public static string DescriptionFor(ModInfo m, ProjectConfig cfg)
     {
-        var f = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.SteamDescriptionFile));
+        var f = Path.Combine(m.Dir, ProjectConfig.Norm(cfg.SteamDescriptionFile));
         if (File.Exists(f)) return File.ReadAllText(f).Trim();
-        if (string.IsNullOrWhiteSpace(_cfg.ModMarker)) return "";
-        var marker = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.ModMarker));
-        try { return ModScanner.ReadMeta(marker, _cfg.DescriptionKey) ?? ""; }
+        if (string.IsNullOrWhiteSpace(cfg.ModMarker)) return "";
+        var marker = Path.Combine(m.Dir, ProjectConfig.Norm(cfg.ModMarker));
+        try { return ModScanner.ReadMeta(marker, cfg.DescriptionKey) ?? ""; }
         catch { return ""; }
     }
 
