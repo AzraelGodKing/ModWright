@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
 
 - **Update now** in the new-version prompt downloads the release, checks it against the release's SHA-256 checksums,
   installs it over the running copy (standalone exe or folder build) and restarts. Failed installs put the old files
