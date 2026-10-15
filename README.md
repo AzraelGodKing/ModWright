@@ -139,16 +139,16 @@ Tabletop Simulator (app 286160) does not work with this tool. A Workshop item fo
 Only RimWorld is tested against real mods; the other presets are starting points. For other games, check the layout with **Dry run** first and
 see the game's Workshop documentation for what a mod folder must contain.
 
-## Requesting another game
+## Requests: new games, bugs and features
 
-The **?** button (top right, always visible) opens a short form for asking for a built-in layout for another game. It fills in the game name, app ID, your helper version and the file names (never contents) of one mod folder, then opens a pre-filled new issue in **Linear** (team `AZR`) in your browser. Nothing is created until you press Create in Linear, and you can edit or delete anything first. **Copy text instead** copies the text. Only people signed in to the Linear workspace can create the issue, so if you share the program, change `TeamKey` / `NewIssueUrl` in `RequestForm.cs` to your own (or tell people to use **Copy text instead** and send it to you).
+The **?** button (top right, always visible) opens a short form. Pick what the request is: **Support another game** (a layout request), **Report a bug** or **Suggest a feature**. Bugs and features also ask for a one-line summary and what part of the tool they are about (windows, uploading, or SteamCMD and login). For a layout request the form fills in the game name, app ID, your helper version and the file names (never contents) of one mod folder, then opens a pre-filled new issue in **Linear** (team `AZR`) in your browser. Nothing is created until you press Create in Linear, and you can edit or delete anything first. **Copy text instead** copies the text. Only people signed in to the Linear workspace can create the issue, so if you share the program, change `TeamKey` / `NewIssueUrl` in `RequestForm.cs` to your own (or tell people to use **Copy text instead** and send it to you).
 
 ### Sending requests from inside the app (maintainer setup)
 
 Builds that carry a Linear key send requests straight from the app, with no browser or login. The key is baked in at build time and never committed:
 
 - **GitHub builds** (CI and releases) read the repository secrets `LINEAR_CREATE_API_KEY` (a Linear personal API key restricted to **Create issues** in one dedicated team) and `LINEAR_TEAM_UUID` (that team's ID).
-- **Optional routing:** the secrets `PROJECTID` (a Linear project ID) and `LABELIDS` (label IDs, separated by commas) pick the project and labels requests are filed under. Without them requests go into the team alone.
+- **Optional routing:** the secrets `PROJECTID` (a Linear project ID) and `LABELIDS` (label IDs, separated by commas) pick the project and the labels every request gets. `LABELMAP` adds one label for the kind of request and one for the area, as `Name=label ID` pairs separated by commas, using the names `Layout`, `Bug`, `Feature`, `UI`, `Upload` and `SteamCMD` (any left out just add no label). Without these, requests go into the team alone.
 - **Local builds** read the same names from a git-ignored `request.key` file in the project folder, one `NAME=value` per line. Environment variables with those names win over the file.
 
 If Linear refuses the project or labels, for example because one was removed, the request is filed into the team alone instead, so it is never lost.

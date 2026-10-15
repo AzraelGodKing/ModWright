@@ -6,7 +6,7 @@ namespace SteamCmdHelper.Tests;
 /// <summary>
 /// Checks the real Linear request key end to end. Does nothing unless LINEAR_LIVE_TEST=1, so ordinary test runs never
 /// touch Linear; the "Linear key check" workflow sets it together with the repository secrets
-/// (LINEAR_CREATE_API_KEY, LINEAR_TEAM_UUID, PROJECTID, LABELIDS). Each live run creates one issue, which can be deleted.
+/// (LINEAR_CREATE_API_KEY, LINEAR_TEAM_UUID, PROJECTID, LABELIDS, LABELMAP). Each live run creates one issue, which can be deleted.
 /// </summary>
 public class LinearLiveTests
 {
@@ -25,13 +25,20 @@ public class LinearLiveTests
         Assert.True(route.ProjectId != null, "PROJECTID holds no project ID (GUID). " + Describe("PROJECTID"));
         Assert.True(route.LabelIds.Length > 0, "LABELIDS holds no label IDs (GUIDs, separated by commas). " + Describe("LABELIDS"));
 
+        // With a LABELMAP, put every mapped label on the test issue so Linear checks each id exists.
+        var map = RequestSender.ParseLabelMap(Environment.GetEnvironmentVariable("LABELMAP"));
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("LABELMAP")))
+            Assert.True(map.Count > 0, "LABELMAP holds no Name=label id pairs, e.g. Bug=e7b04392-85e4-4a50-9265-ee8f40d2468b. " + Describe("LABELMAP"));
+        route = route with { LabelIds = route.LabelIds.Concat(map.Values).Distinct().ToArray() };
+
         var run = Environment.GetEnvironmentVariable("GITHUB_RUN_ID") ?? "local";
         var body = RequestSender.BuildBody(team.Trim(), "Linear key check (safe to delete)",
             $"Created by the Linear key check workflow (run {run}) to prove the repository secrets can file requests. Safe to delete.", route);
         // Straight to PostAsync, not SendAsync: SendAsync would fall back to the team alone and hide a broken project or label.
         var (ok, message, _) = await RequestSender.PostAsync(key.Trim(), RequestSender.Endpoint, body, CancellationToken.None);
         Assert.True(ok, "Linear did not file the request into the project with its labels: " + message);
-        Console.WriteLine($"Linear key check created {message} with {route.LabelIds.Length} label(s)");
+        Console.WriteLine($"Linear key check created {message} with {route.LabelIds.Length} label(s); label map: "
+            + (map.Count == 0 ? "none" : string.Join(", ", map.Keys.OrderBy(k => k))));
     }
 
     static string Describe(string name)

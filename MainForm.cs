@@ -145,7 +145,7 @@ public sealed class MainForm : Form
         _help.Font = new Font(Font, FontStyle.Bold);
         _help.Margin = new Padding(12, 0, 0, 6);
         _help.Anchor = AnchorStyles.None;
-        _tip.SetToolTip(_help, "Request a layout for another game");
+        _tip.SetToolTip(_help, "Send a request: support another game, report a bug or suggest a feature");
         bar.Controls.Add(_help, 4, 0);
         return bar;
     }
@@ -271,7 +271,7 @@ public sealed class MainForm : Form
     }
     // ---------------------------------------------------------------- game / layout
 
-    /// <summary>The "?" button: ask for a layout for another game via a pre-filled Linear issue.</summary>
+    /// <summary>The "?" button: a layout request, bug report or feature request, sent to Linear.</summary>
     void OpenRequest()
     {
         // Show one mod's file names (never contents) so the request says what a mod looks like.
