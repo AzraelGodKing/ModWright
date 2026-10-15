@@ -70,11 +70,19 @@
         }
 
         // Lines: key, team, project (may be empty), labels (may be empty). Line breaks inside a value would shift the lines.
-        labels = string.Join(",", labels.Split(new[] { ',', ';', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
-        project = project.Replace("\r", "").Replace("\n", "");
+        // Keep only the GUIDs, whatever surrounds them (quotes, brackets, JSON, names); the app reads them the same way.
+        var guid = new System.Text.RegularExpressions.Regex(@"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b");
+        var labelCount = guid.Matches(labels).Count;
+        if (labels.Length > 0 && labelCount == 0)
+            Log.LogWarning("LABELIDS is set but holds no Linear label IDs (GUIDs); requests will carry no labels.");
+        if (project.Length > 0 && !guid.IsMatch(project))
+            Log.LogWarning("PROJECTID is set but holds no Linear project ID (GUID); requests will not go into a project.");
+        labels = string.Join(",", guid.Matches(labels).Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value));
+        var projectMatch = guid.Match(project);
+        project = projectMatch.Success ? projectMatch.Value : "";
         var data = Encoding.UTF8.GetBytes(key + "\n" + team + "\n" + project + "\n" + labels);
         Log.LogMessage(MessageImportance.High, "Linear request route: " + (project.Length > 0 ? "project set" : "no project")
-            + ", " + (labels.Length == 0 ? 0 : labels.Split(',').Length) + " label(s)");
+            + ", " + labelCount + " label(s)");
         byte[] mask;
         using (var sha = SHA256.Create()) mask = sha.ComputeHash(Encoding.UTF8.GetBytes("SteamCmdHelper request key " + key + team));
         var masked = data.Select((b, i) => (byte)(b ^ mask[i % mask.Length])).ToArray();

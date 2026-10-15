@@ -26,15 +26,19 @@ public static class RequestSender
         public static readonly Route None = new(null, Array.Empty<string>());
         public bool IsEmpty => ProjectId == null && LabelIds.Length == 0;
 
-        /// <summary>Reads a project id and a list of label ids (separated by commas, semicolons or spaces);
-        /// anything that is not a GUID is ignored.</summary>
+        /// <summary>Reads a project id and a list of label ids. Any text around the ids is ignored (separators,
+        /// brackets, quotes, JSON, names), so only GUID-shaped values count.</summary>
         public static Route Parse(string? projectId, string? labelIds)
         {
-            var project = Guid.TryParse(projectId?.Trim(), out _) ? projectId!.Trim() : null;
-            var labels = (labelIds ?? "").Split(new[] { ',', ';', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(l => l.Trim().Trim('"')).Where(l => Guid.TryParse(l, out _)).Distinct().ToArray();
-            return new Route(project, labels);
+            var project = Guids(projectId).FirstOrDefault();
+            return new Route(project, Guids(labelIds).Distinct().ToArray());
         }
+
+        static readonly System.Text.RegularExpressions.Regex GuidPattern =
+            new(@"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b");
+
+        static IEnumerable<string> Guids(string? text) =>
+            GuidPattern.Matches(text ?? "").Select(m => m.Value.ToLowerInvariant());
     }
 
     static string[] BakedLines()
