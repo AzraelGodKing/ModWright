@@ -73,8 +73,7 @@ public static class UploadedVersions
 
     // ------------------------------------------------------------ local record of uploads made from this PC
 
-    static string RecordPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SteamCmdHelper", "uploaded.json");
+    static string RecordPath => Path.Combine(AppSettings.Folder, "uploaded.json");
 
     static readonly object Gate = new();
 

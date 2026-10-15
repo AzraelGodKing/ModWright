@@ -27,6 +27,14 @@
   owner or id), in the window and on the command line. A refused login offers **Log in again and retry**.
 - The progress card shows the package size, the time taken so far and, from this PC's recent uploads, about how long
   is left.
+- New **Paradox (descriptor.mod)** layout (experimental) for Stellaris, Hearts of Iron IV, Europa Universalis IV,
+  Crusader Kings II/III and Imperator: Rome: name and version from `descriptor.mod`, the Workshop id from its
+  `remote_file_id` (written back for new items), `thumbnail.png` as the preview. Custom layouts can read the id from a
+  key the same way (`WorkshopIdKey`).
+- Portable mode: an empty `portable.txt` next to the exe keeps settings, history and SteamCMD in a `data` folder beside it.
+- Windows scale to the display's DPI (150%, 200%) instead of clipping text, and the main window fits small screens.
+  Screen readers get names for inputs, progress values and the full status of each mod.
+- CI compares each pull request's screenshots with the base branch's and lists the windows that changed.
 - Batch uploads: **Tick all** / **Tick none** buttons, one login check for the whole batch, and a summary of what
   happened to each mod (uploaded, created, failed and why, not run) at the end, in the log and in a dialog. If Steam
   refuses the login part-way, the remaining mods are not tried.

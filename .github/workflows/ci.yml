@@ -35,6 +35,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the screenshot comparison builds the base branch too
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -88,4 +90,38 @@ jobs:
         with:
           name: screenshots
           path: shots
+          if-no-files-found: ignore
+
+      # Pull requests only: build the base branch, take the same screenshots, and say which windows changed.
+      - name: Screenshots of the base branch
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        timeout-minutes: 8
+        shell: pwsh
+        env:
+          LINEAR_CREATE_API_KEY: ${{ secrets.LINEAR_CREATE_API_KEY }}
+          LINEAR_TEAM_UUID: ${{ secrets.LINEAR_TEAM_UUID }}
+          PROJECTID: ${{ secrets.PROJECTID }}
+          LABELIDS: ${{ secrets.LABELIDS }}
+          LABELMAP: ${{ secrets.LABELMAP }}
+        run: |
+          git worktree add ../base ${{ github.event.pull_request.base.sha }}
+          dotnet build ../base/SteamCmdHelper.csproj -c Release -o basebin
+          New-Item -ItemType Directory -Force baseshots | Out-Null
+          Start-Process -FilePath basebin/SteamCmdHelper.exe -ArgumentList '--shot', "$PWD\baseshots" -Wait
+          Get-ChildItem baseshots
+
+      - name: Compare screenshots
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        shell: powershell
+        run: ./.github/scripts/compare-shots.ps1
+
+      - name: Upload screenshot differences
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-diffs
+          path: shots-diff
           if-no-files-found: ignore

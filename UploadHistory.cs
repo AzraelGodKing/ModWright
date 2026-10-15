@@ -22,8 +22,7 @@ public static class UploadHistory
 {
     public const int Keep = 1000;
 
-    public static string DefaultFile => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SteamCmdHelper", "history.json");
+    public static string DefaultFile => Path.Combine(AppSettings.Folder, "history.json");
 
     static readonly object Gate = new();
     static readonly JsonSerializerOptions Opts = new() { WriteIndented = true };

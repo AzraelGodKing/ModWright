@@ -47,7 +47,9 @@ dotnet build SteamCmdHelper.csproj -c Release
 
 The program is `bin\Release\net8.0-windows\SteamCmdHelper.exe`. Make a shortcut to it.
 
-CI builds and tests every push to `main` and every pull request. To release, bump `<Version>` in
+CI builds and tests every push to `main` and every pull request. For pull requests it also builds the base branch,
+takes the same `--shot` screenshots, and lists in the job summary which windows changed (the changed pixels are in red
+in the `screenshot-diffs` artifact). That step is informational and never fails the build. To release, bump `<Version>` in
 `SteamCmdHelper.csproj`, add a matching `## <version>` section to `CHANGELOG.md`, then push a tag such as `v1.2.0`;
 the release workflow checks both, runs the tests and publishes the release with those notes.
 
@@ -61,7 +63,7 @@ Until everything below is in place, a **Get set up** box at the top of the Uploa
    The path cannot be typed in, so it cannot be mistyped.
 2. **Steam app ID**: the number in the game's store URL (`store.steampowered.com/app/294100/...` = RimWorld).
    The game name is looked up from Steam to confirm it. RimWorld-shaped repos are detected automatically.
-3. **Layout**: pick a built-in layout (**Generic**, **RimWorld**, **Golf With Your Friends**). Built-in layouts are part of the program and are **locked**: they cannot be edited, and the layout fixes the app ID. For anything else pick **Custom**, then **Edit layout file...** (below).
+3. **Layout**: pick a built-in layout (**Generic**, **RimWorld**, **Paradox (descriptor.mod)**, **Golf With Your Friends**). Built-in layouts are part of the program and are **locked**: they cannot be edited, and the layout fixes the app ID. For anything else pick **Custom**, then **Edit layout file...** (below).
    The choice is saved in `.steamhelper.json` in the repo root; for a built-in layout that file holds only its name (and your app ID for Generic).
 4. **Steam account** (on the **Options** tab): type your Steam login name. The status line says whether a saved login
    exists; the same status shows next to the Upload button, and clicking it opens Options.
@@ -222,6 +224,7 @@ The **Generic** layout expects, inside each mod folder: `CHANGELOG.md` (the Work
 | `ChangelogByVersion` | false | Add Changenote style: one entry per version, and the entry for the current version is required and becomes the note (RimWorld: true) |
 | `ManifestFile` | empty | A Mod Manager style manifest whose `<version>` wins over `VersionKey` (RimWorld: `About/Manifest.xml`) |
 | `WorkshopIdFile` | `workshop_id.txt` | Stores the Workshop id |
+| `WorkshopIdKey` | empty | When set, the id is that key inside `WorkshopIdFile` (read like `NameKey`, e.g. `remote_file_id`), and a new id is written back to it |
 | `Preview`, `SteamDescriptionFile` | `preview.png`, `steam_description.txt` | Used when creating (empty `Preview` = none) |
 | `BuiltFiles` | `[]` | Build outputs copied from the working tree, e.g. `["Assemblies/*.dll"]` (a warning when missing) |
 | `UseGitArchive` | true | Package with `git archive HEAD` (honours `export-ignore`); false copies the folder using `Exclude` |
@@ -239,6 +242,16 @@ Example for a game whose mods have a `mod.json` and live in `mods/`:
 { "AppId": "123456", "GameName": "My Game", "ModsFolder": "mods", "ModMarker": "mod.json",
   "NameKey": "info.title", "VersionKey": "info.version", "Preview": "" }
 ```
+
+### Paradox games (experimental)
+
+The **Paradox (descriptor.mod)** layout is for Stellaris (app 281990), Hearts of Iron IV (394360), Europa Universalis IV
+(236850), Crusader Kings III (1158310), Crusader Kings II (203770) and Imperator: Rome (859580). Type the game's app ID,
+as with Generic. Each mod folder holds a `descriptor.mod`, whose `name` and `version` are shown, and a `thumbnail.png`
+preview. The Workshop id is the descriptor's `remote_file_id`; when a new item is created, its id is written back into
+that line. There is no changelog convention, so a `CHANGELOG.md` is used when present and is otherwise not required.
+Folders with a `descriptor.mod` are detected automatically. The games normally publish through their own launcher, so
+try a new private item first.
 
 ### Golf With Your Friends (experimental)
 
@@ -272,7 +285,9 @@ The key is stored masked, but anyone with the exe could still extract it. Keep i
 ## Safety
 
 - Password and Steam Guard code are typed into SteamCMD's own window, never into this app, and not saved.
-- Settings (repo path, account name, theme) live in `%LocalAppData%\SteamCmdHelper\settings.json`.
+- Settings (repo path, account name, theme) live in `%LocalAppData%\SteamCmdHelper\settings.json`. For portable
+  mode, put an empty file named `portable.txt` next to `SteamCmdHelper.exe`: settings, history and the default SteamCMD
+  then live in a `data` folder beside the exe instead (for a USB stick or a synced folder).
 - If the app hits an unexpected error it saves a report to `%LocalAppData%\SteamCmdHelper\crashes` (the newest 20) and
   offers **Report it**, which opens the request form as a bug report with the details filled in for you to review.
   Nothing is sent unless you press Send.
@@ -289,6 +304,13 @@ The key is stored masked, but anyone with the exe could still extract it. Keep i
   returns its id). Otherwise the row is marked failed and the package is kept in `%TEMP%\steamcmd_helper_*` to inspect.
 - Headless checks: `SteamCmdHelper.exe [--repo <folder>] --selftest out.txt`, `... --package <ModFolder> out.txt`.
   `--shot <folder>` saves screenshots of the main window, the Options tab and the request form in both themes.
+
+## Accessibility
+
+Every window is laid out at 100% and scaled to the display's DPI, so it stays readable at 150% and 200% scaling, and
+the main window fits the screen it opens on. Inputs carry names for screen readers (taken from their labels), the
+progress bars report their percentage, and the Status column's text includes the reason a mod needs attention, not
+just its badge.
 
 ## Tests
 

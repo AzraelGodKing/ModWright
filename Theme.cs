@@ -97,6 +97,19 @@ public static class Theme
 
     public static void Apply(Control root) => Apply(root, root.Parent?.BackColor ?? Current.Back);
 
+    /// <summary>
+    /// Every window is laid out in 96-DPI pixels. The first time it is themed, it is scaled to the screen's DPI (150%,
+    /// 200%, ...), so fixed widths and heights grow with the text instead of clipping it. Only once: a theme switch
+    /// themes the window again.
+    /// </summary>
+    static void ScaleForDpi(Form f)
+    {
+        if (f.AutoScaleMode == AutoScaleMode.Dpi) return;
+        f.AutoScaleMode = AutoScaleMode.Dpi;
+        f.AutoScaleDimensions = new SizeF(96F, 96F);
+        f.PerformAutoScale();
+    }
+
     static void Apply(Control c, Color parentBack)
     {
         var p = Current;
@@ -112,6 +125,7 @@ public static class Theme
         switch (c)
         {
             case Form f:
+                ScaleForDpi(f);
                 back = p.Back;
                 f.BackColor = back; f.ForeColor = p.Text;
                 if (AppIcon != null) f.Icon = AppIcon;
@@ -402,6 +416,7 @@ public sealed class FlatProgressBar : Control
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         SetStyle(ControlStyles.Selectable, false);
         Height = 8;
+        AccessibleRole = AccessibleRole.ProgressBar;
     }
 
     public int Minimum { get; set; }
@@ -415,6 +430,7 @@ public sealed class FlatProgressBar : Control
             var v = Math.Clamp(value, Minimum, Maximum);
             if (v == _value) return;
             _value = v;
+            AccessibleDescription = $"{v * 100 / Math.Max(1, Maximum - Minimum)}%";
             Invalidate();
         }
     }

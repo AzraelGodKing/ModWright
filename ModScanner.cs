@@ -84,6 +84,19 @@ public static class ModScanner
     }
 
     /// <summary>
+    /// Sets <paramref name="key"/> to <paramref name="value"/> in a key=value text file such as a Paradox descriptor.mod,
+    /// replacing the line that holds the key or adding one at the end. Returns the new text.
+    /// </summary>
+    public static string WriteKey(string text, string key, string value)
+    {
+        var line = $"{key}=\"{value}\"";
+        var re = new Regex(@"^([ \t]*)" + Regex.Escape(key) + @"[ \t]*[=:][^\r\n]*", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+        if (re.IsMatch(text)) return re.Replace(text, m => m.Groups[1].Value + line, 1);
+        var nl = text.Contains("\r\n") ? "\r\n" : "\n";
+        return text.Length == 0 || text.EndsWith('\n') ? text + line + nl : text + nl + line + nl;
+    }
+
+    /// <summary>
     /// The changelog split into (version line or null, release notes). With <see cref="ProjectConfig.ChangelogByVersion"/>
     /// the notes are the entry for <paramref name="version"/> (see <see cref="ChangenoteFor"/>).
     /// </summary>
@@ -280,9 +293,15 @@ public static class ModScanner
             var idFile = Path.Combine(dir, ProjectConfig.Norm(cfg.WorkshopIdFile));
             if (File.Exists(idFile))
             {
-                var id = File.ReadAllText(idFile).Trim();
-                if (Regex.IsMatch(id, @"^\d+$")) m.WorkshopId = id;
-                else m.Problems.Add(cfg.WorkshopIdFile + " is not a number");
+                try
+                {
+                    var keyed = !string.IsNullOrWhiteSpace(cfg.WorkshopIdKey);
+                    var id = keyed ? ReadMeta(idFile, cfg.WorkshopIdKey) : File.ReadAllText(idFile).Trim();
+                    if (keyed && (id == null || Regex.IsMatch(id, @"^0+$"))) { } // not published yet
+                    else if (id != null && Regex.IsMatch(id, @"^\d+$")) m.WorkshopId = id;
+                    else m.Problems.Add((keyed ? cfg.WorkshopIdKey + " in " : "") + cfg.WorkshopIdFile + " is not a number");
+                }
+                catch (Exception e) { m.Problems.Add(cfg.WorkshopIdFile + " unreadable (" + e.Message + ")"); }
             }
 
             // Only what would make the upload fail or go wrong blocks it (Problems). Everything else is a warning.

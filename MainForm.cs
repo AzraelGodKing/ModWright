@@ -39,16 +39,16 @@ public sealed class MainForm : Form
     readonly CheckBox _checkUpdates = new() { AutoSize = true, Text = "Check for a newer version at start-up" };
     readonly CheckBox _autoUpdate = new() { AutoSize = true, Text = "Install new versions automatically (downloaded in the background, installed when you close the app)" };
     readonly LinkLabel _updateReady = new LinkLabel { AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Visible = false, Margin = new Padding(0, 4, 0, 0) }.Role(ThemeRole.Keep);
-    readonly ListView _list = new();
-    readonly TextBox _filter = new() { Width = 170, PlaceholderText = "Filter mods  (Ctrl+F)" };
+    readonly ListView _list = new() { AccessibleName = "Mods" };
+    readonly TextBox _filter = new() { Width = 170, PlaceholderText = "Filter mods  (Ctrl+F)", AccessibleName = "Filter mods" };
     readonly CheckBox _hideUpToDate = new() { AutoSize = true, Text = "Hide up to date" };
-    readonly FlatProgressBar _modBar = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 6) };
-    readonly FlatProgressBar _overall = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 2) };
+    readonly FlatProgressBar _modBar = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 6), AccessibleName = "Current mod progress" };
+    readonly FlatProgressBar _overall = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 2), AccessibleName = "Overall progress" };
     readonly Label _current = new() { AutoSize = true, Text = "Idle", Tag = "fill" };
     readonly Label _stage = new Label { AutoSize = true }.Role(ThemeRole.Muted);
     readonly CheckBox _dry = new() { AutoSize = true, Text = "Dry run" };
     readonly CheckBox _allowCreate = new() { AutoSize = true, Text = "Create new items (private)" };
-    readonly RichTextBox _log = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None }.Role(ThemeRole.Log);
+    readonly RichTextBox _log = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None, AccessibleName = "Log" }.Role(ThemeRole.Log);
 
     // The empty mod list: what to do next, with the button that does it.
     readonly Panel _empty = new() { Dock = DockStyle.Fill, Visible = false };
@@ -127,8 +127,7 @@ public sealed class MainForm : Form
     void BuildUi()
     {
         Text = "SteamCMD Helper - Workshop uploads";
-        var screen = Screen.PrimaryScreen?.WorkingArea.Size ?? new Size(1000, 800);
-        Width = Math.Min(1000, screen.Width); Height = Math.Min(800, screen.Height); MinimumSize = new Size(840, 640);
+        Width = 1000; Height = 800; MinimumSize = new Size(840, 640); // at 96 DPI; scaled and fitted to the screen after Theme.Apply
         Font = new Font("Segoe UI", 9.5f);
         StartPosition = FormStartPosition.CenterScreen;
         KeyPreview = true;
@@ -168,6 +167,10 @@ public sealed class MainForm : Form
         ShowPage(_uploadPage);
 
         Theme.Apply(this);
+        // Scaled for the screen's DPI by now; keep the window (and its minimum) on a small or high-DPI screen.
+        var screen = Screen.FromPoint(Cursor.Position).WorkingArea.Size;
+        MinimumSize = new Size(Math.Min(MinimumSize.Width, screen.Width), Math.Min(MinimumSize.Height, screen.Height));
+        Size = new Size(Math.Min(Width, screen.Width), Math.Min(Height, screen.Height));
         EnableFolderDrop(this);
 
         _repo.SelectionChangeCommitted += (_, _) => { if (_repo.SelectedItem is string p && !_busy) OpenRepo(p); };
@@ -224,6 +227,7 @@ public sealed class MainForm : Form
         bar.Controls.Add(_navOptions, 3, 0);
 
         _help = Btn("?", (_, _) => OpenRequest());
+        _help.AccessibleName = "Send a request: report a bug, suggest a feature, or ask for another game";
         _help.AutoSize = false; _help.Size = new Size(30, 28); _help.Padding = Padding.Empty;
         _help.Font = new Font(Font, FontStyle.Bold);
         _help.Margin = new Padding(12, 0, 0, 6);
@@ -441,7 +445,9 @@ public sealed class MainForm : Form
             Append("Recent mods folders forgotten (the current one is kept).", LogKind.Note);
         });
         page.Controls.Add(Card("Your data", null,
-            Hint("Settings, the recent folders list and the upload history are kept in %LocalAppData%\\SteamCmdHelper for your Windows user only."),
+            Hint(AppSettings.Portable
+                ? $"Portable mode ({AppSettings.PortableMarker} is next to the program): settings, the recent folders list and the upload history are kept in {AppSettings.Folder}, so they travel with it."
+                : $"Settings, the recent folders list and the upload history are kept in %LocalAppData%\\SteamCmdHelper for your Windows user only. To keep them beside the program instead (on a USB stick, say), put an empty file named {AppSettings.PortableMarker} next to SteamCmdHelper.exe."),
             Row(openData, forget)));
 
         var version = (typeof(MainForm).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "").Split('+')[0];
@@ -623,7 +629,9 @@ public sealed class MainForm : Form
         _populating = false;
         if (!_cfg.AppIdValid)
         {
-            _game.Text = "Enter the game's Steam app ID (the number in its store URL) before uploading.";
+            _game.Text = preset == ProjectConfig.ParadoxName
+                ? "Enter the game's Steam app ID: " + string.Join(", ", ProjectConfig.ParadoxGames.Select(g => $"{g.Game} {g.AppId}")) + "."
+                : "Enter the game's Steam app ID (the number in its store URL) before uploading.";
             _game.ForeColor = Theme.Of(Tone.Warn);
         }
         else
@@ -688,8 +696,12 @@ public sealed class MainForm : Form
     static TableLayoutPanel Row(params Control[] cs)
     {
         var t = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = cs.Length, RowCount = 1, Margin = new Padding(0, 0, 0, 6) };
+        string? label = null;
         foreach (var c in cs)
         {
+            // Screen readers name an input by the label before it in its row ("Account name", "Theme", ...).
+            if (c is Label { Text.Length: > 0 } l and not LinkLabel) label = l.Text;
+            else if (label != null && c is TextBox or ComboBox && string.IsNullOrEmpty(c.AccessibleName)) c.AccessibleName = label;
             var fill = (c.Tag as string) == "fill";
             t.ColumnStyles.Add(fill ? new ColumnStyle(SizeType.Percent, 100) : new ColumnStyle(SizeType.AutoSize));
             c.Anchor = fill ? AnchorStyles.Left | AnchorStyles.Right : AnchorStyles.Left;
@@ -856,8 +868,11 @@ public sealed class MainForm : Form
     /// <summary>Sets the Status text (the badge) and the row colours from the mod's current state.</summary>
     void UpdateRowState(ListViewItem it)
     {
-        it.SubItems[StatusCol].Text = ModRows.Label(StateOf(it));
-        ColorRow(it, (ModInfo)it.Tag!);
+        var m = (ModInfo)it.Tag!;
+        // The badge is drawn from the state; the text is what screen readers (and sorting) see, so it carries the detail too.
+        var detail = !m.Ready ? m.Problems[0] : m.Warnings.Count > 0 ? m.Warnings[0] : "";
+        it.SubItems[StatusCol].Text = ModRows.Label(StateOf(it)) + (detail.Length > 0 ? ": " + detail : "");
+        ColorRow(it, m);
     }
 
     static Tone ToneOf(RowState s) => s switch
