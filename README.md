@@ -154,6 +154,25 @@ SteamCMD cannot change tags, so they are only shown (the game's own uploader set
 The same right-click menu has **Upload history...** (every upload of the mod made from this PC: when, which
 version, and the change note sent) and **Open on Steam** (the item's page in your browser).
 
+### Profiles, announcements and dependencies
+
+**Options > Profiles** saves the current mods folder, Steam account and SteamCMD under a name; pick a profile to switch
+all three at once (handy for several projects or a second Steam account).
+
+**Options > Announcements** is set per mods folder. Paste a Discord channel's webhook link (channel settings >
+Integrations > Webhooks) and each successful update is posted there with its name, version, change note and Workshop
+link; **Send test** checks the link. Mentions are switched off, so an `@everyone` in a changelog pings nobody. Tick
+**Make a GitHub release** to also create a release with the same notes on the uploaded commit, using the
+[gh](https://cli.github.com) tool (run `gh auth login` once; the commit must be pushed). New items are created private,
+so they are never announced. The webhook link is a secret, so it is kept in your settings, not in the repo.
+
+Mods that name other Workshop items in their metadata (RimWorld's `modDependencies`, or any
+`steamcommunity.com/sharedfiles/filedetails/?id=` link in the marker file) are checked against Steam when the list
+loads. A dependency that is private, removed or banned shows as a warning, since subscribers could not get it.
+
+The row tooltip shows each item's subscriber count and how it has changed this week and since the last upload from
+this PC. Counts are saved once a day in `%LocalAppData%\SteamCmdHelper\stats.json`, so the trend fills in over time.
+
 ### Command line (scripts and CI)
 
 The same exe uploads without opening the window. It uses the repo, account and SteamCMD picked in the window
@@ -260,6 +279,7 @@ The key is stored masked, but anyone with the exe could still extract it. Keep i
 - Only one window opens at a time, so two copies never run SteamCMD against the same login; starting it again brings
   the open window to the front. The command line is not affected.
 - Self-updates are installed only when the download matches the release's SHA-256 checksum and version.
+- Profiles and Discord webhook links are kept in the same settings file, not in your repo.
 - The upload history lives in `%LocalAppData%\SteamCmdHelper\history.json` (the newest 1000 uploads).
 - SteamCMD keeps the login cache in its own folder; keep it out of git.
 - The layout file holds no secrets, but it is a new file in your repo: commit it or git-ignore it.

@@ -26,6 +26,10 @@ public sealed class MainForm : Form
     readonly Label _steamCmdPath = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Muted);
     readonly RadioButton _themeDark = new() { AutoSize = true, Text = "Dark" };
     readonly RadioButton _themeLight = new() { AutoSize = true, Text = "Light" };
+    readonly ComboBox _profile = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
+    readonly TextBox _webhook = new() { Width = 420, PlaceholderText = "https://discord.com/api/webhooks/..." };
+    readonly CheckBox _ghReleases = new() { AutoSize = true, Text = "Make a GitHub release for each upload (needs the gh tool, logged in with \"gh auth login\")" };
+    Button _profileSave = null!, _profileDelete = null!, _webhookTest = null!;
     readonly CheckBox _tagUploads = new() { AutoSize = true, Text = "Tag each upload in git as <mod folder>-v<version>" };
     readonly CheckBox _commitIds = new() { AutoSize = true, Text = "Commit a new item's Workshop ID file without asking" };
     readonly System.Windows.Forms.Timer _clock = new() { Interval = 1000 };
@@ -176,6 +180,9 @@ public sealed class MainForm : Form
         _themeDark.CheckedChanged += (_, _) => { if (_themeDark.Checked) SetTheme(Theme.DarkName); };
         _themeLight.CheckedChanged += (_, _) => { if (_themeLight.Checked) SetTheme(Theme.LightName); };
         _loginLink.LinkClicked += (_, _) => ShowPage(_optionsPage);
+        _profile.SelectedIndexChanged += (_, _) => { if (!_populating) SwitchProfile(); };
+        _webhook.Leave += (_, _) => SaveAnnounce();
+        _ghReleases.CheckedChanged += (_, _) => { if (!_populating) SaveAnnounce(); };
         _tagUploads.CheckedChanged += (_, _) => { if (!_populating) { _s.TagUploads = _tagUploads.Checked; _s.Save(); } };
         _commitIds.CheckedChanged += (_, _) => { if (!_populating) { _s.CommitNewIds = _commitIds.Checked; _s.Save(); } };
         _clock.Tick += (_, _) => ShowClock();
@@ -375,8 +382,8 @@ public sealed class MainForm : Form
 
     Control BuildOptionsPage()
     {
-        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7, Padding = new Padding(14, 12, 14, 12), AutoScroll = true };
-        for (var i = 0; i < 6; i++) page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 9, Padding = new Padding(14, 12, 14, 12), AutoScroll = true };
+        for (var i = 0; i < 8; i++) page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         page.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         // Settings read best as one column; on a wide window keep it from stretching across the screen.
         page.Resize += (_, _) =>
@@ -389,26 +396,40 @@ public sealed class MainForm : Form
         _themeLight.Checked = !Theme.Current.Dark;
         page.Controls.Add(Card("Appearance", null,
             Row(Lbl("Theme"), _themeDark, _themeLight),
-            Hint("Saved for your Windows user and applied straight away.")), 0, 0);
+            Hint("Saved for your Windows user and applied straight away.")));
+
+        _profileSave = Btn("Save as...", (_, _) => SaveProfile());
+        _profileDelete = Btn("Delete", (_, _) => DeleteProfile());
+        page.Controls.Add(Card("Profiles", null,
+            Row(Lbl("Profile"), _profile, _profileSave, _profileDelete),
+            Hint("A profile remembers a mods folder, Steam account and SteamCMD together, for switching between projects or accounts in one click.")));
 
         page.Controls.Add(Card("Steam account", null,
             Row(Lbl("Account name"), _account, _checkLogin, _doLogin),
             Row(Lbl("Status"), _login),
             Row(_accountNote),
-            Hint("You log in once in SteamCMD's own window and Steam keeps the login. This program never sees your password.")), 0, 1);
+            Hint("You log in once in SteamCMD's own window and Steam keeps the login. This program never sees your password.")));
 
         var openSteam = Btn("Open folder", (_, _) => OpenPath(Path.GetDirectoryName(_s.EffectiveSteamCmd)!));
         var openLogs = Btn("Open logs", (_, _) => OpenSteamCmdLogs());
         page.Controls.Add(Card("SteamCMD", null,
             Row(Lbl("Location"), _steamCmdPath, _install, openSteam, openLogs),
-            Hint("SteamCMD is Valve's command-line Steam client; every upload goes through it. Its own logs (workshop_log.txt and others) help when Steam turns an upload down.")), 0, 2);
+            Hint("SteamCMD is Valve's command-line Steam client; every upload goes through it. Its own logs (workshop_log.txt and others) help when Steam turns an upload down.")));
 
         _tagUploads.Checked = _s.TagUploads;
         _commitIds.Checked = _s.CommitNewIds;
         page.Controls.Add(Card("Git", null,
             _tagUploads,
             _commitIds,
-            Hint("Used when the mods folder is a git repository. Tags are made on the commit that was uploaded and stay on this PC until you push them (git push --tags).")), 0, 3);
+            Hint("Used when the mods folder is a git repository. Tags are made on the commit that was uploaded and stay on this PC until you push them (git push --tags).")));
+
+        _webhookTest = Btn("Send test", async (_, _) => await TestWebhookAsync());
+        page.Controls.Add(Card("Announcements", null,
+            Row(Lbl("Discord webhook"), _webhook, _webhookTest),
+            _ghReleases,
+            Hint("For the current mods folder. After a successful update, its name, version, change note and Workshop link are posted to the Discord channel. " +
+                 "New items are created private, so they are not announced. The webhook link is kept in your settings, never in the repo. " +
+                 "GitHub releases are made on the uploaded commit, which must be pushed first.")));
 
         var openData = Btn("Open data folder", (_, _) => OpenPath(AppSettings.Folder));
         var forget = Btn("Forget recent folders", (_, _) =>
@@ -421,7 +442,7 @@ public sealed class MainForm : Form
         });
         page.Controls.Add(Card("Your data", null,
             Hint("Settings, the recent folders list and the upload history are kept in %LocalAppData%\\SteamCmdHelper for your Windows user only."),
-            Row(openData, forget)), 0, 4);
+            Row(openData, forget)));
 
         var version = (typeof(MainForm).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "").Split('+')[0];
         _checkUpdates.Checked = _s.CheckForUpdates;
@@ -434,7 +455,7 @@ public sealed class MainForm : Form
             _autoUpdate,
             _updateReady,
             Hint("Shortcuts: F5 refresh, Ctrl+O pick the mods folder, Ctrl+F filter the list, Ctrl+Enter upload."),
-            Hint(Disclaimer + " Steam and SteamCMD are trademarks of Valve Corporation.")), 0, 5);
+            Hint(Disclaimer + " Steam and SteamCMD are trademarks of Valve Corporation.")));
         return page;
     }
 
@@ -784,6 +805,8 @@ public sealed class MainForm : Form
     void RefreshAll()
     {
         SaveFields();
+        ShowProfiles();
+        ShowAnnounce();
         _cfg = ProjectConfig.Load(_s.RepoPath);
         var branch = ModScanner.GitBranch(_s.RepoPath);
         _branch.Text = !Directory.Exists(_s.RepoPath) ? "" : branch == null ? "(not a git repo)" : "branch: " + branch;
@@ -1126,7 +1149,12 @@ public sealed class MainForm : Form
     {
         ListViewItem? Row(ModInfo m) => IsDisposed ? null : _rows.FirstOrDefault(i => ReferenceEquals(i.Tag, m));
 
-        var live = await WorkshopStatus.FetchAsync(mods.Select(m => m.WorkshopId!));
+        var deps = _mods.ToDictionary(m => m, m => Dependencies.Find(m, _cfg));
+        var live = await WorkshopStatus.FetchAsync(mods.Select(m => m.WorkshopId!).Concat(deps.Values.SelectMany(d => d)));
+        var stats = SubscriberStats.Record(mods.Where(m => live.ContainsKey(m.WorkshopId!)).Select(m => live[m.WorkshopId!]), DateOnly.FromDateTime(DateTime.Now));
+        foreach (var (m, ids) in deps)
+            foreach (var w in Dependencies.Problems(ids, live))
+                if (!m.Warnings.Contains(w)) { m.Warnings.Add(w); Append($"{m.Name} {w}.", LogKind.Warn); }
         foreach (var m in mods)
         {
             var it = Row(m);
@@ -1154,6 +1182,9 @@ public sealed class MainForm : Form
             UpdateRowState(it);
             var extra = new List<string> { note };
             extra.Add(item?.Summary ?? "On Steam: could not be read (offline, or Steam did not answer).");
+            var last = history.GetValueOrDefault(m.WorkshopId!);
+            if (SubscriberStats.Trend(stats.GetValueOrDefault(m.WorkshopId!), DateOnly.FromDateTime(DateTime.Now),
+                    last == null ? null : DateOnly.FromDateTime(last.Time.LocalDateTime)) is { } trend) extra.Add(trend);
             it.ToolTipText = string.Join("\n", extra) + "\n" + RowTip(m);
             // Now known to be up to date: drop it from view when those are hidden.
             if (_hideUpToDate.Checked && StateOf(it) == RowState.UpToDate && it.ListView != null)
@@ -1348,7 +1379,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _checkUpdateNow, _filter, _hideUpToDate })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _checkUpdateNow, _filter, _hideUpToDate, _profile, _profileSave, _webhook, _webhookTest, _ghReleases })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -1778,6 +1809,8 @@ public sealed class MainForm : Form
         _idx = 0;
         _count = picked.Count;
         Taskbar.Progress(this, 0);
+        var uploadedCommit = gitPackaging ? ModScanner.Git(_s.RepoPath, "rev-parse HEAD").Trim() : "";
+        string NoteSent(ModInfo m) => edited.TryGetValue(m.Dir, out var n) ? n : notes[m.Dir];
         List<BatchItem> results;
         _clock.Start();
         try { results = await batch.RunAsync(picked, !dry, _cts.Token); }
@@ -1803,6 +1836,7 @@ public sealed class MainForm : Form
         Taskbar.Progress(this, 100, allOk ? Taskbar.State.None : Taskbar.State.Error);
         Taskbar.FlashIfInBackground(this);
         if (!dry) AfterUploadGit(results);
+        if (!dry) await AnnounceAsync(results, NoteSent, uploadedCommit);
         RefreshAll();
         if (!allOk)
         {
@@ -1920,6 +1954,126 @@ public sealed class MainForm : Form
             if (result == null) Append($"Tagged {tag}.", LogKind.Ok);
             else if (result == "exists") Append($"Tag {tag} already exists; left as it is.", LogKind.Note);
             else Append($"Could not tag {tag}: {result}", LogKind.Warn);
+        }
+    }
+
+    // ---------------------------------------------------------------- profiles and announcements
+
+    const string NoProfile = "(none)";
+
+    void ShowProfiles()
+    {
+        _populating = true;
+        _profile.BeginUpdate();
+        _profile.Items.Clear();
+        _profile.Items.Add(NoProfile);
+        foreach (var p in _s.Profiles) _profile.Items.Add(p.Name);
+        var current = _s.CurrentProfile();
+        _profile.SelectedIndex = current == null ? 0 : _profile.Items.IndexOf(current.Name);
+        _profile.EndUpdate();
+        _profileDelete.Enabled = current != null && !_busy;
+        _populating = false;
+    }
+
+    void SwitchProfile()
+    {
+        var p = _s.Profiles.FirstOrDefault(x => x.Name == _profile.SelectedItem as string);
+        if (p == null || _busy) { ShowProfiles(); return; }
+        _s.UseProfile(p);
+        _s.Save();
+        _account.Text = _s.Account;
+        FillRecent();
+        _failed.Clear(); _retrySet.Clear(); _progress.Visible = false; _filter.Text = "";
+        Append($"Switched to the profile \"{p.Name}\": {(p.RepoPath.Length > 0 ? p.RepoPath : "no mods folder")}, account {(p.Account.Length > 0 ? p.Account : "(none)")}.", LogKind.Note);
+        RefreshAll();
+        UpdateLoginHint();
+        if (SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd) && SteamLogin.LooksCached(_s.EffectiveSteamCmd, _s.Account)) _ = VerifyLoginAsync(false);
+    }
+
+    void SaveProfile()
+    {
+        SaveFields();
+        var suggestion = _s.CurrentProfile()?.Name ?? (_s.RepoPath.Length > 0 ? Path.GetFileName(_s.RepoPath) : _s.Account);
+        var name = Prompt("Save the current mods folder, Steam account and SteamCMD as a profile named:", suggestion)?.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+        _s.SaveProfile(name);
+        _s.Save();
+        ShowProfiles();
+        Append($"Saved the profile \"{name}\".", LogKind.Ok);
+    }
+
+    void DeleteProfile()
+    {
+        var p = _s.CurrentProfile();
+        if (p == null) return;
+        if (MessageBox.Show(this, $"Delete the profile \"{p.Name}\"? The folder and account stay as they are.", Text, MessageBoxButtons.OKCancel) != DialogResult.OK) return;
+        _s.Profiles.Remove(p);
+        _s.Save();
+        ShowProfiles();
+    }
+
+    void ShowAnnounce()
+    {
+        _populating = true;
+        var hasRepo = Directory.Exists(_s.RepoPath);
+        _webhook.Text = hasRepo ? _s.WebhookFor(_s.RepoPath) : "";
+        _ghReleases.Checked = hasRepo && _s.GitHubReleasesFor(_s.RepoPath);
+        _webhook.Enabled = _ghReleases.Enabled = _webhookTest.Enabled = hasRepo && !_busy;
+        _populating = false;
+    }
+
+    void SaveAnnounce()
+    {
+        if (_populating || !Directory.Exists(_s.RepoPath)) return;
+        var url = _webhook.Text.Trim();
+        if (url.Length > 0 && !Announce.IsDiscordWebhook(url))
+        {
+            MessageBox.Show(this, "That is not a Discord webhook link. In Discord: channel settings > Integrations > Webhooks > Copy Webhook URL.", Text);
+            _webhook.Focus();
+            return;
+        }
+        _s.SetWebhook(_s.RepoPath, url);
+        _s.SetGitHubReleases(_s.RepoPath, _ghReleases.Checked);
+        _s.Save();
+    }
+
+    async Task TestWebhookAsync()
+    {
+        SaveAnnounce();
+        var url = _s.WebhookFor(_s.RepoPath);
+        if (url.Length == 0) { MessageBox.Show(this, "Paste the channel's webhook link first.", Text); _webhook.Focus(); return; }
+        _webhookTest.Enabled = false;
+        var error = await Announce.PostDiscordAsync(url, Announce.DiscordPayload("SteamCMD Helper", "test", "0",
+            "This is a test from SteamCMD Helper. Uploads from this mods folder will be announced here.", _cfg.GameName));
+        _webhookTest.Enabled = true;
+        Append(error == null ? "Discord test message sent." : "Discord test failed: " + error, error == null ? LogKind.Ok : LogKind.Error);
+    }
+
+    /// <summary>Posts successful updates to Discord and makes GitHub releases for them, when those are turned on for this folder.</summary>
+    async Task AnnounceAsync(List<BatchItem> results, Func<ModInfo, string> noteOf, string commit)
+    {
+        var done = results.Where(r => r.Status == BatchStatus.Uploaded && r.WorkshopId != null).ToList();
+        if (done.Count == 0) return;
+        var hook = _s.WebhookFor(_s.RepoPath);
+        if (hook.Length > 0)
+            foreach (var r in done)
+            {
+                var error = await Announce.PostDiscordAsync(hook, Announce.DiscordPayload(r.Mod.Name, r.Mod.Version, r.WorkshopId!, noteOf(r.Mod), _cfg.GameName));
+                Append(error == null ? $"Announced {r.Mod.Name} {r.Mod.Version} on Discord." : $"Could not announce {r.Mod.Name} on Discord: {error}", error == null ? LogKind.Ok : LogKind.Warn);
+            }
+        if (!_s.GitHubReleasesFor(_s.RepoPath)) return;
+        if (commit.Length == 0) { Append("No GitHub release: this layout does not upload a git commit.", LogKind.Note); return; }
+        foreach (var r in done)
+        {
+            var tag = GitOps.TagName(r.Mod.Folder, r.Mod.Version);
+            var title = $"{r.Mod.Name} {r.Mod.Version}";
+            var note = noteOf(r.Mod) + $"\n\nSteam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id={r.WorkshopId}";
+            try
+            {
+                var link = await Task.Run(() => Announce.CreateGitHubRelease(_s.RepoPath, tag, title, note, commit));
+                Append($"GitHub release {tag}: {link}", LogKind.Ok);
+            }
+            catch (Exception e) { Append($"Could not make the GitHub release {tag}: {e.Message}", LogKind.Warn); }
         }
     }
 

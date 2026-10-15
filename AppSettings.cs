@@ -2,6 +2,15 @@ using System.Text.Json;
 
 namespace SteamCmdHelper;
 
+/// <summary>A named set of mods folder, Steam account and SteamCMD, to switch between in one click.</summary>
+public sealed class Profile
+{
+    public string Name { get; set; } = "";
+    public string RepoPath { get; set; } = "";
+    public string Account { get; set; } = "";
+    public string SteamCmdPath { get; set; } = "";
+}
+
 /// <summary>Saved under %LocalAppData%\SteamCmdHelper\settings.json. Never holds a password.</summary>
 public sealed class AppSettings
 {
@@ -23,10 +32,61 @@ public sealed class AppSettings
     public bool TagUploads { get; set; }
     /// <summary>Commit a newly created item's Workshop id file without asking.</summary>
     public bool CommitNewIds { get; set; }
+    /// <summary>Saved profiles (mods folder, account, SteamCMD), by name.</summary>
+    public List<Profile> Profiles { get; set; } = new();
+    /// <summary>Discord webhook to announce uploads to, per mods folder. Kept here, not in the repo, because the link is a secret.</summary>
+    public Dictionary<string, string> DiscordWebhooks { get; set; } = new();
+    /// <summary>Mods folders whose uploads also get a GitHub release (made with the gh tool).</summary>
+    public List<string> GitHubReleaseRepos { get; set; } = new();
     /// <summary>The mod list's "Hide up to date" box.</summary>
     public bool HideUpToDate { get; set; }
 
     public const int MaxRecent = 10;
+
+    static string Key(string repo) => repo.Trim().TrimEnd('\\', '/');
+
+    static bool Same(string a, string b) => string.Equals(Key(a), Key(b), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The Discord webhook for <paramref name="repo"/>, or "" for none.</summary>
+    public string WebhookFor(string repo) => DiscordWebhooks.FirstOrDefault(kv => Same(kv.Key, repo)).Value ?? "";
+
+    public void SetWebhook(string repo, string url)
+    {
+        foreach (var k in DiscordWebhooks.Keys.Where(k => Same(k, repo)).ToList()) DiscordWebhooks.Remove(k);
+        if (!string.IsNullOrWhiteSpace(url)) DiscordWebhooks[Key(repo)] = url.Trim();
+    }
+
+    public bool GitHubReleasesFor(string repo) => GitHubReleaseRepos.Any(r => Same(r, repo));
+
+    public void SetGitHubReleases(string repo, bool on)
+    {
+        GitHubReleaseRepos.RemoveAll(r => Same(r, repo));
+        if (on) GitHubReleaseRepos.Add(Key(repo));
+    }
+
+    /// <summary>Saves the current folder, account and SteamCMD under <paramref name="name"/> (replacing one with that name).</summary>
+    public Profile SaveProfile(string name)
+    {
+        Profiles.RemoveAll(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+        var p = new Profile { Name = name.Trim(), RepoPath = RepoPath, Account = Account, SteamCmdPath = SteamCmdPath };
+        Profiles.Add(p);
+        Profiles.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+        return p;
+    }
+
+    /// <summary>Switches to a saved profile.</summary>
+    public void UseProfile(Profile p)
+    {
+        Account = p.Account;
+        SteamCmdPath = p.SteamCmdPath;
+        if (p.RepoPath.Length > 0) Remember(p.RepoPath); else RepoPath = "";
+    }
+
+    /// <summary>The saved profile that matches the current folder and account, if any.</summary>
+    public Profile? CurrentProfile() => Profiles.FirstOrDefault(p =>
+        Same(p.RepoPath, RepoPath) &&
+        string.Equals(p.Account, Account, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(p.SteamCmdPath, SteamCmdPath, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Settings for a screenshot run: used but never written over the real file.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
