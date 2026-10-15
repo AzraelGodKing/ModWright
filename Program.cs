@@ -212,6 +212,15 @@ static class Program
                 Snap(new RequestForm("RimWorld", "294100", "RimWorld", "About/About.xml\r\nAbout/Preview.png\r\nAssemblies/Mod.dll"), Path.Combine(args[sh + 1], $"request{suffix}.png"));
                 var example = new ModInfo { Name = "Example Mod", Folder = "ExampleMod", Dir = Path.Combine(Path.GetTempPath(), "steamcmd_helper_shot_example") };
                 Snap(new WorkshopPageForm(example, "About/steam_description.txt", "[h1]Example Mod[/h1]\nAdds an example to the game."), Path.Combine(args[sh + 1], $"workshop-page{suffix}.png"));
+                var other = new ModInfo { Name = "Other Mod", Folder = "OtherMod", Version = "2.1.0", Dir = Path.Combine(Path.GetTempPath(), "steamcmd_helper_shot_other"), Dirty = true };
+                example.Version = "1.4.0";
+                Snap(new ConfirmUploadForm("Publish to the Steam Workshop (RimWorld):", new[] { example, other },
+                    new Dictionary<string, string> { [example.Dir] = "update 2000000001", [other.Dir] = "update 2000000002  (uncommitted changes will NOT be uploaded)" },
+                    new Dictionary<string, string> { [example.Dir] = "1.4.0\n- Storage shelves hold twice as much.\n- Fixed a crash when loading old saves.", [other.Dir] = "2.1.0\n- Faster hauling." },
+                    dry: false, offerCommit: true), Path.Combine(args[sh + 1], $"confirm{suffix}.png"));
+                Snap(new PackagePreviewForm(example, new PackageReport(
+                    new[] { new PackageFile("About/About.xml", 812), new PackageFile("About/Preview.png", 412_330), new PackageFile("Assemblies/ExampleMod.dll", 48_640), new PackageFile("Textures/Icon.psd", 5_242_880) },
+                    5_704_662, new[] { "has source art files (1): Textures/Icon.psd" })), Path.Combine(args[sh + 1], $"package{suffix}.png"));
             }
             return 0;
         }

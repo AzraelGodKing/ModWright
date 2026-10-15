@@ -34,7 +34,7 @@ public sealed class BatchUpload
         _recordPath = recordPath;
     }
 
-    static readonly Regex LoginFailed = new(@"Login Failure|FAILED login|Logging in user\b.*FAILED|Invalid Password|not logged on", RegexOptions.IgnoreCase);
+    static readonly Regex LoginFailed = new(@"Login Failure|FAILED login|Logging in user\b.*FAILED|Invalid Password|not logged on|Rate ?Limit|Two.?factor|Steam ?Guard|AccountLogonDenied|Cached credentials", RegexOptions.IgnoreCase);
 
     /// <summary>True when a failed upload's reason says Steam refused the login rather than this one item.</summary>
     public static bool IsLoginFailure(string reason) => LoginFailed.IsMatch(reason);
@@ -122,6 +122,7 @@ public sealed class BatchUpload
             var id = r.WorkshopId != null ? $" (Workshop id {r.WorkshopId})" : "";
             var detail = r.Ok ? "" : ": " + r.Message;
             sb.AppendLine($"  {label} {r.Mod.Name}{version}{id}{detail}");
+            if (r.Status == BatchStatus.Failed && SteamCmdOutput.Advice(r.Message) is { } advice) sb.AppendLine("           What to do: " + advice);
         }
         return sb.ToString().TrimEnd();
     }

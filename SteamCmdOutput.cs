@@ -62,5 +62,21 @@ public static class SteamCmdOutput
         return new UploadOutcome(true, expectedId != null ? "Uploaded" : "Created", id);
     }
 
+    static readonly (Regex match, string advice)[] Advices =
+    {
+        (new(@"Rate ?Limit", Ic), "Steam is limiting logins from this PC after too many tries. Wait about half an hour, then try again."),
+        (new(@"Two.?factor|Steam ?Guard|AccountLogonDenied|need.*code", Ic), "Steam wants a Steam Guard code. Use Options > Log in... and type the code in the SteamCMD window."),
+        (new(@"Invalid ?Password", Ic), "Steam refused the saved login (the password may have changed). Use Options > Log in... to log in again."),
+        (new(@"Login Failure|FAILED login|not logged on|Cached credentials|No cached|Expired", Ic), "The saved Steam login has expired or is gone. Use Options > Log in... to log in again."),
+        (new(@"legal agreement|Workshop Legal", Ic), "This account has not accepted the Steam Workshop legal agreement. Open steamcommunity.com/sharedfiles/workshoplegalagreement while signed in and accept it."),
+        (new(@"Access Denied", Ic), "Steam says this account may not change the item. It must own the item (or be a contributor to it) and own the game."),
+        (new(@"File ?Not ?Found", Ic), "Steam has no item with this Workshop ID. Check the mod's id file; it may belong to another game or have been deleted."),
+        (new(@"Limit ?Exceeded", Ic), "Steam says a limit was exceeded, usually the preview image size (1 MB) or the account's Workshop storage."),
+        (new(@"Timeout|No ?Connection|Service ?Unavailable|Busy|ConnectFailed", Ic), "Steam could not be reached or was busy. Check the connection and try again in a few minutes."),
+    };
+
+    /// <summary>What to do about a failed upload, in plain words, or null when the reason is not one Steam commonly gives.</summary>
+    public static string? Advice(string reason) => Advices.FirstOrDefault(a => a.match.IsMatch(reason)).advice;
+
     static string Clean(string line) => Ansi.Replace(line, "").Trim();
 }

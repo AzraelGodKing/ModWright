@@ -77,9 +77,27 @@ Until everything below is in place, a **Get set up** box at the top of the Uploa
    and flashes when a run ends while the window is in the background. If anything failed or was not reached,
    **Retry failed** uploads just those mods again.
 
+Before anything is sent, the confirmation lists each mod and what it will do on Steam, with its change note. Click a
+mod to read or edit its note; an edit changes only what is sent to Steam, not the changelog file (**Use the changelog
+entry** puts it back). If git packaging would leave a mod's uncommitted changes out, the confirmation offers to commit
+them first. While a mod uploads, the progress card shows the package size, how long it has been running and, once this
+PC has a few uploads in its history, about how long is left. When Steam turns an upload down, the summary says what to
+do (for example, log in again, wait out a login rate limit, or accept the Workshop agreement), and a refused login
+offers **Log in again and retry**.
+
+Every package is checked for files that are rarely meant for players: `.git` or `obj` folders, source art such as
+`.psd` or `.blend`, debug and leftover files (`.pdb`, `Thumbs.db`, ...), archives, and very large files. These are
+warnings in the log; only an empty package is refused, because it would remove every file from the item.
+Right-click a mod and choose **Preview package...** to see every file and its size before uploading.
+
+In a git repo, after a new item is created the app offers to commit its Workshop ID file, so nobody creates the item
+twice (**Options > Git** can do it without asking). Tick **Tag each upload in git** there to tag the uploaded commit
+as `<mod folder>-v<version>`; tags stay local until you push them.
+
 The list can be filtered by name, folder or Workshop ID (Ctrl+F), **Hide up to date** drops the mods Steam already
 has, and clicking a column header sorts by it (again to reverse, a third time for folder order). Right-click a mod
-to open its folder or changelog, copy its Workshop ID or link, see its upload history, or open it on Steam.
+to open its folder or changelog, copy its Workshop ID or link, see its upload history, preview its package, or open it
+on Steam.
 
 Shortcuts: **F5** refresh, **Ctrl+O** pick the mods folder, **Ctrl+F** filter, **Ctrl+Enter** upload the ticked mods.
 
