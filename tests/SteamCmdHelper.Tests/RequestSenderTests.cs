@@ -47,6 +47,10 @@ public class RequestSenderTests
     [InlineData(" 33333333-4444-5555-6666-777777777777 ; 44444444-5555-6666-7777-888888888888 ")]
     [InlineData("33333333-4444-5555-6666-777777777777\n44444444-5555-6666-7777-888888888888, not-a-guid")]
     [InlineData("\"33333333-4444-5555-6666-777777777777\", 44444444-5555-6666-7777-888888888888, 33333333-4444-5555-6666-777777777777")]
+    [InlineData("[\"33333333-4444-5555-6666-777777777777\",\"44444444-5555-6666-7777-888888888888\"]")]
+    [InlineData("Layout Request: 33333333-4444-5555-6666-777777777777\r\nSteamCMD Helper: 44444444-5555-6666-7777-888888888888")]
+    [InlineData("'33333333-4444-5555-6666-777777777777' '44444444-5555-6666-7777-888888888888'")]
+    [InlineData("33333333-4444-5555-6666-777777777777,44444444-5555-6666-7777-888888888888,")]
     public void Route_Parse_reads_label_lists(string labels)
     {
         var route = RequestSender.Route.Parse(" " + Project + " ", labels);
@@ -60,6 +64,8 @@ public class RequestSenderTests
         Assert.True(RequestSender.Route.Parse(null, null).IsEmpty);
         Assert.True(RequestSender.Route.Parse("", "").IsEmpty);
         Assert.True(RequestSender.Route.Parse("nope", "x, y").IsEmpty);
+        Assert.True(RequestSender.Route.Parse(null, "Layout Request, SteamCMD Helper").IsEmpty);
+        Assert.Equal(Project, RequestSender.Route.Parse("\"" + Project.ToUpperInvariant() + "\"\n", null).ProjectId);
     }
 
     const string Created = "{\"data\":{\"issueCreate\":{\"success\":true,\"issue\":{\"identifier\":\"AZR-9\"}}}}";

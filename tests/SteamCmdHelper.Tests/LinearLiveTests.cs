@@ -21,8 +21,9 @@ public class LinearLiveTests
         Assert.StartsWith("lin_api_", key!.Trim());
         Assert.True(Guid.TryParse(team!.Trim(), out _), "LINEAR_TEAM_UUID is not a team ID (GUID).");
         var route = RequestSender.Route.Parse(Environment.GetEnvironmentVariable("PROJECTID"), Environment.GetEnvironmentVariable("LABELIDS"));
-        Assert.True(route.ProjectId != null, "PROJECTID is not set to a project ID (GUID).");
-        Assert.True(route.LabelIds.Length > 0, "LABELIDS has no label IDs (GUIDs, separated by commas).");
+        // Describe a bad value without printing it: the secrets must never reach the log.
+        Assert.True(route.ProjectId != null, "PROJECTID holds no project ID (GUID). " + Describe("PROJECTID"));
+        Assert.True(route.LabelIds.Length > 0, "LABELIDS holds no label IDs (GUIDs, separated by commas). " + Describe("LABELIDS"));
 
         var run = Environment.GetEnvironmentVariable("GITHUB_RUN_ID") ?? "local";
         var body = RequestSender.BuildBody(team.Trim(), "Linear key check (safe to delete)",
@@ -30,6 +31,15 @@ public class LinearLiveTests
         // Straight to PostAsync, not SendAsync: SendAsync would fall back to the team alone and hide a broken project or label.
         var (ok, message, _) = await RequestSender.PostAsync(key.Trim(), RequestSender.Endpoint, body, CancellationToken.None);
         Assert.True(ok, "Linear did not file the request into the project with its labels: " + message);
-        Console.WriteLine("Linear key check created " + message);
+        Console.WriteLine($"Linear key check created {message} with {route.LabelIds.Length} label(s)");
+    }
+
+    static string Describe(string name)
+    {
+        var value = Environment.GetEnvironmentVariable(name) ?? "";
+        if (value.Trim().Length == 0) return "The secret is empty or missing.";
+        var parts = value.Split(new[] { ',', ';', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length;
+        return $"The secret is set ({value.Length} characters, {parts} part(s)) but no part is a 36-character ID like "
+            + "e1d2ed12-1294-48eb-a3ec-27d49fa9e53c. Use the IDs, not the names.";
     }
 }
