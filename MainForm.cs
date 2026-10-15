@@ -40,7 +40,7 @@ public sealed class MainForm : Form
 
     // The empty mod list: what to do next, with the button that does it.
     readonly Panel _empty = new() { Dock = DockStyle.Fill, Visible = false };
-    readonly Label _emptyTitle = new() { AutoSize = true, Font = new Font("Segoe UI Semibold", 12f), Anchor = AnchorStyles.None };
+    readonly Label _emptyTitle = new() { AutoSize = true, Font = new Font("Segoe UI Semibold", 11f), Anchor = AnchorStyles.None };
     readonly Label _emptyText = new Label { AutoSize = true, MaximumSize = new Size(520, 0), TextAlign = ContentAlignment.MiddleCenter, Anchor = AnchorStyles.None }.Role(ThemeRole.Muted);
 
     // "Get set up": the steps a new user still has to do, each a link that does it.
@@ -81,8 +81,10 @@ public sealed class MainForm : Form
         BuildUi();
         FillRecent();
         _account.Text = _s.Account;
+        _populating = true; // the Shown handler reads the folder once; these must not each trigger a read too
         _allowCreate.Checked = _s.AllowCreate;
         _hideUpToDate.Checked = _s.HideUpToDate;
+        _populating = false;
         Shown += async (_, _) =>
         {
             RefreshAll();
@@ -209,13 +211,19 @@ public sealed class MainForm : Form
         page.RowStyles.Add(new RowStyle(SizeType.Percent, 35)); // the list and the log share what is left, so neither vanishes on small screens
 
         // Shown until SteamCMD, the account, the mods folder and the app id are all set.
-        var steps = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, WrapContents = true, Margin = Padding.Empty };
+        // One line, so it costs little height: the title, then the steps.
+        var steps = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty, Tag = "fill" };
         foreach (var l in _steps)
         {
             l.LinkClicked += (_, _) => (l.Tag as Action)?.Invoke();
             steps.Controls.Add(l);
         }
-        _setup = Card("Get set up", null, steps, Hint("Uploads need all four. This box goes away once they are done."));
+        var setupTitle = new Label { Text = "Get set up", AutoSize = true, Font = new Font("Segoe UI Semibold", 10.5f) }.Role(ThemeRole.Title);
+        _tip.SetToolTip(setupTitle, "Uploads need all four steps. This box goes away once they are done.");
+        var setupRow = Row(setupTitle, steps);
+        setupTitle.Margin = new Padding(0, 3, 20, 3);
+        setupRow.Margin = Padding.Empty;
+        _setup = Card(null, null, setupRow);
         page.Controls.Add(_setup, 0, 0);
 
         _preset.Items.AddRange(ProjectConfig.PresetNames.Cast<object>().Append("Custom").ToArray());
@@ -240,7 +248,9 @@ public sealed class MainForm : Form
             _list.Columns.Add(ColumnNames[i], widths[i], i == PreviewCol ? HorizontalAlignment.Center : HorizontalAlignment.Left);
         _list.PaintCells(PaintCell);
         _list.ItemCheck += OnItemCheck;
-        _list.ItemChecked += (_, _) => UpdateGoButton();
+        // Windows reports ticks while it is still taking rows in (when the list is filled or its window is created),
+        // and a row's tick can't be read until it has its place; so count them once the current message is done.
+        _list.ItemChecked += (_, _) => QueueGoButton();
         _list.MouseDoubleClick += OnListDoubleClick;
         _list.ColumnClick += (_, e) => SortBy(e.Column);
         _list.SelectedIndexChanged += (_, _) => UpdateSelectionButtons();
@@ -255,9 +265,9 @@ public sealed class MainForm : Form
 
         // The list and its empty state share one spot; only one of them is visible.
         var emptyBox = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Anchor = AnchorStyles.None };
-        var emptyButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Anchor = AnchorStyles.None, Margin = new Padding(0, 10, 0, 0) };
+        var emptyButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Anchor = AnchorStyles.None, Margin = new Padding(0, 6, 0, 0) };
         foreach (var b in new[] { _emptyBrowse, _emptyLayout, _emptyClear }) { b.Margin = new Padding(4, 0, 4, 0); emptyButtons.Controls.Add(b); }
-        _emptyTitle.Margin = new Padding(0, 0, 0, 6);
+        _emptyTitle.Margin = new Padding(0, 0, 0, 2);
         emptyBox.Controls.AddRange(new Control[] { _emptyTitle, _emptyText, emptyButtons });
         var center = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
         center.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
@@ -989,7 +999,7 @@ public sealed class MainForm : Form
     {
         var size = TextRenderer.MeasureText(g, label, _list.Font, Size.Empty, TextFormatFlags.NoPadding);
         var h = Math.Min(area.Height - LogicalToDeviceUnits(6), size.Height + LogicalToDeviceUnits(4));
-        var r = new Rectangle(area.Left, area.Top + (area.Height - h) / 2, size.Width + LogicalToDeviceUnits(14), h);
+        var r = new Rectangle(area.Left, area.Top + (area.Height - h) / 2, size.Width + LogicalToDeviceUnits(18), h);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         using (var path = Rounded(r, h / 2))
         using (var fill = new SolidBrush(Theme.Blend(back, color, 0.18)))
@@ -999,7 +1009,7 @@ public sealed class MainForm : Form
             g.DrawPath(pen, path);
         }
         g.SmoothingMode = SmoothingMode.Default;
-        TextRenderer.DrawText(g, label, _list.Font, r, color, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+        TextRenderer.DrawText(g, label, _list.Font, r, color, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
         return r;
     }
 
@@ -1278,6 +1288,15 @@ public sealed class MainForm : Form
     /// <summary>Ticked mods, including any the filter currently hides (the confirmation lists them all).</summary>
     IEnumerable<ModInfo> Selected() => _rows.Where(i => i.Checked).Select(i => (ModInfo)i.Tag!);
 
+    bool _goQueued;
+
+    void QueueGoButton()
+    {
+        if (_goQueued || !IsHandleCreated) return;
+        _goQueued = true;
+        BeginInvoke(() => { _goQueued = false; UpdateGoButton(); });
+    }
+
     void UpdateGoButton()
     {
         var n = _rows.Count(i => i.Checked);
@@ -1306,7 +1325,9 @@ public sealed class MainForm : Form
         _loginTone = tone;
         _login.Text = text;
         _login.ForeColor = Theme.Of(tone);
-        _loginLink.Text = text;
+        // Missing SteamCMD or account are on the "Get set up" card; next to Upload only the login itself. Emptied
+        // rather than hidden, so its column keeps pushing the Upload button to the right.
+        _loginLink.Text = SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd) && !string.IsNullOrWhiteSpace(_s.Account) ? text : "";
         _loginLink.LinkColor = _loginLink.VisitedLinkColor = Theme.Of(tone);
         _tip.SetToolTip(_login, text);
     }
@@ -1322,8 +1343,6 @@ public sealed class MainForm : Form
         else if (string.IsNullOrWhiteSpace(_s.Account)) SetLogin("No Steam account set", Tone.Warn);
         else if (SteamLogin.LooksCached(steam, _s.Account)) SetLogin($"Saved login found for {_s.Account} (not checked yet)", Tone.Info);
         else SetLogin($"No saved login for {_s.Account} - you'll be asked to log in once", Tone.Warn);
-        // Missing SteamCMD or account are on the "Get set up" card; here only the login itself.
-        _loginLink.Visible = installed && !string.IsNullOrWhiteSpace(_s.Account);
     }
 
     // ---------------------------------------------------------------- log
