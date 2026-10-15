@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  actions: read # SignPath fetches the unsigned artifact
 
 env:
   DOTNET_NOLOGO: true
@@ -16,6 +17,9 @@ env:
 jobs:
   release:
     runs-on: windows-latest
+    env:
+      # Step conditions can only see job-level env, so the signing gate reads it here.
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
     defaults:
       run:
         shell: bash
@@ -58,13 +62,47 @@ jobs:
           LABELIDS: ${{ secrets.LABELIDS }}
           LABELMAP: ${{ secrets.LABELMAP }}
         run: |
-          # Self-contained single exe: runs without .NET installed.
+          # Self-contained single exe: runs without .NET installed. Compressed, which takes it from about 160 MB to
+          # well under half that for a moment's unpacking at start-up.
           dotnet publish SteamCmdHelper.csproj -c Release -r win-x64 --self-contained \
-            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o out/standalone
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out/standalone
           # Framework-dependent folder: small, for machines with the .NET 8 Desktop Runtime
           # or where antivirus refuses large unsigned single-file exes.
           dotnet publish SteamCmdHelper.csproj -c Release -r win-x64 --no-self-contained -o out/portable
 
+      # Code signing through SignPath (free for open source; see "Code signing" in the README). Until the
+      # SIGNPATH_API_TOKEN secret exists these steps are skipped and the release is unsigned, as before. Signing
+      # happens before the zip and the checksums are made, so both cover the signed files.
+      - name: Upload unsigned files for signing
+        id: unsigned
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned
+          path: |
+            out/standalone/SteamCmdHelper.exe
+            out/portable
+
+      - name: Sign with SignPath
+        if: steps.unsigned.outcome == 'success'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'SteamCMDHelper' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Use the signed files
+        if: steps.unsigned.outcome == 'success'
+        run: |
+          cp -r signed/. out/
+          ls -l out/standalone
+
+      - name: Package
+        run: |
           mkdir dist
           cp out/standalone/SteamCmdHelper.exe "dist/SteamCmdHelper-$VERSION-win-x64.exe"
           (cd out/portable && 7z a -tzip "../../dist/SteamCmdHelper-$VERSION-win-x64-framework-dependent.zip" . > /dev/null)
@@ -78,3 +116,56 @@ jobs:
           prerelease=""
           case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" dist/* --title "SteamCMD Helper $VERSION" --notes-file notes.md $prerelease
+
+  # After a release: point the Scoop manifest in bucket/ at it (as a pull request), and send the new version to winget
+  # once the package is in winget-pkgs and a WINGET_TOKEN secret is set. Neither can fail the release.
+  package-managers:
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Scoop manifest
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          $base = "https://github.com/${{ github.repository }}/releases/download/v$version"
+          $sums = (Invoke-WebRequest "$base/SHA256SUMS.txt").Content
+          $exe = "SteamCmdHelper-$version-win-x64.exe"
+          $hash = ($sums -split "`n" | Where-Object { $_ -match [regex]::Escape($exe) } | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
+          if (-not $hash) { throw "SHA256SUMS.txt has no line for $exe" }
+          $file = 'bucket/steamcmdhelper.json'
+          $m = Get-Content $file -Raw | ConvertFrom-Json
+          $m.version = $version
+          $m.architecture.'64bit'.url = "$base/$exe#/SteamCmdHelper.exe"
+          $m.architecture.'64bit'.hash = $hash.ToLower()
+          ($m | ConvertTo-Json -Depth 10) + "`n" | Set-Content $file -NoNewline -Encoding utf8NoBOM
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $branch = "scoop/v$version"
+          git checkout -b $branch
+          git commit -am "Point the Scoop manifest at $version"
+          git push origin $branch
+          gh pr create --base main --head $branch --title "Point the Scoop manifest at $version" --body "Updates bucket/steamcmdhelper.json to the $version release (URL and SHA-256 from its SHA256SUMS.txt)."
+
+      - name: winget
+        continue-on-error: true
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if (-not $env:WINGET_TOKEN) { Write-Output "No WINGET_TOKEN secret: winget is not updated (see Install with winget or Scoop in the README)."; exit 0 }
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          $url = "https://github.com/${{ github.repository }}/releases/download/v$version/SteamCmdHelper-$version-win-x64.exe"
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          ./wingetcreate.exe update AzraelGodKing.SteamCMDHelper --version $version --urls $url --submit --token $env:WINGET_TOKEN

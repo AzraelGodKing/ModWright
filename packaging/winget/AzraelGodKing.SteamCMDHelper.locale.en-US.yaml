@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: AzraelGodKing.SteamCMDHelper
+PackageVersion: 1.0.0
+PackageLocale: en-US
+Publisher: AzraelGodKing
+PublisherUrl: https://github.com/AzraelGodKing
+PackageName: SteamCMD Helper
+PackageUrl: https://github.com/AzraelGodKing/SteamCMDHelper
+License: MIT
+LicenseUrl: https://github.com/AzraelGodKing/SteamCMDHelper/blob/main/LICENSE
+ShortDescription: Upload Steam Workshop mod updates without remembering SteamCMD commands.
+Description: |-
+  A Windows app for uploading Steam Workshop mods with SteamCMD: tick the mods, press Upload. It shows each mod's
+  version and Workshop id, checks the changelog before sending anything, handles the Steam login, and shows progress
+  and a live log. Works for any game with a Steam Workshop. Not affiliated with or endorsed by Valve or Steam.
+Tags:
+  - steam
+  - steamcmd
+  - workshop
+  - modding
+ReleaseNotesUrl: https://github.com/AzraelGodKing/SteamCMDHelper/releases/tag/v1.0.0
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

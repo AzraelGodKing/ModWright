@@ -39,6 +39,20 @@ downloaded and checked in the background and installed when you close the app (o
 by default. Only the public releases list and the release files are read; nothing about you or your mods is sent. Turn
 the check off, or **Check now**, under **Options > About**. From a script, `SteamCmdHelper update` does the same.
 
+### Install with winget or Scoop
+
+```
+winget install AzraelGodKing.SteamCMDHelper
+```
+
+```
+scoop bucket add steamcmdhelper https://github.com/AzraelGodKing/SteamCMDHelper
+scoop install steamcmdhelper
+```
+
+Both install the standalone exe and put `steamcmdhelper` on your PATH, so the command line below works from any
+terminal. `winget upgrade` and `scoop update` pick up new releases.
+
 ## Build and run
 
 ```powershell
@@ -319,6 +333,30 @@ dotnet test tests/SteamCmdHelper.Tests
 ```
 
 The tests compile the non-UI source files directly, so they run on Windows, Linux or macOS.
+
+## Releasing (maintainer)
+
+Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which tests, builds, signs (when set up), and publishes
+the release. After a non-prerelease it also:
+
+- opens a pull request pointing `bucket/steamcmdhelper.json` (the Scoop manifest) at the new exe and its SHA-256.
+  This needs **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests**.
+- sends the new version to winget with `wingetcreate`, once a `WINGET_TOKEN` secret exists (a classic GitHub token
+  with `public_repo`). The package must be in [winget-pkgs](https://github.com/microsoft/winget-pkgs) first: submit
+  the manifests in `packaging/winget` once by hand (`wingetcreate submit packaging/winget`).
+
+### Code signing
+
+Unsigned exes trip SmartScreen and some antivirus. The release signs the exe, and the files in the framework-dependent
+zip, through [SignPath](https://signpath.org) (free for open-source projects) when these are set:
+
+- secret `SIGNPATH_API_TOKEN`
+- variable `SIGNPATH_ORGANIZATION_ID`
+- optional variables `SIGNPATH_PROJECT_SLUG` (default `SteamCMDHelper`) and `SIGNPATH_POLICY_SLUG`
+  (default `release-signing`)
+
+The SignPath project's artifact configuration should sign `standalone/SteamCmdHelper.exe` and
+`portable/SteamCmdHelper.exe` / `portable/SteamCmdHelper.dll`. Without the secret, releases are built unsigned as before.
 
 ## License
 
