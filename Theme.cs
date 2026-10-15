@@ -19,12 +19,12 @@ public sealed record Palette(
     Color Ok, Color Warn, Color Error, Color Info);
 
 /// <summary>
-/// Dark (default) and light themes for the WinForms UI. <see cref="Apply"/> walks a control tree and colours it;
-/// call it again after <see cref="Set"/> to switch live. The log keeps its console look in both themes.
+/// Dark (default), light and Windows High Contrast themes for the WinForms UI. <see cref="Apply"/> walks a control tree
+/// and colours it; call it again after <see cref="Set"/> to switch live. The log keeps its console look in dark and light.
 /// </summary>
 public static class Theme
 {
-    public const string DarkName = "Dark", LightName = "Light";
+    public const string DarkName = Display.Dark, LightName = Display.Light, SystemName = Display.System, HighContrastName = "HighContrast";
 
     public static readonly Palette DarkPalette = new(
         DarkName, true,
@@ -46,14 +46,66 @@ public static class Theme
         Track: Color.FromArgb(222, 225, 231), ListHeader: Color.FromArgb(246, 247, 249),
         Ok: Color.FromArgb(22, 128, 60), Warn: Color.FromArgb(178, 98, 0), Error: Color.FromArgb(196, 43, 28), Info: Color.FromArgb(0, 103, 192));
 
-    /// <summary>Console colours for the log, the same in both themes.</summary>
-    public static readonly Color LogBack = Color.FromArgb(20, 21, 25), LogText = Color.Gainsboro;
+    /// <summary>
+    /// Windows High Contrast: every colour comes from the user's contrast theme, so the app reads exactly like the rest
+    /// of Windows. Status colours fall back to the text colour; the words (badges, notes) carry the meaning.
+    /// </summary>
+    static Palette HighContrastPalette() => new(
+        HighContrastName, SystemColors.Window.GetBrightness() < 0.5f,
+        Back: SystemColors.Window, Surface: SystemColors.Window, Header: SystemColors.Window,
+        Input: SystemColors.Window, Border: SystemColors.WindowText,
+        Text: SystemColors.WindowText, Muted: SystemColors.WindowText,
+        Button: SystemColors.ButtonFace, ButtonHover: SystemColors.ButtonFace, ButtonDown: SystemColors.ButtonFace,
+        Accent: SystemColors.Highlight, AccentHover: SystemColors.Highlight, AccentText: SystemColors.HighlightText,
+        Track: SystemColors.GrayText, ListHeader: SystemColors.ButtonFace,
+        Ok: SystemColors.WindowText, Warn: SystemColors.WindowText, Error: SystemColors.WindowText, Info: SystemColors.HotTrack);
+
+    /// <summary>Console colours for the log, the same in dark and light (High Contrast uses its own).</summary>
+    public static Color LogBack => HighContrast ? SystemColors.Window : Color.FromArgb(20, 21, 25);
+    public static Color LogText => HighContrast ? SystemColors.WindowText : Color.Gainsboro;
 
     public static Palette Current { get; private set; } = DarkPalette;
 
-    /// <summary>Picks a theme by name; anything but "Light" is dark, so dark is the default.</summary>
-    public static void Set(string? name) =>
-        Current = string.Equals(name, LightName, StringComparison.OrdinalIgnoreCase) ? LightPalette : DarkPalette;
+    /// <summary>What the user picked: "Dark", "Light" or "System". <see cref="Current"/> is what that resolves to now.</summary>
+    public static string Choice { get; private set; } = DarkName;
+
+    /// <summary>True while Windows High Contrast is on; it overrides the chosen theme.</summary>
+    public static bool HighContrast => Current.Name == HighContrastName;
+
+    /// <summary>
+    /// Picks a theme by name ("Dark", "Light" or "System"); anything else is dark, the default. Windows High Contrast,
+    /// when on, wins over the choice. Returns true when the colours changed (the caller re-applies them).
+    /// </summary>
+    public static bool Set(string? name)
+    {
+        Choice = Display.NormalizeTheme(name);
+        var before = Current;
+        Current = SystemInformation.HighContrast ? HighContrastPalette()
+            : Display.ResolveTheme(Choice, WindowsAppsUseLight()) == LightName ? LightPalette : DarkPalette;
+        return Current != before;
+    }
+
+    /// <summary>Windows' "Choose your app mode" setting: true for light, false for dark, null when unknown.</summary>
+    static bool? WindowsAppsUseLight()
+    {
+        try
+        {
+            return Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", null) is int v
+                ? v != 0 : null;
+        }
+        catch { return null; }
+    }
+
+    // ------------------------------------------------------------ text size and type scale
+
+    /// <summary>Options > Appearance > Text size, as a factor (1.25 = 125%). Set before the first window is themed.</summary>
+    public static float TextScale { get; set; } = 1f;
+
+    /// <summary>The app's type scale; every window uses these four sizes, so headings and body text match everywhere.</summary>
+    public static readonly Font TitleFont = new("Segoe UI Semibold", 13f),
+        HeadingFont = new("Segoe UI Semibold", 10.5f),
+        BodyFont = new("Segoe UI", 9.5f),
+        SmallFont = new("Segoe UI", 8.5f);
 
     /// <summary>Mixes <paramref name="amount"/> (0..1) of <paramref name="over"/> into <paramref name="under"/>.</summary>
     public static Color Blend(Color under, Color over, double amount) => Color.FromArgb(
@@ -105,9 +157,42 @@ public static class Theme
     static void ScaleForDpi(Form f)
     {
         if (f.AutoScaleMode == AutoScaleMode.Dpi) return;
+        ScaleText(f);
         f.AutoScaleMode = AutoScaleMode.Dpi;
-        f.AutoScaleDimensions = new SizeF(96F, 96F);
+        // A larger text size scales the layout with it, as if the screen had a higher DPI.
+        f.AutoScaleDimensions = new SizeF(96F / TextScale, 96F / TextScale);
         f.PerformAutoScale();
+    }
+
+    static readonly ConditionalWeakTable<Font, object> Scaled = new();
+
+    /// <summary>Grows every font in the window by <see cref="TextScale"/>: the window's own and each one set on a control.</summary>
+    static void ScaleText(Form f)
+    {
+        if (Math.Abs(TextScale - 1f) < 0.01f) return;
+        // A control that inherits its font returns its parent's; only the ones set on purpose are scaled one by one.
+        var own = new List<Control>();
+        void Collect(Control c)
+        {
+            foreach (Control child in c.Controls)
+            {
+                if (!ReferenceEquals(child.Font, c.Font)) own.Add(child);
+                Collect(child);
+            }
+        }
+        Collect(f);
+        var fonts = own.Select(c => c.Font).ToList();
+        f.Font = Bigger(f.Font);
+        for (var i = 0; i < own.Count; i++) own[i].Font = Bigger(fonts[i]);
+    }
+
+    /// <summary>The font at the text size; a font that is already scaled (a dialog given the main window's) is kept.</summary>
+    static Font Bigger(Font font)
+    {
+        if (Scaled.TryGetValue(font, out _)) return font;
+        var big = new Font(font.FontFamily, font.SizeInPoints * TextScale, font.Style, GraphicsUnit.Point);
+        Scaled.AddOrUpdate(big, true);
+        return big;
     }
 
     static void Apply(Control c, Color parentBack)
@@ -126,6 +211,7 @@ public static class Theme
         {
             case Form f:
                 ScaleForDpi(f);
+                FocusCues.Install();
                 back = p.Back;
                 f.BackColor = back; f.ForeColor = p.Text;
                 if (AppIcon != null) f.Icon = AppIcon;
@@ -140,18 +226,19 @@ public static class Theme
                 nb.ForeColor = nb.Selected ? p.Text : p.Muted;
                 nb.UseVisualStyleBackColor = false;
                 nb.Invalidate();
+                Hook(nb, PaintFocus);
                 break;
             case Button b:
                 StyleButton(b, role == ThemeRole.Accent);
                 b.EnabledChanged -= OnButtonEnabled;
                 b.EnabledChanged += OnButtonEnabled;
-                b.Paint -= PaintDisabled;
-                b.Paint += PaintDisabled;
+                Hook(b, PaintDisabled);
+                Hook(b, PaintFocus);
                 break;
             case RichTextBox r:
                 r.BackColor = role == ThemeRole.Log ? LogBack : p.Input;
                 r.ForeColor = role == ThemeRole.Log ? LogText : p.Text;
-                Native(r, role == ThemeRole.Log ? OnDarkScrollHandle : OnScrollHandle);
+                Native(r, role == ThemeRole.Log && !HighContrast ? OnDarkScrollHandle : OnScrollHandle);
                 break;
             case TextBox t:
                 t.BackColor = p.Input; t.ForeColor = p.Text;
@@ -189,17 +276,53 @@ public static class Theme
                 break;
             case CheckBox or RadioButton:
                 c.BackColor = back; c.ForeColor = p.Text;
+                Hook(c, PaintFocus);
                 break;
             case FlatProgressBar pb:
                 pb.BackColor = p.Track; pb.ForeColor = p.Accent;
                 break;
             default:
                 c.BackColor = back; c.ForeColor = p.Text;
+                if (role == ThemeRole.Surface) Hook(c, PaintCardEdge);
                 break;
         }
 
         foreach (Control child in c.Controls) Apply(child, back);
     }
+
+    /// <summary>Adds a paint step once, however often the theme is applied.</summary>
+    static void Hook(Control c, PaintEventHandler h)
+    {
+        c.Paint -= h;
+        c.Paint += h;
+    }
+
+    /// <summary>A hairline around each card, so cards stay apart on the light theme and in High Contrast.</summary>
+    static void PaintCardEdge(object? s, PaintEventArgs e)
+    {
+        if (s is not Control c) return;
+        var p = Current;
+        using var pen = new Pen(HighContrast ? p.Border : Blend(p.Surface, p.Border, p.Dark ? 0.55 : 0.8));
+        e.Graphics.DrawRectangle(pen, 0, 0, c.Width - 1, c.Height - 1);
+    }
+
+    /// <summary>
+    /// A clear ring around the focused button or tick box while the keyboard is in use (Tab, arrows, Alt), so it is
+    /// always visible where Tab is. Clicking with the mouse hides it again, as Windows does.
+    /// </summary>
+    static void PaintFocus(object? s, PaintEventArgs e)
+    {
+        if (s is not Control c || !c.Focused || !FocusCues.Keyboard || !c.Enabled) return;
+        var p = Current;
+        var accent = c is Button && RoleOf(c) == ThemeRole.Accent;
+        var w = Math.Max(2, c.LogicalToDeviceUnits(2));
+        using var pen = new Pen(accent ? p.AccentText : p.Accent, w) { Alignment = System.Drawing.Drawing2D.PenAlignment.Inset };
+        var inset = accent ? w : 0;
+        e.Graphics.DrawRectangle(pen, inset, inset, c.Width - 1 - inset * 2, c.Height - 1 - inset * 2);
+    }
+
+    /// <summary>The colour to outline the keyboard-focused item of a list with.</summary>
+    public static Color FocusColor => Current.Accent;
 
     static void StyleButton(Button b, bool accent)
     {
@@ -231,7 +354,7 @@ public static class Theme
         var r = b.ClientRectangle;
         using (var bg = new SolidBrush(Blend(p.Button, p.Surface, 0.5))) e.Graphics.FillRectangle(bg, r);
         using (var pen = new Pen(p.Border)) e.Graphics.DrawRectangle(pen, 0, 0, r.Width - 1, r.Height - 1);
-        TextRenderer.DrawText(e.Graphics, b.Text, b.Font, r, p.Muted,
+        TextRenderer.DrawText(e.Graphics, b.Text, b.Font, r, HighContrast ? SystemColors.GrayText : p.Muted,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.HidePrefix);
     }
 
@@ -281,7 +404,7 @@ public static class Theme
         var highlighted = (e.State & DrawItemState.Selected) != 0 && (e.State & DrawItemState.ComboBoxEdit) == 0;
         using (var bg = new SolidBrush(highlighted ? p.Accent : p.Input)) e.Graphics.FillRectangle(bg, e.Bounds);
         var text = e.Index >= 0 ? cb.GetItemText(cb.Items[e.Index]) : "";
-        var color = highlighted ? p.AccentText : cb.Enabled ? p.Text : p.Muted;
+        var color = highlighted ? p.AccentText : cb.Enabled ? p.Text : HighContrast ? SystemColors.GrayText : p.Muted;
         TextRenderer.DrawText(e.Graphics, text, cb.Font, Rectangle.Inflate(e.Bounds, -3, 0), color,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
@@ -444,4 +567,46 @@ public sealed class FlatProgressBar : Control
         using var b = new SolidBrush(ForeColor);
         e.Graphics.FillRectangle(b, 0, 0, w, Height);
     }
+}
+
+/// <summary>
+/// Tracks whether the keyboard or the mouse was used last, so focus rings show while tabbing and hide after a click.
+/// Windows does the same for its own controls; the flat themed ones need to be told.
+/// </summary>
+static class FocusCues
+{
+    static bool _installed;
+    public static bool Keyboard { get; private set; }
+
+    public static void Install()
+    {
+        if (_installed) return;
+        _installed = true;
+        Application.AddMessageFilter(new FocusCuesFilter());
+    }
+
+    sealed class FocusCuesFilter : IMessageFilter
+    {
+        public bool PreFilterMessage(ref Message m)
+        {
+            const int KeyDown = 0x100, SysKeyDown = 0x104, LButtonDown = 0x201, RButtonDown = 0x204, MButtonDown = 0x207;
+            bool? keyboard = m.Msg switch
+            {
+                KeyDown or SysKeyDown when Navigates((Keys)(int)m.WParam) => true,
+                LButtonDown or RButtonDown or MButtonDown => false,
+                _ => null,
+            };
+            if (keyboard is bool k && k != Keyboard)
+            {
+                Keyboard = k;
+                // The control that has focus now repaints with or without its ring.
+                Form.ActiveForm?.ActiveControl?.Invalidate();
+                if (Form.ActiveForm?.ActiveControl is ContainerControl cc) cc.ActiveControl?.Invalidate();
+            }
+            return false;
+        }
+
+        static bool Navigates(Keys k) => k is Keys.Tab or Keys.Left or Keys.Right or Keys.Up or Keys.Down or Keys.Menu or Keys.Home or Keys.End or Keys.PageUp or Keys.PageDown;
+    }
+
 }

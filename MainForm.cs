@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using System.Reflection;
 using System.Text;
+using Microsoft.Win32;
 
 namespace SteamCmdHelper;
 
@@ -24,13 +25,17 @@ public sealed class MainForm : Form
     readonly Label _login = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Keep);
     readonly LinkLabel _loginLink = new LinkLabel { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleRight, Tag = "fill", LinkBehavior = LinkBehavior.HoverUnderline }.Role(ThemeRole.Keep);
     readonly Label _steamCmdPath = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Muted);
-    readonly RadioButton _themeDark = new() { AutoSize = true, Text = "Dark" };
-    readonly RadioButton _themeLight = new() { AutoSize = true, Text = "Light" };
+    readonly RadioButton _themeDark = new() { AutoSize = true, Text = "Dar&k" };
+    readonly RadioButton _themeLight = new() { AutoSize = true, Text = "Li&ght" };
+    readonly RadioButton _themeSystem = new() { AutoSize = true, Text = "&Match Windows" };
+    readonly ComboBox _textSize = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90 };
+    /// <summary>Says that Windows High Contrast is on and wins over the theme choice; hidden otherwise.</summary>
+    Label _contrastNote = null!;
     readonly ComboBox _profile = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
     readonly TextBox _webhook = new() { Width = 420, PlaceholderText = "https://discord.com/api/webhooks/..." };
-    readonly CheckBox _ghReleases = new() { AutoSize = true, Text = "Make a GitHub release for each upload (needs the gh tool, logged in with \"gh auth login\")" };
+    readonly CheckBox _ghReleases = new() { AutoSize = true, Text = "Make a GitHub &release for each upload (needs the gh tool, logged in with \"gh auth login\")" };
     Button _profileSave = null!, _profileDelete = null!, _webhookTest = null!;
-    readonly CheckBox _tagUploads = new() { AutoSize = true, Text = "Tag each upload in git as <mod folder>-v<version>" };
+    readonly CheckBox _tagUploads = new() { AutoSize = true, Text = "&Tag each upload in git as <mod folder>-v<version>" };
     readonly CheckBox _commitIds = new() { AutoSize = true, Text = "Commit a new item's Workshop ID file without asking" };
     readonly System.Windows.Forms.Timer _clock = new() { Interval = 1000 };
     string _currentBase = "";
@@ -41,18 +46,42 @@ public sealed class MainForm : Form
     readonly LinkLabel _updateReady = new LinkLabel { AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Visible = false, Margin = new Padding(0, 4, 0, 0) }.Role(ThemeRole.Keep);
     readonly ListView _list = new() { AccessibleName = "Mods" };
     readonly TextBox _filter = new() { Width = 170, PlaceholderText = "Filter mods  (Ctrl+F)", AccessibleName = "Filter mods" };
-    readonly CheckBox _hideUpToDate = new() { AutoSize = true, Text = "Hide up to date" };
+    readonly CheckBox _hideUpToDate = new() { AutoSize = true, Text = "&Hide up to date" };
     readonly FlatProgressBar _modBar = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 6), AccessibleName = "Current mod progress" };
     readonly FlatProgressBar _overall = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 2), AccessibleName = "Overall progress" };
     readonly Label _current = new() { AutoSize = true, Text = "Idle", Tag = "fill" };
     readonly Label _stage = new Label { AutoSize = true }.Role(ThemeRole.Muted);
-    readonly CheckBox _dry = new() { AutoSize = true, Text = "Dry run" };
-    readonly CheckBox _allowCreate = new() { AutoSize = true, Text = "Create new items (private)" };
+    readonly CheckBox _dry = new() { AutoSize = true, Text = "&Dry run" };
+    readonly CheckBox _allowCreate = new() { AutoSize = true, Text = "&Create new items (private)" };
     readonly RichTextBox _log = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None, AccessibleName = "Log" }.Role(ThemeRole.Log);
+    /// <summary>Every log line, so the filter can show a part of them and Copy and Save always have all of them.</summary>
+    readonly List<(DateTime Time, string Text, LogKind Kind)> _logLines = new();
+    const int MaxLogLines = 20000;
+    readonly ComboBox _logFilter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150, AccessibleName = "Show in the log" };
+    readonly CheckBox _autoScroll = new() { AutoSize = true, Text = "Auto-scroll", Checked = true };
+    SplitContainer _split = null!;
+
+    /// <summary>Under the mod list: everything the selected mod needs, in full (the Status column has room for one line).</summary>
+    readonly Label _detail = new Label { Dock = DockStyle.Bottom, AutoSize = false, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(6, 0, 6, 0), AccessibleName = "Selected mod", UseMnemonic = false }.Role(ThemeRole.Keep);
+
+    // The Project card folds into one summary line once it is set up, which gives the mod list its height back.
+    readonly Label _projectSummary = new Label { AutoSize = false, AutoEllipsis = true, Height = 24, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill", UseMnemonic = false, Cursor = Cursors.Hand }.Role(ThemeRole.Muted);
+    Button _projectToggle = null!;
+    Control[] _projectRows = Array.Empty<Control>();
+    bool _projectOpen;
+
+    // "Get set up" progress: how many steps are done, and the next one as a button.
+    readonly Label _setupCount = new Label { AutoSize = true }.Role(ThemeRole.Muted);
+    Button _setupNext = null!;
+    readonly FlatProgressBar _setupBar = new() { Dock = DockStyle.Top, Height = 4, Margin = new Padding(0, 6, 0, 0), AccessibleName = "Setup progress" };
+    readonly Action?[] _stepActions = new Action?[4];
+
+    /// <summary>The long notes on the Options tab; they wrap to the width of their card.</summary>
+    readonly List<Label> _hints = new();
 
     // The empty mod list: what to do next, with the button that does it.
     readonly Panel _empty = new() { Dock = DockStyle.Fill, Visible = false };
-    readonly Label _emptyTitle = new() { AutoSize = true, Font = new Font("Segoe UI Semibold", 11f), Anchor = AnchorStyles.None };
+    readonly Label _emptyTitle = new() { AutoSize = true, Font = Theme.HeadingFont, Anchor = AnchorStyles.None };
     readonly Label _emptyText = new Label { AutoSize = true, MaximumSize = new Size(520, 0), TextAlign = ContentAlignment.MiddleCenter, Anchor = AnchorStyles.None }.Role(ThemeRole.Muted);
 
     // "Get set up": the steps a new user still has to do, each a link that does it.
@@ -87,7 +116,7 @@ public sealed class MainForm : Form
 
     public const string Disclaimer = "Not affiliated with or endorsed by Valve Corporation or Steam.";
 
-    static readonly string[] ColumnNames = { "Mod", "Uploaded version", "Updated on Steam", "Version to upload", "Workshop ID", "Preview", "Status" };
+    static readonly string[] ColumnNames = { "Mod", "Steam version", "Updated", "To upload", "Workshop ID", "Preview", "Status" };
 
     /// <param name="theme">Overrides the saved theme without saving it (used by --shot).</param>
     /// <param name="settings">Used instead of the saved settings (used by --shot).</param>
@@ -96,6 +125,7 @@ public sealed class MainForm : Form
         _s = settings ?? AppSettings.Load();
         if (_s.RecentRepos.Count == 0 && _s.RepoPath.Length > 0) _s.Remember(_s.RepoPath); // settings from before the recent list
         Theme.Set(theme ?? _s.Theme);
+        Theme.TextScale = Display.NormalizeTextSize(_s.TextSize) / 100f;
         BuildUi();
         FillRecent();
         _account.Text = _s.Account;
@@ -120,6 +150,21 @@ public sealed class MainForm : Form
             Cancel();
         };
         FormClosed += (_, _) => InstallPendingUpdate(restart: false);
+        // "Match Windows" and High Contrast follow Windows while the app is open.
+        SystemEvents.UserPreferenceChanged += OnWindowsPreference;
+        Disposed += (_, _) => SystemEvents.UserPreferenceChanged -= OnWindowsPreference;
+    }
+
+    void OnWindowsPreference(object? sender, UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category is not (UserPreferenceCategory.General or UserPreferenceCategory.Color or UserPreferenceCategory.Accessibility or UserPreferenceCategory.VisualStyle)) return;
+        if (IsDisposed || !IsHandleCreated) return;
+        BeginInvoke(() =>
+        {
+            if (IsDisposed) return;
+            if (Theme.Set(Theme.Choice)) ReapplyTheme();
+            ShowThemeChoice();
+        });
     }
 
     // ---------------------------------------------------------------- UI
@@ -128,30 +173,32 @@ public sealed class MainForm : Form
     {
         Text = "SteamCMD Helper - Workshop uploads";
         Width = 1000; Height = 800; MinimumSize = new Size(840, 640); // at 96 DPI; scaled and fitted to the screen after Theme.Apply
-        Font = new Font("Segoe UI", 9.5f);
+        Font = Theme.BodyFont;
         StartPosition = FormStartPosition.CenterScreen;
         KeyPreview = true;
         Theme.Style(_tip);
 
-        _browse = Btn("Browse...", (_, _) => BrowseRepo());
-        _editLayout = Btn("Edit layout file...", (_, _) => EditLayout());
-        _checkLogin = Btn("Check login", async (_, _) => { SaveFields(); await VerifyLoginAsync(true); });
-        _doLogin = Btn("Log in...", async (_, _) => { SaveFields(); await LoginFlowAsync(); });
-        _install = Btn("Install SteamCMD", async (_, _) => await InstallAsync());
-        _refresh = Btn("Refresh", (_, _) => RefreshAll());
-        _all = Btn("Tick all", (_, _) => TickAll(true));
-        _none = Btn("Tick none", (_, _) => TickAll(false));
-        _editPage = Btn("Workshop page...", (_, _) => EditWorkshopPage(SelectedMod()));
+        _browse = Btn("&Browse...", (_, _) => BrowseRepo());
+        _editLayout = Btn("&Edit layout file...", (_, _) => EditLayout());
+        _checkLogin = Btn("&Check login", async (_, _) => { SaveFields(); await VerifyLoginAsync(true); });
+        _doLogin = Btn("Log &in...", async (_, _) => { SaveFields(); await LoginFlowAsync(); });
+        _install = Btn("In&stall SteamCMD", async (_, _) => await InstallAsync());
+        _refresh = Btn("&Refresh", (_, _) => RefreshAll());
+        _all = Btn("&Tick all", (_, _) => TickAll(true));
+        _none = Btn("Tick &none", (_, _) => TickAll(false));
+        _editPage = Btn("&Workshop page...", (_, _) => EditWorkshopPage(SelectedMod()));
         _go = Btn("Upload selected", async (_, _) => await GoAsync()).Role(ThemeRole.Accent);
         _go.Font = new Font(Font, FontStyle.Bold);
         _go.Padding = new Padding(14, 4, 14, 4);
         _cancel = Btn("Cancel", (_, _) => Cancel());
         _cancel.Visible = false;
-        _retry = Btn("Retry failed", async (_, _) => await RetryFailedAsync());
+        _retry = Btn("Retr&y failed", async (_, _) => await RetryFailedAsync());
         _retry.Visible = false;
         _emptyBrowse = Btn("Browse...", (_, _) => BrowseRepo()).Role(ThemeRole.Accent);
         _emptyLayout = Btn("Edit layout file...", (_, _) => EditLayout());
         _emptyClear = Btn("Clear the filter", (_, _) => { _filter.Text = ""; _hideUpToDate.Checked = false; });
+        _projectToggle = SmallBtn("Change...", (_, _) => { _projectOpen = !_projectOpen; UpdateProjectCard(); if (_projectOpen) _repo.Focus(); });
+        _setupNext = Btn("", (_, _) => _stepActions.FirstOrDefault(a => a != null)?.Invoke()).Role(ThemeRole.Accent);
 
         _uploadPage = BuildUploadPage();
         _optionsPage = BuildOptionsPage();
@@ -161,9 +208,13 @@ public sealed class MainForm : Form
 
         // Fill first, then the top bar, so docking puts the bar above the pages.
         Controls.Add(pages);
-        Controls.Add(new Label { Text = Disclaimer, Dock = DockStyle.Bottom, Height = 22, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0, 0, 16, 2), Font = new Font("Segoe UI", 8.25f) }.Role(ThemeRole.Muted));
+        Controls.Add(new Label { Text = Disclaimer, Dock = DockStyle.Bottom, Height = 22, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0, 0, 16, 2), Font = Theme.SmallFont }.Role(ThemeRole.Muted));
         Controls.Add(new Panel { Dock = DockStyle.Top, Height = 1 }.Role(ThemeRole.Divider));
-        Controls.Add(BuildHeader());
+        var header = BuildHeader();
+        Controls.Add(header);
+        // Tab starts at the top bar (tabs and ?), then the page, top to bottom.
+        header.TabIndex = 0;
+        pages.TabIndex = 1;
         ShowPage(_uploadPage);
 
         Theme.Apply(this);
@@ -182,6 +233,11 @@ public sealed class MainForm : Form
         _preset.SelectionChangeCommitted += (_, _) => ApplyPresetChoice();
         _themeDark.CheckedChanged += (_, _) => { if (_themeDark.Checked) SetTheme(Theme.DarkName); };
         _themeLight.CheckedChanged += (_, _) => { if (_themeLight.Checked) SetTheme(Theme.LightName); };
+        _themeSystem.CheckedChanged += (_, _) => { if (_themeSystem.Checked) SetTheme(Theme.SystemName); };
+        _textSize.SelectionChangeCommitted += (_, _) => SetTextSize();
+        _logFilter.SelectedIndexChanged += (_, _) => RenderLog();
+        _autoScroll.CheckedChanged += (_, _) => { if (_autoScroll.Checked) _log.ScrollToCaret(); };
+        _projectSummary.Click += (_, _) => { _projectOpen = true; UpdateProjectCard(); _repo.Focus(); };
         _loginLink.LinkClicked += (_, _) => ShowPage(_optionsPage);
         _profile.SelectedIndexChanged += (_, _) => { if (!_populating) SwitchProfile(); };
         _webhook.Leave += (_, _) => SaveAnnounce();
@@ -214,7 +270,7 @@ public sealed class MainForm : Form
         var title = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 0, 0, 6), Anchor = AnchorStyles.Left };
         if (Theme.AppIcon != null)
             title.Controls.Add(new PictureBox { Image = new Icon(Theme.AppIcon, 32, 32).ToBitmap(), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(26, 26), Margin = new Padding(0, 1, 8, 0) });
-        title.Controls.Add(new Label { Text = "SteamCMD Helper", AutoSize = true, Font = new Font("Segoe UI Semibold", 13f), Margin = new Padding(0, 0, 8, 0) });
+        title.Controls.Add(new Label { Text = "SteamCMD Helper", AutoSize = true, Font = Theme.TitleFont, Margin = new Padding(0, 0, 8, 0) });
         title.Controls.Add(new Label { Text = "Steam Workshop uploads", AutoSize = true, Margin = new Padding(0, 7, 0, 0) }.Role(ThemeRole.Muted));
         bar.Controls.Add(title, 0, 0);
 
@@ -226,51 +282,58 @@ public sealed class MainForm : Form
         bar.Controls.Add(_navUpload, 2, 0);
         bar.Controls.Add(_navOptions, 3, 0);
 
-        _help = Btn("?", (_, _) => OpenRequest());
-        _help.AccessibleName = "Send a request: report a bug, suggest a feature, or ask for another game";
+        var helpMenu = new ContextMenuStrip();
+        helpMenu.Items.Add(new ToolStripMenuItem("&Keyboard shortcuts", null, (_, _) => ShowShortcuts()) { ShortcutKeyDisplayString = "F1" });
+        helpMenu.Items.Add(new ToolStripMenuItem("&Send a request (bug, feature, another game)...", null, (_, _) => OpenRequest()));
+        Theme.StyleMenu(helpMenu);
+        _help = Btn("?", (_, _) => helpMenu.Show(_help, new Point(_help.Width, _help.Height), ToolStripDropDownDirection.BelowLeft));
+        _help.Tag = helpMenu;
+        _help.AccessibleName = "Help: keyboard shortcuts, or send a request (bug, feature, another game)";
         _help.AutoSize = false; _help.Size = new Size(30, 28); _help.Padding = Padding.Empty;
         _help.Font = new Font(Font, FontStyle.Bold);
         _help.Margin = new Padding(12, 0, 0, 6);
         _help.Anchor = AnchorStyles.None;
-        _tip.SetToolTip(_help, "Send a request: support another game, report a bug or suggest a feature");
+        _tip.SetToolTip(_help, "Keyboard shortcuts (F1), or send a request: support another game, report a bug or suggest a feature");
         bar.Controls.Add(_help, 4, 0);
         return bar;
     }
 
     Control BuildUploadPage()
     {
-        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(14, 12, 14, 12) };
+        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(14, 12, 14, 12) };
+        page.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); // never wider than the window, whatever a row would like
         page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        page.RowStyles.Add(new RowStyle(SizeType.Percent, 65));
-        page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        page.RowStyles.Add(new RowStyle(SizeType.Percent, 35)); // the list and the log share what is left, so neither vanishes on small screens
+        page.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        // Shown until SteamCMD, the account, the mods folder and the app id are all set.
-        // One line, so it costs little height: the title, then the steps.
+        // Shown until SteamCMD, the account, the mods folder and the app id are all set: the steps on one line, how
+        // many are done, the next one as a button, and a thin bar of the progress.
         var steps = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty, Tag = "fill" };
         foreach (var l in _steps)
         {
             l.LinkClicked += (_, _) => (l.Tag as Action)?.Invoke();
             steps.Controls.Add(l);
         }
-        var setupTitle = new Label { Text = "Get set up", AutoSize = true, Font = new Font("Segoe UI Semibold", 10.5f) }.Role(ThemeRole.Title);
+        var setupTitle = new Label { Text = "Get set up", AutoSize = true, Font = Theme.HeadingFont }.Role(ThemeRole.Title);
         _tip.SetToolTip(setupTitle, "Uploads need all four steps. This box goes away once they are done.");
-        var setupRow = Row(setupTitle, steps);
+        var setupRow = Row(setupTitle, steps, _setupCount, _setupNext);
         setupTitle.Margin = new Padding(0, 3, 20, 3);
         setupRow.Margin = Padding.Empty;
-        _setup = Card(null, null, setupRow);
+        _setup = Card(null, null, setupRow, _setupBar);
         page.Controls.Add(_setup, 0, 0);
 
         _preset.Items.AddRange(ProjectConfig.PresetNames.Cast<object>().Append("Custom").ToArray());
         _tip.SetToolTip(_repo, "Your mods folders; pick one you used before, press Browse, or drop a folder onto this window");
         _tip.SetToolTip(_browse, "Pick the folder that holds your mods (Ctrl+O)");
-        page.Controls.Add(Card("Project", null,
-            Row(Lbl("Mods repo"), _repo, _browse, _branch),
-            Row(Lbl("Steam app ID"), _appId, Lbl("Layout"), _preset, _editLayout),
+        _tip.SetToolTip(_projectToggle, "Show or hide the mods folder, app ID and layout");
+        _tip.SetToolTip(_projectSummary, "Click to change the mods folder, app ID or layout");
+        _projectRows = new Control[]
+        {
+            Row(Lbl("Mods re&po"), _repo, _browse, _branch),
+            Row(Lbl("Steam &app ID"), _appId, Lbl("&Layout"), _preset, _editLayout),
             Row(_game),
-            Row(_projectNote)), 0, 1);
+        };
+        page.Controls.Add(Card("Project", new Control[] { _projectSummary, _projectToggle }, _projectRows.Append(Row(_projectNote)).ToArray()), 0, 1);
 
         _list.View = View.Details;
         _list.CheckBoxes = true;
@@ -279,18 +342,19 @@ public sealed class MainForm : Form
         _list.Dock = DockStyle.Fill;
         _list.ShowItemToolTips = true;
         // Taller rows leave room for the preview thumbnail and the status badge.
-        _list.SmallImageList = new ImageList { ImageSize = new Size(1, LogicalToDeviceUnits(28)) };
-        int[] widths = { 200, 125, 120, 125, 105, 70, 190 };
+        _list.SmallImageList = new ImageList { ImageSize = new Size(1, U(28)) };
+        int[] widths = { 200, 105, 110, 90, 105, 70, 190 };
         for (var i = 0; i < ColumnNames.Length; i++)
-            _list.Columns.Add(ColumnNames[i], widths[i], i == PreviewCol ? HorizontalAlignment.Center : HorizontalAlignment.Left);
+            _list.Columns.Add(ColumnNames[i], (int)(widths[i] * Theme.TextScale), i == PreviewCol ? HorizontalAlignment.Center : HorizontalAlignment.Left);
         _list.PaintCells(PaintCell);
         _list.ItemCheck += OnItemCheck;
         // Windows reports ticks while it is still taking rows in (when the list is filled or its window is created),
         // and a row's tick can't be read until it has its place; so count them once the current message is done.
         _list.ItemChecked += (_, _) => QueueGoButton();
         _list.MouseDoubleClick += OnListDoubleClick;
+        _list.KeyDown += OnListKey;
         _list.ColumnClick += (_, e) => SortBy(e.Column);
-        _list.SelectedIndexChanged += (_, _) => UpdateSelectionButtons();
+        _list.SelectedIndexChanged += (_, _) => { UpdateSelectionButtons(); UpdateDetail(); };
         _list.GotFocus += (_, _) => _list.Invalidate();
         _list.LostFocus += (_, _) => _list.Invalidate();
         _list.Resize += (_, _) => StretchLastColumn();
@@ -313,12 +377,13 @@ public sealed class MainForm : Form
         center.Controls.Add(emptyBox, 0, 1);
         _empty.Controls.Add(center);
         var listHost = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
+        _detail.Height = 26; // scaled with the window
         listHost.Controls.Add(_list);
         listHost.Controls.Add(_empty);
+        listHost.Controls.Add(_detail); // docked first, so it keeps its strip under the list
 
         var mods = Card("Mods", new Control[] { _filter, _hideUpToDate, _editPage, _all, _none, _refresh }, listHost);
         mods.AutoSize = false; mods.Dock = DockStyle.Fill;
-        page.Controls.Add(mods, 0, 2);
 
         // Only while uploading and afterwards (with the result); nothing to show before the first run.
         _progress = Card(null, null,
@@ -327,7 +392,6 @@ public sealed class MainForm : Form
             Lbl("Overall").Role(ThemeRole.Muted),
             _overall);
         _progress.Visible = false;
-        page.Controls.Add(_progress, 0, 3);
 
         _tip.SetToolTip(_loginLink, "Steam login settings are on the Options tab");
         _tip.SetToolTip(_all, "Tick every mod that is ready to upload, then upload them in one go");
@@ -337,39 +401,113 @@ public sealed class MainForm : Form
         _tip.SetToolTip(_retry, "Upload again only the mods that failed or were not reached in the last run");
         var actions = Row(_dry, _allowCreate, _loginLink, _retry, _cancel, _go);
         actions.Margin = new Padding(0, 2, 0, 8);
-        page.Controls.Add(actions, 0, 4);
 
+        var top = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Margin = Padding.Empty, Padding = Padding.Empty };
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        top.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        top.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        top.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        top.Controls.Add(mods, 0, 0);
+        top.Controls.Add(_progress, 0, 1);
+        top.Controls.Add(actions, 0, 2);
+
+        _logFilter.Items.AddRange(new object[] { "Everything", "Warnings and errors", "Errors only" });
+        _logFilter.SelectedIndex = 0;
         var copy = SmallBtn("Copy", (_, _) => CopyLog());
-        var save = SmallBtn("Save...", (_, _) => SaveLog());
-        var clear = SmallBtn("Clear", (_, _) => _log.Clear());
-        var steamLogs = SmallBtn("SteamCMD logs", (_, _) => OpenSteamCmdLogs());
+        var save = SmallBtn("&Save...", (_, _) => SaveLog());
+        var clear = SmallBtn("Clear", (_, _) => { _logLines.Clear(); _log.Clear(); });
+        var steamLogs = SmallBtn("SteamCMD lo&gs", (_, _) => OpenSteamCmdLogs());
         _tip.SetToolTip(copy, "Copy the whole log");
+        _tip.SetToolTip(_logFilter, "Show every line, or only the ones that need attention. Copy and Save always take the whole log.");
+        _tip.SetToolTip(_autoScroll, "Keep the newest line in view. Untick to read back while an upload runs.");
         _tip.SetToolTip(steamLogs, "Open SteamCMD's own log folder (workshop_log.txt and others)");
-        var log = Card("Log", new Control[] { copy, save, clear, steamLogs }, _log);
+        var log = Card("Log", new Control[] { _logFilter, _autoScroll, copy, save, clear, steamLogs }, _log);
         log.AutoSize = false; log.Dock = DockStyle.Fill;
         log.Margin = Padding.Empty;
-        page.Controls.Add(log, 0, 5);
+
+        // The list and the log share the rest of the page; drag the bar between them (or Tab to it and use the arrow
+        // keys) to give either more room. The log keeps its height when the window is resized.
+        _split = new SplitContainer
+        {
+            Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, FixedPanel = FixedPanel.Panel2,
+            SplitterWidth = 8, Margin = Padding.Empty, AccessibleName = "Resize the log",
+        };
+        _split.Panel1.Controls.Add(top);
+        _split.Panel2.Controls.Add(log);
+        _split.Paint += PaintGrip;
+        _split.SplitterMoved += (_, _) =>
+        {
+            if (_populating || !_split.IsHandleCreated) return;
+            _s.LogHeight = (int)Math.Round(_split.Panel2.Height * 96.0 / DeviceDpi / Theme.TextScale);
+            _s.Save();
+        };
+        _tip.SetToolTip(_split, "Drag to give the mod list or the log more room");
+        page.Controls.Add(_split, 0, 2);
+        page.Layout += (_, _) => PlaceSplitter();
         return page;
     }
+
+    bool _splitPlaced;
+
+    /// <summary>Puts the bar between list and log where it was left (or at a sensible default) once the page has its size.</summary>
+    void PlaceSplitter()
+    {
+        if (_splitPlaced || _split.Height < U(300)) return;
+        _splitPlaced = true;
+        _populating = true;
+        try
+        {
+            _split.Panel1MinSize = U(150);
+            _split.Panel2MinSize = U(80);
+            var log = _s.LogHeight > 0 ? U(_s.LogHeight) : Math.Max(U(100), _split.Height / 5);
+            var distance = Math.Clamp(_split.Height - _split.SplitterWidth - log, _split.Panel1MinSize, _split.Height - _split.SplitterWidth - _split.Panel2MinSize);
+            if (distance > 0) _split.SplitterDistance = distance;
+        }
+        catch (InvalidOperationException) { _splitPlaced = false; } // not laid out yet
+        finally { _populating = false; }
+    }
+
+    /// <summary>Three dots in the middle of the bar between list and log, so it looks like something to drag.</summary>
+    void PaintGrip(object? sender, PaintEventArgs e)
+    {
+        var r = _split.SplitterRectangle;
+        using var b = new SolidBrush(Theme.Blend(Theme.Current.Back, Theme.Current.Muted, 0.6));
+        var d = Math.Max(3, U(3));
+        var cx = r.Left + r.Width / 2;
+        var cy = r.Top + (r.Height - d) / 2;
+        for (var i = -1; i <= 1; i++) e.Graphics.FillEllipse(b, cx + i * d * 3 - d / 2, cy, d, d);
+        if (_split.Focused && FocusCues.Keyboard)
+        {
+            using var pen = new Pen(Theme.FocusColor, 2);
+            e.Graphics.DrawRectangle(pen, r.X + 1, r.Y + 1, r.Width - 3, r.Height - 3);
+        }
+    }
+
+    /// <summary>A length in 96-DPI pixels at this screen's DPI and the chosen text size.</summary>
+    int U(int logical) => LogicalToDeviceUnits((int)Math.Round(logical * Theme.TextScale));
 
     ContextMenuStrip BuildRowMenu()
     {
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Edit Workshop page...", null, (_, _) => EditWorkshopPage(SelectedMod()));
-        menu.Items.Add("Upload history...", null, (_, _) => { if (SelectedMod() is { } m) ShowHistory(m); });
-        menu.Items.Add("Preview package...", null, async (_, _) => { if (SelectedMod() is { } m) await PreviewPackageAsync(m); });
+        menu.Items.Add(new ToolStripMenuItem("Edit &Workshop page...", null, (_, _) => EditWorkshopPage(SelectedMod())) { ShortcutKeyDisplayString = "Enter" });
+        menu.Items.Add(new ToolStripMenuItem("Change the &version to upload...", null, (_, _) => { if (SelectedMod() is { } m) ChangeVersion(m); }) { ShortcutKeyDisplayString = "F2" });
+        var entry = menu.Items.Add("Write the &changelog entry...", null, (_, _) => { if (SelectedMod() is { } m && AskChangelogEntry(m, m.Version)) RefreshAll(); });
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Open mod folder", null, (_, _) => { if (SelectedMod() is { } m) OpenPath(m.Dir); });
-        var changelog = menu.Items.Add("Open changelog", null, (_, _) => { if (ChangelogOf(SelectedMod()) is { } p) OpenPath(p); });
+        menu.Items.Add("Upload &history...", null, (_, _) => { if (SelectedMod() is { } m) ShowHistory(m); });
+        menu.Items.Add("&Preview package...", null, async (_, _) => { if (SelectedMod() is { } m) await PreviewPackageAsync(m); });
         menu.Items.Add(new ToolStripSeparator());
-        var onSteam = menu.Items.Add("Open on Steam", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) OpenUrl(WorkshopUrl(m)); });
-        var copyId = menu.Items.Add("Copy Workshop ID", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(m.WorkshopId!, "Workshop ID"); });
-        var copyLink = menu.Items.Add("Copy Workshop link", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(WorkshopUrl(m), "Workshop link"); });
+        menu.Items.Add("Open mod &folder", null, (_, _) => { if (SelectedMod() is { } m) OpenPath(m.Dir); });
+        var changelog = menu.Items.Add("Open change&log", null, (_, _) => { if (ChangelogOf(SelectedMod()) is { } p) OpenPath(p); });
+        menu.Items.Add(new ToolStripSeparator());
+        var onSteam = menu.Items.Add("Open on &Steam", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) OpenUrl(WorkshopUrl(m)); });
+        var copyId = menu.Items.Add("Copy Workshop &ID", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(m.WorkshopId!, "Workshop ID"); });
+        var copyLink = menu.Items.Add("Copy Workshop lin&k", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(WorkshopUrl(m), "Workshop link"); });
         menu.Opening += (_, e) =>
         {
             e.Cancel = _busy || SelectedMod() == null;
             onSteam.Enabled = copyId.Enabled = copyLink.Enabled = SelectedMod()?.OnSteam == true;
             changelog.Enabled = ChangelogOf(SelectedMod()) != null;
+            entry.Visible = SelectedMod() is { } m && ModScanner.NeedsChangelogEntry(m, _cfg);
         };
         Theme.StyleMenu(menu);
         return menu;
@@ -389,33 +527,41 @@ public sealed class MainForm : Form
         var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 9, Padding = new Padding(14, 12, 14, 12), AutoScroll = true };
         for (var i = 0; i < 8; i++) page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         page.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        // Settings read best as one column; on a wide window keep it from stretching across the screen.
+        // Settings read best as one column; on a wide window keep it from stretching across the screen. The notes
+        // wrap to the width the cards get.
         page.Resize += (_, _) =>
         {
-            var right = Math.Max(14, page.ClientSize.Width - 14 - LogicalToDeviceUnits(820));
+            var right = Math.Max(14, page.ClientSize.Width - 14 - U(900));
             if (page.Padding.Right != right) page.Padding = new Padding(14, 12, right, 12);
+            var text = Math.Max(U(240), page.ClientSize.Width - page.Padding.Horizontal - U(30) - (page.VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0));
+            foreach (var h in _hints) if (h.MaximumSize.Width != text) h.MaximumSize = new Size(text, 0);
         };
 
-        _themeDark.Checked = Theme.Current.Dark;
-        _themeLight.Checked = !Theme.Current.Dark;
+        _contrastNote = Hint("Windows High Contrast is on, so its colours are used. The theme picked here applies when it is off.");
+        foreach (var size in Display.TextSizes) _textSize.Items.Add(size + "%");
+        _tip.SetToolTip(_textSize, "Makes all text, and the layout with it, larger than Windows' own scaling");
+        ShowThemeChoice();
         page.Controls.Add(Card("Appearance", null,
-            Row(Lbl("Theme"), _themeDark, _themeLight),
-            Hint("Saved for your Windows user and applied straight away.")));
+            Row(Lbl("Theme"), _themeDark, _themeLight, _themeSystem),
+            _contrastNote,
+            Row(Lbl("Te&xt size"), _textSize),
+            Hint("Saved for your Windows user. The theme changes straight away; Match Windows follows Windows' light or dark app mode. " +
+                 "A new text size is used the next time SteamCMD Helper starts.")));
 
-        _profileSave = Btn("Save as...", (_, _) => SaveProfile());
+        _profileSave = Btn("Sa&ve as...", (_, _) => SaveProfile());
         _profileDelete = Btn("Delete", (_, _) => DeleteProfile());
         page.Controls.Add(Card("Profiles", null,
-            Row(Lbl("Profile"), _profile, _profileSave, _profileDelete),
+            Row(Lbl("&Profile"), _profile, _profileSave, _profileDelete),
             Hint("A profile remembers a mods folder, Steam account and SteamCMD together, for switching between projects or accounts in one click.")));
 
         page.Controls.Add(Card("Steam account", null,
-            Row(Lbl("Account name"), _account, _checkLogin, _doLogin),
+            Row(Lbl("Account &name"), _account, _checkLogin, _doLogin),
             Row(Lbl("Status"), _login),
             Row(_accountNote),
             Hint("You log in once in SteamCMD's own window and Steam keeps the login. This program never sees your password.")));
 
-        var openSteam = Btn("Open folder", (_, _) => OpenPath(Path.GetDirectoryName(_s.EffectiveSteamCmd)!));
-        var openLogs = Btn("Open logs", (_, _) => OpenSteamCmdLogs());
+        var openSteam = Btn("Open &folder", (_, _) => OpenPath(Path.GetDirectoryName(_s.EffectiveSteamCmd)!));
+        var openLogs = Btn("Open &logs", (_, _) => OpenSteamCmdLogs());
         page.Controls.Add(Card("SteamCMD", null,
             Row(Lbl("Location"), _steamCmdPath, _install, openSteam, openLogs),
             Hint("SteamCMD is Valve's command-line Steam client; every upload goes through it. Its own logs (workshop_log.txt and others) help when Steam turns an upload down.")));
@@ -427,15 +573,15 @@ public sealed class MainForm : Form
             _commitIds,
             Hint("Used when the mods folder is a git repository. Tags are made on the commit that was uploaded and stay on this PC until you push them (git push --tags).")));
 
-        _webhookTest = Btn("Send test", async (_, _) => await TestWebhookAsync());
+        _webhookTest = Btn("Send t&est", async (_, _) => await TestWebhookAsync());
         page.Controls.Add(Card("Announcements", null,
-            Row(Lbl("Discord webhook"), _webhook, _webhookTest),
+            Row(Lbl("Discord &webhook"), _webhook, _webhookTest),
             _ghReleases,
             Hint("For the current mods folder. After a successful update, its name, version, change note and Workshop link are posted to the Discord channel. " +
                  "New items are created private, so they are not announced. The webhook link is kept in your settings, never in the repo. " +
                  "GitHub releases are made on the uploaded commit, which must be pushed first.")));
 
-        var openData = Btn("Open data folder", (_, _) => OpenPath(AppSettings.Folder));
+        var openData = Btn("Open &data folder", (_, _) => OpenPath(AppSettings.Folder));
         var forget = Btn("Forget recent folders", (_, _) =>
         {
             _s.RecentRepos.Clear();
@@ -460,7 +606,7 @@ public sealed class MainForm : Form
             Row(_checkUpdates, _checkUpdateNow),
             _autoUpdate,
             _updateReady,
-            Hint("Shortcuts: F5 refresh, Ctrl+O pick the mods folder, Ctrl+F filter the list, Ctrl+Enter upload."),
+            Row(Lbl("Everything works from the keyboard.").Role(ThemeRole.Muted), SmallBtn("Keyboard shortcuts (F1)", (_, _) => ShowShortcuts())),
             Hint(Disclaimer + " Steam and SteamCMD are trademarks of Valve Corporation.")));
         return page;
     }
@@ -484,16 +630,45 @@ public sealed class MainForm : Form
         _navOptions.Selected = page == _optionsPage;
     }
 
-    /// <summary>Switches the theme live and saves the choice.</summary>
-    void SetTheme(string name)
+    /// <summary>Saves the theme choice (Dark, Light or Match Windows) and switches to it live.</summary>
+    void SetTheme(string choice)
     {
-        if (_populating || Theme.Current.Name == name) return;
-        Theme.Set(name);
-        _s.Theme = Theme.Current.Name;
+        if (_populating || Theme.Choice == choice) return;
+        _s.Theme = choice;
         _s.Save();
+        if (Theme.Set(choice)) ReapplyTheme();
+        ShowThemeChoice();
+    }
+
+    /// <summary>Ticks the saved theme, picks the text size, and says when High Contrast overrides the theme.</summary>
+    void ShowThemeChoice()
+    {
+        _populating = true;
+        _themeDark.Checked = Theme.Choice == Theme.DarkName;
+        _themeLight.Checked = Theme.Choice == Theme.LightName;
+        _themeSystem.Checked = Theme.Choice == Theme.SystemName;
+        _textSize.SelectedItem = Display.NormalizeTextSize(_s.TextSize) + "%";
+        _populating = false;
+        _contrastNote.Visible = Theme.HighContrast;
+    }
+
+    void SetTextSize()
+    {
+        if (_populating || _textSize.SelectedItem is not string t || !int.TryParse(t.TrimEnd('%'), out var size)) return;
+        if (size == Display.NormalizeTextSize(_s.TextSize)) return;
+        _s.TextSize = size;
+        _s.Save();
+        Append($"Text size set to {size}%. It is used the next time SteamCMD Helper starts.", LogKind.Note);
+        Say($"Text size {size}% is used the next time SteamCMD Helper starts.");
+    }
+
+    /// <summary>Colours everything again after the theme changed (a new choice, or Windows changed its mode or contrast).</summary>
+    void ReapplyTheme()
+    {
         SuspendLayout();
         Theme.Apply(this);
         Theme.StyleMenu(_list.ContextMenuStrip!);
+        if (_help.Tag is ContextMenuStrip helpMenu) Theme.StyleMenu(helpMenu);
         _navUpload.Selected = _uploadPage.Visible;
         _navOptions.Selected = _optionsPage.Visible;
         foreach (var it in _rows) ColorRow(it, (ModInfo)it.Tag!);
@@ -502,6 +677,8 @@ public sealed class MainForm : Form
         UpdateSetup();
         ShowNote(_projectNote, _projectNote.Text);
         ShowNote(_accountNote, _accountNote.Text);
+        UpdateDetail();
+        RenderLog(); // High Contrast changes the log's colours too
         ResumeLayout(true);
         Invalidate(true);
     }
@@ -530,8 +707,48 @@ public sealed class MainForm : Form
                 ShowPage(_uploadPage); _filter.Focus(); _filter.SelectAll(); return true;
             case Keys.Control | Keys.Enter when _go.Enabled:
                 _go.PerformClick(); return true;
+            case Keys.F1:
+                ShowShortcuts(); return true;
+            case Keys.Control | Keys.Tab:
+            case Keys.Control | Keys.Shift | Keys.Tab:
+                ShowPage(_uploadPage.Visible ? _optionsPage : _uploadPage);
+                (_uploadPage.Visible ? _navUpload : _navOptions).Focus();
+                return true;
+            case Keys.Escape when _busy && _cts != null && !_filter.Focused:
+                Append("Stopping after the current step...", LogKind.Warn);
+                Say("Stopping the upload.");
+                Cancel(); return true;
         }
         return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    /// <summary>Keyboard versions of the list's double-clicks: Enter edits the Workshop page, F2 changes the version.</summary>
+    void OnListKey(object? sender, KeyEventArgs e)
+    {
+        if (_busy || SelectedMod() is not { } m) return;
+        if (e.KeyCode == Keys.Enter && e.Modifiers == Keys.None) { e.SuppressKeyPress = e.Handled = true; EditWorkshopPage(m); }
+        else if (e.KeyCode == Keys.F2 && e.Modifiers == Keys.None) { e.SuppressKeyPress = e.Handled = true; ChangeVersion(m); }
+    }
+
+    void ShowShortcuts()
+    {
+        using var f = new ShortcutsForm();
+        f.ShowDialog(this);
+    }
+
+    /// <summary>
+    /// Tells a screen reader something that happened without moving the focus (an upload finished, a step is missing).
+    /// Silent when no screen reader listens.
+    /// </summary>
+    void Say(string text)
+    {
+        try
+        {
+            if (IsHandleCreated) AccessibilityObject.RaiseAutomationNotification(
+                System.Windows.Forms.Automation.AutomationNotificationKind.Other,
+                System.Windows.Forms.Automation.AutomationNotificationProcessing.ImportantMostRecent, text);
+        }
+        catch { /* older Windows without UI Automation notifications */ }
     }
 
     /// <summary>Dropping a folder (or a file inside one) anywhere on the window opens it as the mods folder.</summary>
@@ -654,15 +871,23 @@ public sealed class MainForm : Form
 
     static Label Lbl(string t) => new() { Text = t, AutoSize = true };
 
-    static Label Hint(string t) => new Label { Text = t, AutoSize = true, MaximumSize = new Size(760, 0), Margin = new Padding(0, 2, 0, 2) }.Role(ThemeRole.Muted);
+    Label Hint(string t)
+    {
+        var h = new Label { Text = t, AutoSize = true, MaximumSize = new Size(760, 0), Margin = new Padding(0, 2, 0, 2), UseMnemonic = false }.Role(ThemeRole.Muted);
+        _hints.Add(h);
+        return h;
+    }
 
     /// <summary>A raised panel with an optional title (and controls to the right of it) over its rows.</summary>
     static TableLayoutPanel Card(string? title, Control[]? titleExtras, params Control[] rows)
     {
-        var card = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Padding = new Padding(12, 10, 12, 8), Margin = new Padding(0, 0, 0, 10) }.Role(ThemeRole.Surface);
+        var card = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Padding = new Padding(14, 10, 14, 10), Margin = new Padding(0, 0, 0, 10) }.Role(ThemeRole.Surface);
+        card.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); // as wide as its place, never wider
         if (title != null)
         {
-            var head = new Label { Text = title, AutoSize = true, Font = new Font("Segoe UI Semibold", 10.5f), Tag = "fill" }.Role(ThemeRole.Title);
+            // The title takes the spare width, unless something next to it should (the Project card's summary).
+            var extrasFill = titleExtras?.Any(c => (c.Tag as string) == "fill") == true;
+            var head = new Label { Text = title, AutoSize = true, Font = Theme.HeadingFont, Tag = extrasFill ? null : "fill", Margin = new Padding(0, 3, 16, 3) }.Role(ThemeRole.Title);
             var r = Row(new Control[] { head }.Concat(titleExtras ?? Array.Empty<Control>()).ToArray());
             r.Margin = new Padding(0, 0, 0, 4);
             card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -689,7 +914,7 @@ public sealed class MainForm : Form
     {
         var b = Btn(text, h);
         b.Padding = new Padding(4, 0, 4, 0);
-        b.Font = new Font("Segoe UI", 8.5f);
+        b.Font = Theme.SmallFont;
         return b;
     }
 
@@ -700,7 +925,7 @@ public sealed class MainForm : Form
         foreach (var c in cs)
         {
             // Screen readers name an input by the label before it in its row ("Account name", "Theme", ...).
-            if (c is Label { Text.Length: > 0 } l and not LinkLabel) label = l.Text;
+            if (c is Label { Text.Length: > 0 } l and not LinkLabel) label = Display.StripMnemonic(l.Text);
             else if (label != null && c is TextBox or ComboBox && string.IsNullOrEmpty(c.AccessibleName)) c.AccessibleName = label;
             var fill = (c.Tag as string) == "fill";
             t.ColumnStyles.Add(fill ? new ColumnStyle(SizeType.Percent, 100) : new ColumnStyle(SizeType.AutoSize));
@@ -729,7 +954,9 @@ public sealed class MainForm : Form
     void Nudge(Control target, Label note, string text)
     {
         ShowPage(note == _accountNote ? _optionsPage : _uploadPage);
+        if (note == _projectNote && !_projectOpen) { _projectOpen = true; UpdateProjectCard(); }
         ShowNote(note, text);
+        Say(text);
         if (target.CanFocus) target.Focus();
         Flash(target);
     }
@@ -798,7 +1025,7 @@ public sealed class MainForm : Form
         _s.Remember(path);
         _s.Save();
         FillRecent();
-        if (changed) { _failed.Clear(); _retrySet.Clear(); _progress.Visible = false; _filter.Text = ""; }
+        if (changed) { _failed.Clear(); _retrySet.Clear(); _progress.Visible = false; _filter.Text = ""; _projectOpen = false; }
         ShowNote(_projectNote, null);
         RefreshAll();
     }
@@ -852,9 +1079,64 @@ public sealed class MainForm : Form
 
         UpdateLoginHint();
         UpdateSetup();
+        UpdateProjectCard();
         UpdateGoButton();
         UpdateSelectionButtons();
+        UpdateDetail();
         StretchLastColumn();
+    }
+
+    /// <summary>
+    /// Once the mods folder, app ID and mods are all there, the Project card folds into one line ("RimWorld mods ·
+    /// RimWorld (294100) · RimWorld layout") with Change... to open it again.
+    /// </summary>
+    void UpdateProjectCard()
+    {
+        var complete = Directory.Exists(_s.RepoPath) && _cfg.AppIdValid && _rows.Count > 0 && _cfg.Error == null;
+        var open = !complete || _projectOpen;
+        SuspendLayout();
+        foreach (var r in _projectRows) r.Visible = open;
+        _projectToggle.Visible = complete;
+        _projectToggle.Text = open ? "Done" : "Change...";
+        _projectToggle.AccessibleName = open ? "Hide the project settings" : "Change the mods folder, app ID or layout";
+        _projectSummary.Visible = complete && !open;
+        if (complete)
+        {
+            var game = _cfg.GameName.Length > 0 ? $"{_cfg.GameName} ({_cfg.AppId})" : "app " + _cfg.AppId;
+            _projectSummary.Text = string.Join("   ·   ", new[] { Path.GetFileName(_s.RepoPath.TrimEnd('\\', '/')), game, _cfg.PresetName() + " layout", _branch.Text }.Where(t => t.Length > 0));
+            _tip.SetToolTip(_projectSummary, _s.RepoPath + "\n" + _game.Text + "\nClick to change the mods folder, app ID or layout.");
+        }
+        ResumeLayout(true);
+    }
+
+    /// <summary>The strip under the list: what the selected mod needs, in full, or what the keys do when nothing is selected.</summary>
+    void UpdateDetail()
+    {
+        var m = SelectedMod();
+        string text;
+        Tone tone;
+        if (m == null) { text = "Select a mod to see everything it needs. Space ticks it, Enter edits its Workshop page, F2 changes its version, F1 lists every shortcut."; tone = Tone.Muted; }
+        else if (!m.Ready) { text = $"{m.Name}: fix " + string.Join("; ", m.Problems) + (ModScanner.NeedsChangelogEntry(m, _cfg) ? ". Double-click the status (or right-click) to write the changelog entry." : "."); tone = Tone.Error; }
+        else if (m.Warnings.Count > 0) { text = $"{m.Name}: " + string.Join("; ", m.Warnings) + "."; tone = Tone.Warn; }
+        else
+        {
+            var row = _rows.FirstOrDefault(i => ReferenceEquals(i.Tag, m));
+            var state = row != null ? StateOf(row) : RowState.Ready;
+            text = state switch
+            {
+                RowState.UpToDate => $"{m.Name}: Steam already has {m.Version}.",
+                RowState.New => $"{m.Name}: not on Steam yet; uploading creates a new private item.",
+                RowState.Changed => $"{m.Name}: {m.Version} is ready to upload (Steam has {row!.SubItems[UploadedCol].Text}).",
+                RowState.Failed => $"{m.Name}: the last upload failed; see the log.",
+                _ => $"{m.Name}: {m.Version} is ready to upload.",
+            };
+            tone = state == RowState.Failed ? Tone.Error : Tone.Muted;
+        }
+        _detail.Text = text;
+        _detail.ForeColor = Theme.Of(tone);
+        _detail.BackColor = Theme.Current.Input;
+        _detail.AccessibleDescription = text;
+        _tip.SetToolTip(_detail, text);
     }
 
     bool CanTick(ModInfo m) => m.Ready && (m.OnSteam || _allowCreate.Checked);
@@ -904,6 +1186,7 @@ public sealed class MainForm : Form
         UpdateEmptyState();
         UpdateGoButton();
         UpdateSelectionButtons();
+        UpdateDetail();
     }
 
     int CompareRows(ListViewItem a, ListViewItem b)
@@ -935,6 +1218,7 @@ public sealed class MainForm : Form
         var empty = _list.Items.Count == 0;
         _empty.Visible = empty;
         _list.Visible = !empty;
+        _detail.Visible = !empty; // nothing to select; the empty state needs the room
         if (!empty) return;
         _emptyLayout.Visible = _emptyClear.Visible = false;
         _emptyBrowse.Visible = true;
@@ -971,8 +1255,20 @@ public sealed class MainForm : Form
         Step(1, _s.Account.Length > 0, "Steam account: " + _s.Account, "Set your Steam account", () => { ShowPage(_optionsPage); _account.Focus(); Flash(_account); });
         Step(2, hasRepo && _rows.Count > 0, $"{_rows.Count} mod{(_rows.Count == 1 ? "" : "s")} found",
             hasRepo ? "Point at the folder with your mods" : "Pick your mods folder", BrowseRepo);
-        Step(3, _cfg.AppIdValid, "App ID " + _cfg.AppId, "Enter the game's app ID", () => { _appId.Focus(); Flash(_appId); });
-        _setup.Visible = !(installed && _s.Account.Length > 0 && hasRepo && _rows.Count > 0 && _cfg.AppIdValid);
+        Step(3, _cfg.AppIdValid, "App ID " + _cfg.AppId, "Enter the game's app ID", () => { _projectOpen = true; UpdateProjectCard(); _appId.Focus(); Flash(_appId); });
+        var done = _stepActions.Count(a => a == null);
+        _setupCount.Text = Display.StepsDone(done, _steps.Length);
+        _setupBar.Value = done * 100 / _steps.Length;
+        var next = Array.FindIndex(_stepActions, a => a != null);
+        _setupNext.Visible = next >= 0;
+        if (next >= 0)
+        {
+            _setupNext.Text = (_steps[next].Text[(_steps[next].Text.IndexOf(' ') + 1)..]).Trim();
+            _tip.SetToolTip(_setupNext, "Next step: " + _setupNext.Text);
+        }
+        // The next step is the button, so its link steps aside; the others stay links (any order works).
+        for (var i = 0; i < _steps.Length; i++) _steps[i].Visible = i != next;
+        _setup.Visible = done < _steps.Length;
     }
 
     void Step(int i, bool done, string doneText, string todoText, Action act)
@@ -986,6 +1282,8 @@ public sealed class MainForm : Form
         l.LinkColor = l.ActiveLinkColor = l.VisitedLinkColor = Theme.Current.Accent;
         l.Tag = done ? null : act;
         l.Cursor = done ? Cursors.Default : Cursors.Hand;
+        l.AccessibleName = (done ? "Done: " : $"Step {i + 1}: ") + (done ? doneText : todoText);
+        _stepActions[i] = done ? null : act;
     }
 
     const int UploadedCol = 1, SteamCol = 2, VersionCol = 3, PreviewCol = 5, StatusCol = 6;
@@ -1016,12 +1314,12 @@ public sealed class MainForm : Form
         if (e.ColumnIndex == 0)
         {
             // Our own tick box, drawn where Windows keeps the clickable one (left of the icon), so clicks still toggle it.
-            var size = LogicalToDeviceUnits(14);
+            var size = U(14);
             var icon = e.Item.GetBounds(ItemBoundsPortion.Icon);
-            var x = bounds.Left + Math.Max(LogicalToDeviceUnits(3), (icon.Left - bounds.Left - size) / 2);
+            var x = bounds.Left + Math.Max(U(3), (icon.Left - bounds.Left - size) / 2);
             var box = new Rectangle(x, bounds.Top + (bounds.Height - size) / 2, size, size);
             DrawTick(g, box, e.Item.Checked, CanTick(m));
-            bounds = Rectangle.FromLTRB(Math.Max(box.Right + LogicalToDeviceUnits(4), icon.Right), bounds.Top, bounds.Right, bounds.Bottom);
+            bounds = Rectangle.FromLTRB(Math.Max(box.Right + U(4), icon.Right), bounds.Top, bounds.Right, bounds.Bottom);
         }
         var text = Rectangle.FromLTRB(bounds.Left + LogicalToDeviceUnits(e.ColumnIndex == 0 ? 2 : 6), bounds.Top, bounds.Right - 2, bounds.Bottom);
         const TextFormatFlags Flags = TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
@@ -1033,7 +1331,14 @@ public sealed class MainForm : Form
             // Beside the badge, the first thing that needs doing or knowing; the tooltip has the rest.
             var (detail, tone) = !m.Ready ? (m.Problems[0], Tone.Error) : m.Warnings.Count > 0 ? (m.Warnings[0], Tone.Warn) : ("", Tone.Muted);
             if (detail.Length > 0)
-                TextRenderer.DrawText(g, detail, _list.Font, Rectangle.FromLTRB(badge.Right + LogicalToDeviceUnits(8), text.Top, text.Right, text.Bottom), Theme.Of(tone), Flags);
+                TextRenderer.DrawText(g, detail, _list.Font, Rectangle.FromLTRB(badge.Right + U(8), text.Top, text.Right, text.Bottom), Theme.Of(tone), Flags);
+            // The last cell of a row: outline the row the keyboard is on, so arrowing through the list is easy to follow.
+            if (_list.Focused && e.Item.Focused && FocusCues.Keyboard)
+            {
+                var row = e.Item.Bounds;
+                using var pen = new Pen(Theme.FocusColor, Math.Max(2, LogicalToDeviceUnits(2))) { Alignment = PenAlignment.Inset };
+                g.DrawRectangle(pen, row.X, row.Y, row.Width - 1, row.Height - 1);
+            }
             return true;
         }
         if (e.ColumnIndex == PreviewCol)
@@ -1074,8 +1379,8 @@ public sealed class MainForm : Form
     Rectangle DrawBadge(Graphics g, Rectangle area, string label, Color color, Color back)
     {
         var size = TextRenderer.MeasureText(g, label, _list.Font, Size.Empty, TextFormatFlags.NoPadding);
-        var h = Math.Min(area.Height - LogicalToDeviceUnits(6), size.Height + LogicalToDeviceUnits(4));
-        var r = new Rectangle(area.Left, area.Top + (area.Height - h) / 2, size.Width + LogicalToDeviceUnits(18), h);
+        var h = Math.Min(area.Height - U(6), size.Height + U(4));
+        var r = new Rectangle(area.Left, area.Top + (area.Height - h) / 2, size.Width + U(18), h);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         using (var path = Rounded(r, h / 2))
         using (var fill = new SolidBrush(Theme.Blend(back, color, 0.18)))
@@ -1093,7 +1398,7 @@ public sealed class MainForm : Form
     {
         const TextFormatFlags Center = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine;
         if (m.PreviewOk == null) { TextRenderer.DrawText(g, "-", _list.Font, cell, Theme.Of(Tone.Muted), Center); return; }
-        var thumb = m.PreviewPath.Length > 0 ? Thumbnail(m.PreviewPath, cell.Height - LogicalToDeviceUnits(6), cell.Width - LogicalToDeviceUnits(10)) : null;
+        var thumb = m.PreviewPath.Length > 0 ? Thumbnail(m.PreviewPath, cell.Height - U(6), cell.Width - U(10)) : null;
         if (thumb == null)
         {
             TextRenderer.DrawText(g, m.PreviewOk == true ? "✔" : "✖", _list.Font, cell, Theme.Of(m.PreviewOk == true ? Tone.Ok : Tone.Error), Center);
@@ -1210,6 +1515,7 @@ public sealed class MainForm : Form
                 UpdateEmptyState();
             }
             UpdateSetup();
+            if (ReferenceEquals(SelectedMod(), m)) UpdateDetail();
         }
     }
 
@@ -1275,7 +1581,13 @@ public sealed class MainForm : Form
         var col = hit.Item.SubItems.IndexOf(hit.SubItem);
         if (col == 0) { EditWorkshopPage(m); return; }
         if (col == StatusCol && ModScanner.NeedsChangelogEntry(m, _cfg)) { if (AskChangelogEntry(m, m.Version)) RefreshAll(); return; }
-        if (col != VersionCol) return;
+        if (col == VersionCol) ChangeVersion(m);
+    }
+
+    /// <summary>Asks for a new version to upload and writes it into the mod's files (double-click the version, or F2).</summary>
+    void ChangeVersion(ModInfo m)
+    {
+        if (_busy) return;
         var entered = Prompt($"Version to upload for {m.Name}:", m.Version);
         if (entered == null || entered.Trim() == m.Version) return;
         var error = ModScanner.SetVersion(m, _cfg, entered);
@@ -1387,14 +1699,14 @@ public sealed class MainForm : Form
         var hidden = _rows.Count(i => i.Checked && i.ListView == null);
         _go.Text = n == 0 ? "Upload selected" : $"Upload {n} mod{(n == 1 ? "" : "s")}" + (hidden > 0 ? $" ({hidden} hidden)" : "");
         _go.Enabled = !_busy && n > 0 && _cfg.AppIdValid;
-        _retry.Text = $"Retry failed ({_retrySet.Count})";
+        _retry.Text = $"Retr&y failed ({_retrySet.Count})";
         _retry.Visible = !_busy && _retrySet.Count > 0 && _mods.Any(m => _retrySet.Contains(m.Dir));
     }
 
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _checkUpdateNow, _filter, _hideUpToDate, _profile, _profileSave, _webhook, _webhookTest, _ghReleases })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _filter, _hideUpToDate, _profile, _profileSave, _webhook, _webhookTest, _ghReleases })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -1431,9 +1743,7 @@ public sealed class MainForm : Form
 
     // ---------------------------------------------------------------- log
 
-    enum LogKind { Plain, Note, Ok, Warn, Error }
-
-    static Color LogColor(LogKind k) => k switch
+    static Color LogColor(LogKind k) => Theme.HighContrast ? Theme.LogText : k switch
     {
         LogKind.Note => Color.DeepSkyBlue,
         LogKind.Ok => Color.LightGreen,
@@ -1442,35 +1752,85 @@ public sealed class MainForm : Form
         _ => Theme.LogText,
     };
 
-    static readonly Color LogTime = Color.FromArgb(118, 122, 134);
+    static Color LogTime => Theme.HighContrast ? SystemColors.GrayText : Color.FromArgb(118, 122, 134);
+
+    LogFilter CurrentLogFilter => (LogFilter)Math.Max(0, _logFilter.SelectedIndex);
 
     /// <summary>Adds a line with the time in front, coloured by what kind of line it is.</summary>
     void Append(string line, LogKind kind = LogKind.Plain)
     {
         if (InvokeRequired) { BeginInvoke(() => Append(line, kind)); return; }
-        _log.SelectionStart = _log.TextLength;
-        _log.SelectionColor = LogTime;
-        _log.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  ");
-        _log.SelectionStart = _log.TextLength;
-        _log.SelectionColor = LogColor(kind);
-        _log.AppendText(line + "\n");
-        _log.SelectionColor = _log.ForeColor;
-        _log.ScrollToCaret();
+        var entry = (DateTime.Now, line, kind);
+        _logLines.Add(entry);
+        if (_logLines.Count > MaxLogLines) _logLines.RemoveRange(0, _logLines.Count - MaxLogLines);
+        if (!Display.Shows(CurrentLogFilter, kind)) return;
+        if (_autoScroll.Checked)
+        {
+            Write(entry);
+            _log.ScrollToCaret();
+            return;
+        }
+        // Auto-scroll is off: add the line at the end but leave the view (and any selection) where the reader has it.
+        var first = SendMessage(_log.Handle, EmGetFirstVisibleLine, 0, 0);
+        var (start, length) = (_log.SelectionStart, _log.SelectionLength);
+        SendMessage(_log.Handle, WmSetRedraw, 0, 0);
+        try
+        {
+            Write(entry);
+            _log.Select(start, length);
+            SendMessage(_log.Handle, EmLineScroll, 0, first - SendMessage(_log.Handle, EmGetFirstVisibleLine, 0, 0));
+        }
+        finally
+        {
+            SendMessage(_log.Handle, WmSetRedraw, 1, 0);
+            _log.Invalidate();
+        }
     }
 
-    static LogKind LineKind(string l)
+    void Write((DateTime Time, string Text, LogKind Kind) e)
     {
-        if (l.StartsWith("SKIPPED") || l.Contains("ERROR", StringComparison.OrdinalIgnoreCase) || l.Contains("FAILED", StringComparison.OrdinalIgnoreCase)) return LogKind.Error;
-        if (l.StartsWith("WARNING", StringComparison.OrdinalIgnoreCase)) return LogKind.Warn;
-        if (l.StartsWith("Uploaded ") || l.StartsWith("Created ") || l.Contains("Success", StringComparison.OrdinalIgnoreCase)) return LogKind.Ok;
-        if (l.StartsWith("===") || l.StartsWith("---")) return LogKind.Note;
-        return LogKind.Plain;
+        _log.SelectionStart = _log.TextLength;
+        _log.SelectionLength = 0;
+        _log.SelectionColor = LogTime;
+        _log.AppendText(e.Time.ToString("HH:mm:ss") + "  ");
+        _log.SelectionStart = _log.TextLength;
+        _log.SelectionColor = LogColor(e.Kind);
+        _log.AppendText(e.Text + "\n");
+        _log.SelectionColor = _log.ForeColor;
     }
+
+    /// <summary>Shows the lines the log filter lets through (after the filter or the colours changed).</summary>
+    void RenderLog()
+    {
+        if (!_log.IsHandleCreated) return;
+        SendMessage(_log.Handle, WmSetRedraw, 0, 0);
+        try
+        {
+            _log.Clear();
+            foreach (var e in _logLines)
+                if (Display.Shows(CurrentLogFilter, e.Kind)) Write(e);
+            _log.SelectionStart = _log.TextLength;
+            _log.ScrollToCaret();
+        }
+        finally
+        {
+            SendMessage(_log.Handle, WmSetRedraw, 1, 0);
+            _log.Invalidate();
+        }
+    }
+
+    const int WmSetRedraw = 0x000B, EmGetFirstVisibleLine = 0x00CE, EmLineScroll = 0x00B6;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern int SendMessage(IntPtr hwnd, int msg, int wParam, int lParam);
+
+    /// <summary>The whole log as text, whatever the filter shows.</summary>
+    string LogText() => string.Join(Environment.NewLine, _logLines.Select(e => e.Time.ToString("HH:mm:ss") + "  " + e.Text));
 
     void CopyLog()
     {
-        if (_log.TextLength == 0) return;
-        try { Clipboard.SetText(_log.Text.Replace("\n", Environment.NewLine)); }
+        if (_logLines.Count == 0) return;
+        try { Clipboard.SetText(LogText()); }
         catch (Exception e) { Append("Could not copy the log: " + e.Message, LogKind.Error); }
     }
 
@@ -1478,7 +1838,7 @@ public sealed class MainForm : Form
     {
         using var d = new SaveFileDialog { Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*", FileName = $"SteamCmdHelper-log-{DateTime.Now:yyyy-MM-dd-HHmm}.txt" };
         if (d.ShowDialog(this) != DialogResult.OK) return;
-        try { File.WriteAllText(d.FileName, _log.Text.Replace("\n", Environment.NewLine)); Append("Log saved to " + d.FileName, LogKind.Note); }
+        try { File.WriteAllText(d.FileName, LogText() + Environment.NewLine); Append("Log saved to " + d.FileName, LogKind.Note); }
         catch (Exception e) { Append("Could not save the log: " + e.Message, LogKind.Error); }
     }
 
@@ -1505,6 +1865,7 @@ public sealed class MainForm : Form
             var (ok, _) = await SteamLogin.VerifyAsync(steam, _s.Account, CancellationToken.None);
             if (ok) SetLogin($"Logged in as {_s.Account}", Tone.Ok);
             else SetLogin($"Not logged in as {_s.Account}", Tone.Error);
+            if (announce || !ok) Say(_login.Text);
             if (announce || !ok) Append(ok ? $"Steam login OK for {_s.Account}." : $"Steam login check failed for {_s.Account} (no saved login, wrong name, or no connection).", ok ? LogKind.Ok : LogKind.Warn);
             return ok;
         }
@@ -1786,7 +2147,7 @@ public sealed class MainForm : Form
             HistoryFile = UploadHistory.DefaultFile,
         };
         var history = UploadHistory.Load();
-        pub.Log += l => BeginInvoke(() => Append(l, LineKind(l)));
+        pub.Log += l => BeginInvoke(() => Append(l, Display.KindOf(l)));
         pub.Packaged += (m, report) => BeginInvoke(() =>
         {
             _eta = dry ? null : UploadHistory.EstimateSeconds(history, report.TotalBytes);
@@ -1847,6 +2208,7 @@ public sealed class MainForm : Form
         var allOk = results.All(r => r.Ok);
         _currentBase = "";
         _current.Text = "Finished: " + counts;
+        Say((dry ? "Dry run finished: " : "Upload finished: ") + counts);
         Append(BatchUpload.Summary(results), allOk ? LogKind.Ok : LogKind.Warn);
         Taskbar.Progress(this, 100, allOk ? Taskbar.State.None : Taskbar.State.Error);
         Taskbar.FlashIfInBackground(this);

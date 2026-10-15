@@ -34,6 +34,15 @@
 - Portable mode: an empty `portable.txt` next to the exe keeps settings, history and SteamCMD in a `data` folder beside it.
 - Windows scale to the display's DPI (150%, 200%) instead of clipping text, and the main window fits small screens.
   Screen readers get names for inputs, progress values and the full status of each mod.
+- Ease of access: everything works from the keyboard (**F1** lists the shortcuts; **Enter** and **F2** do what
+  double-clicking a row does; **Esc** stops an upload; **Alt** + underlined letter for every button and box), a clear
+  focus ring shows where Tab is, and screen readers are told when an upload finishes or a step is missing.
+- **Options > Appearance**: **Match Windows** follows Windows' light or dark mode, Windows High Contrast is respected,
+  and **Text size** makes everything larger (up to 175%).
+- Look: the Project card folds into one line once it is set up and the bar between the mod list and the log can be
+  dragged, so the list shows more mods; shorter column names leave the Status column room, with the selected mod's
+  full status in a strip under the list; **Get set up** shows how many steps are done and the next one as a button;
+  the log can show only warnings and errors and pause its auto-scroll; cards have a fine edge and one type scale.
 - CI compares each pull request's screenshots with the base branch's and lists the windows that changed.
 - Install with `winget install AzraelGodKing.SteamCMDHelper` or from the Scoop bucket in this repository; releases
   keep both up to date. Releases can be code-signed through SignPath, and the standalone exe is now compressed (about

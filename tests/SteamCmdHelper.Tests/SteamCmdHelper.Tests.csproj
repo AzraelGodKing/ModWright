@@ -11,7 +11,7 @@
     <RootNamespace>SteamCmdHelper.Tests</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../../ModScanner.cs;../../ProjectConfig.cs;../../RequestSender.cs;../../BakedRequestKey.cs;../../Publisher.cs;../../SteamCmdIntegrity.cs;../../SteamCmdOutput.cs;../../SteamLogin.cs;../../UploadedVersions.cs;../../BatchUpload.cs;../../Cli.cs;../../UpdateCheck.cs;../../WorkshopPage.cs;../../UploadHistory.cs;../../WorkshopStatus.cs;../../ModRows.cs;../../AppSettings.cs;../../SelfUpdate.cs;../../CrashReport.cs;../../PackageCheck.cs;../../GitOps.cs;../../Announce.cs;../../Dependencies.cs;../../SubscriberStats.cs" Link="App/%(Filename)%(Extension)" />
+    <Compile Include="../../ModScanner.cs;../../ProjectConfig.cs;../../RequestSender.cs;../../BakedRequestKey.cs;../../Publisher.cs;../../SteamCmdIntegrity.cs;../../SteamCmdOutput.cs;../../SteamLogin.cs;../../UploadedVersions.cs;../../BatchUpload.cs;../../Cli.cs;../../UpdateCheck.cs;../../WorkshopPage.cs;../../UploadHistory.cs;../../WorkshopStatus.cs;../../ModRows.cs;../../AppSettings.cs;../../SelfUpdate.cs;../../CrashReport.cs;../../PackageCheck.cs;../../GitOps.cs;../../Announce.cs;../../Dependencies.cs;../../SubscriberStats.cs;../../Display.cs" Link="App/%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />

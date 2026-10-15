@@ -70,7 +70,10 @@ the release workflow checks both, runs the tests and publishes the release with 
 ## Using it
 
 Until everything below is in place, a **Get set up** box at the top of the Upload tab lists the four steps
-(SteamCMD, Steam account, mods folder, app ID), each a link that does it, and goes away once they are done.
+(SteamCMD, Steam account, mods folder, app ID), each a link that does it, says how many are done and offers the next
+one as a button. It goes away once they are done. Once the mods folder, app ID and mods are all found, the **Project**
+card folds into one line (folder, game, layout, branch); **Change...** or a click on that line opens it again, which
+leaves the mod list more room.
 
 1. **Mods repo**: press **Browse...** (or Ctrl+O) and pick the folder that holds your mods (one sub-folder per mod), or
    drop the folder onto the window. Folders you used before are in the drop-down, so switching repos is one click.
@@ -113,16 +116,26 @@ as `<mod folder>-v<version>`; tags stay local until you push them.
 The list can be filtered by name, folder or Workshop ID (Ctrl+F), **Hide up to date** drops the mods Steam already
 has, and clicking a column header sorts by it (again to reverse, a third time for folder order). Right-click a mod
 to open its folder or changelog, copy its Workshop ID or link, see its upload history, preview its package, or open it
-on Steam.
+on Steam. The strip under the list spells out everything the selected mod needs, in full.
 
-Shortcuts: **F5** refresh, **Ctrl+O** pick the mods folder, **Ctrl+F** filter, **Ctrl+Enter** upload the ticked mods.
+Everything works from the keyboard. **F1** (or **? > Keyboard shortcuts**) lists the shortcuts: **F5** refresh,
+**Ctrl+O** pick the mods folder, **Ctrl+F** filter, **Space** tick the selected mod, **Enter** edit its Workshop page,
+**F2** change its version, **Shift+F10** its right-click menu, **Ctrl+Enter** upload the ticked mods, **Esc** stop a
+running upload, **Ctrl+Tab** switch tabs, and **Alt** with an underlined letter for any button or box. While you move
+around with Tab or the arrow keys, the focused control has a clear ring around it. Screen readers are told when an
+upload finishes and when a step is missing.
 
 The log at the bottom stamps each line with the time and colours it by kind (blue notes, green success,
-orange warnings, red errors). **Copy** and **Save...** take the whole log, **Clear** empties it, and **SteamCMD logs**
-opens SteamCMD's own log folder, which is where to look when Steam turns an upload down.
+orange warnings, red errors). The drop-down next to its title shows everything, only warnings and errors, or only
+errors; untick **Auto-scroll** to read back while an upload runs. Drag the bar between the mod list and the log (or Tab
+to it and use the arrow keys) to give either more room; the log keeps that height. **Copy** and **Save...** take the
+whole log whatever is shown, **Clear** empties it, and **SteamCMD logs** opens SteamCMD's own log folder, which is
+where to look when Steam turns an upload down.
 
-The app uses a dark theme by default. Switch to the light theme under **Options > Appearance**; the choice is saved
-for your Windows user.
+The app uses a dark theme by default. Under **Options > Appearance** pick **Light**, or **Match Windows** to follow
+Windows' light or dark app mode (it switches when Windows does). When Windows High Contrast is on, the app uses its
+contrast colours instead. **Text size** (100% to 175%) makes all text, and the layout with it, larger on top of Windows'
+own display scaling; it is used from the next start. The choices are saved for your Windows user.
 
 The checks are kept basic. A row turns red and cannot be uploaded only for things that would make the upload fail
 or go wrong:
@@ -139,14 +152,14 @@ changes (git packaging uses `HEAD`). Hover over a row to see its problems and wa
 
 The list columns:
 
-- **Uploaded version**: the version already on Steam. Steam does not store one, so it is read from the newest change
+- **Steam version**: the version already on Steam. Steam does not store one, so it is read from the newest change
   note on the item's public changelog page (notes sent by this app for RimWorld, or by Add Changenote, start with the
   version). If that note has none, it shows what this PC last uploaded, unless Steam shows a later update (an upload
   from somewhere else), in which case it shows `?`. Private items show `?` until the first upload from this PC.
-- **Updated on Steam**: when the item was last updated, read live from Steam's public item details (one request for
+- **Updated**: when the item was last updated, read live from Steam's public item details (one request for
   the whole list, no login). `not public` means Steam hides it from anonymous readers: private, friends only, or removed.
   Hover a row for the title, visibility and subscriber count on Steam.
-- **Version to upload**: the mod's current version. Double-click it to change it; the new number is written to
+- **To upload**: the mod's current version. Double-click it (or press F2) to change it; the new number is written to
   `<version>` in `About/Manifest.xml` (when it has one) and the version element of an XML marker file such as
   `About/About.xml`. For RimWorld the app then asks what changed and adds that as the new version's entry in
   `About/Changelog.txt` (newest first, or at the end if the file lists the oldest version first), so the upload is
@@ -280,7 +293,7 @@ see the game's Workshop documentation for what a mod folder must contain.
 
 ## Requests: new games, bugs and features
 
-The **?** button (top right, always visible) opens a short form. Pick what the request is: **Support another game** (a layout request), **Report a bug** or **Suggest a feature**. Bugs and features also ask for a one-line summary and what part of the tool they are about (windows, uploading, or SteamCMD and login). For a layout request the form fills in the game name, app ID, your helper version and the file names (never contents) of one mod folder, then opens a pre-filled new issue in **Linear** (team `AZR`) in your browser. Nothing is created until you press Create in Linear, and you can edit or delete anything first. **Copy text instead** copies the text. Only people signed in to the Linear workspace can create the issue, so if you share the program, change `TeamKey` / `NewIssueUrl` in `RequestForm.cs` to your own (or tell people to use **Copy text instead** and send it to you).
+The **?** button (top right, always visible) offers **Keyboard shortcuts** and **Send a request**, which opens a short form. Pick what the request is: **Support another game** (a layout request), **Report a bug** or **Suggest a feature**. Bugs and features also ask for a one-line summary and what part of the tool they are about (windows, uploading, or SteamCMD and login). For a layout request the form fills in the game name, app ID, your helper version and the file names (never contents) of one mod folder, then opens a pre-filled new issue in **Linear** (team `AZR`) in your browser. Nothing is created until you press Create in Linear, and you can edit or delete anything first. **Copy text instead** copies the text. Only people signed in to the Linear workspace can create the issue, so if you share the program, change `TeamKey` / `NewIssueUrl` in `RequestForm.cs` to your own (or tell people to use **Copy text instead** and send it to you).
 
 ### Sending requests from inside the app (maintainer setup)
 
