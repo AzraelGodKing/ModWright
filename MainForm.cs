@@ -485,7 +485,7 @@ public sealed class MainForm : Form
         StretchLastColumn();
     }
 
-    const int UploadedCol = 1, VersionCol = 2, PreviewCol = 4;
+    const int UploadedCol = 1, VersionCol = 2, PreviewCol = 4, StatusCol = 5;
 
     /// <summary>Row text colour: red when it needs fixing, dimmed when it can't be picked, the preview mark green or red.</summary>
     void ColorRow(ListViewItem it, ModInfo m)
@@ -499,13 +499,14 @@ public sealed class MainForm : Form
         }
     }
 
-    static string RowTip(ModInfo m)
+    string RowTip(ModInfo m)
     {
         var lines = new List<string>();
         lines.AddRange(m.Problems.Select(p => "Fix: " + p));
         lines.AddRange(m.Warnings.Select(w => "Note: " + w));
         if (m.PreviewNote.Length > 0) lines.Add("Preview: " + m.PreviewNote);
         lines.Add("Double-click the version to upload to change it.");
+        if (ModScanner.NeedsChangelogEntry(m, _cfg)) lines.Add("Double-click the status to write the changelog entry for " + m.Version + ".");
         return string.Join("\n", lines);
     }
 
@@ -530,13 +531,50 @@ public sealed class MainForm : Form
     {
         if (_busy) return;
         var hit = _list.HitTest(e.Location);
-        if (hit.Item?.Tag is not ModInfo m || hit.SubItem == null || hit.Item.SubItems.IndexOf(hit.SubItem) != VersionCol) return;
+        if (hit.Item?.Tag is not ModInfo m || hit.SubItem == null) return;
+        var col = hit.Item.SubItems.IndexOf(hit.SubItem);
+        if (col == StatusCol && ModScanner.NeedsChangelogEntry(m, _cfg)) { if (AskChangelogEntry(m, m.Version)) RefreshAll(); return; }
+        if (col != VersionCol) return;
         var entered = Prompt($"Version to upload for {m.Name}:", m.Version);
         if (entered == null || entered.Trim() == m.Version) return;
         var error = ModScanner.SetVersion(m, _cfg, entered);
         if (error != null) { MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
-        Append($"{m.Name}: version set to {entered.Trim()}." + (_cfg.ChangelogByVersion ? $" Add a {entered.Trim()} entry to {_cfg.Changelog} before uploading." : ""), Color.DeepSkyBlue);
+        var version = entered.Trim();
+        Append($"{m.Name}: version set to {version}.", Color.DeepSkyBlue);
+        // RimWorld refuses the upload until the new version has its own changelog entry, so offer to write it now.
+        m.Version = version;
+        if (ModScanner.NeedsChangelogEntry(m, _cfg) && !AskChangelogEntry(m, version))
+            Append($"Add a {version} entry to {_cfg.Changelog} before uploading (double-click the Status to write it here).", Color.Orange);
         RefreshAll();
+    }
+
+    /// <summary>Asks for the release notes of <paramref name="version"/> and adds them to the mod's changelog. True when written.</summary>
+    bool AskChangelogEntry(ModInfo m, string version)
+    {
+        var notes = PromptLines($"What changed in {m.Name} {version}?",
+            $"Added to {_cfg.Changelog} as the {version} entry; Steam shows it as the change note.", "- ");
+        if (notes == null) return false;
+        var error = ModScanner.AddChangelogEntry(m, _cfg, version, notes);
+        if (error != null) { MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Information); return false; }
+        Append($"{m.Name}: added the {version} entry to {_cfg.Changelog} (commit it).", Color.DeepSkyBlue);
+        return true;
+    }
+
+    /// <summary>A multi-line text box dialog. Null when cancelled.</summary>
+    string? PromptLines(string label, string hint, string value)
+    {
+        using var f = new Form { Text = Text, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false, ClientSize = new Size(480, 300), Font = Font };
+        var l = new Label { Text = label, AutoSize = true, Location = new Point(12, 12) };
+        var t = new TextBox { Text = value, Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, Location = new Point(12, 36), Size = new Size(456, 180) };
+        var h = new Label { Text = hint, AutoSize = true, MaximumSize = new Size(456, 0), Location = new Point(12, 222) }.Role(ThemeRole.Muted);
+        var ok = new Button { Text = "Save", DialogResult = DialogResult.OK, Location = new Point(312, 262), Width = 75 };
+        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(393, 262), Width = 75 };
+        f.Controls.AddRange(new Control[] { l, t, h, ok, cancel });
+        f.CancelButton = cancel; // no AcceptButton: Enter starts a new line
+        ok.Role(ThemeRole.Accent);
+        Theme.Apply(f);
+        f.Shown += (_, _) => { t.SelectionStart = t.TextLength; t.SelectionLength = 0; };
+        return f.ShowDialog(this) == DialogResult.OK ? t.Text : null;
     }
 
     /// <summary>A one-line text box dialog. Null when cancelled.</summary>

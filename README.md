@@ -83,7 +83,9 @@ The list columns:
   first upload from this PC.
 - **Version to upload**: the mod's current version. Double-click it to change it; the new number is written to
   `<version>` in `About/Manifest.xml` (when it has one) and the version element of an XML marker file such as
-  `About/About.xml`. For RimWorld, add a changelog entry for the new version before uploading.
+  `About/About.xml`. For RimWorld the app then asks what changed and adds that as the new version's entry in
+  `About/Changelog.txt` (newest first, or at the end if the file lists the oldest version first), so the upload is
+  not refused for a missing entry. If you skip it, double-click the row's **Status** to write it later.
 - **Workshop ID**: from the mod's own id file (`About/PublishedFileId.txt` for RimWorld); `0` means the upload creates a new item.
 - **Preview**: ✔ when the preview image exists and is within Steam's 1 MB limit, ✖ otherwise (hover for the size).
 - **Status**: `Ready`, `Fix`, or `Ready to create (private)`.

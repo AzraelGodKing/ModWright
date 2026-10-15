@@ -9,6 +9,9 @@
   `SteamCmdHelper help`, with `--repo`, `--account`, `--steamcmd`, `--dry-run`, `--allow-create`,
   `--allow-experimental` and `--log`. Same checks and upload code as the window; exit code 0 (all done), 1 (a mod
   failed), 2 (bad arguments or nothing to upload) or 3 (SteamCMD missing or not logged in).
+- Changing a RimWorld mod's version (double-click **Version to upload**) now asks what changed and writes the new
+  version's entry into `About/Changelog.txt`, so the upload is not blocked for a missing entry. A row still missing
+  its entry can be fixed by double-clicking its **Status**.
 
 ## 1.0.0
 
