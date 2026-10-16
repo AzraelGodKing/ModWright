@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v1.2.0 to build and publish a GitHub Release.
+# Push a tag like v1.2.0 (or run "Promote test and release", which pushes one) to build and publish a GitHub Release.
 # The tag must match <Version> in SteamCmdHelper.csproj and have a "## 1.2.0" section in CHANGELOG.md.
 on:
   push:
