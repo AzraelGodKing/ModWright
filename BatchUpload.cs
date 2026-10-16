@@ -6,8 +6,12 @@ namespace SteamCmdHelper;
 public enum BatchStatus { Uploaded, Created, Checked, Skipped, Failed, NotRun }
 
 /// <summary>What happened to one mod in a batch.</summary>
-public sealed record BatchItem(ModInfo Mod, BatchStatus Status, string Message, string? WorkshopId)
+/// <param name="SentVersion">The version that went out when it differs from the mod's (an upload from an older git ref).</param>
+public sealed record BatchItem(ModInfo Mod, BatchStatus Status, string Message, string? WorkshopId, string? SentVersion = null)
 {
+    /// <summary>The version this item was about.</summary>
+    public string Version => SentVersion ?? Mod.Version;
+
     public bool Ok => Status is BatchStatus.Uploaded or BatchStatus.Created or BatchStatus.Checked or BatchStatus.Skipped;
 }
 
@@ -26,6 +30,19 @@ public sealed class BatchUpload
     public event Action<ModInfo, int, int>? Starting;
     /// <summary>A mod finished: (result, index from 0, count).</summary>
     public event Action<BatchItem, int, int>? Finished;
+    /// <summary>A mod is tried again after Steam was busy or unreachable: (mod, why it failed, the wait).</summary>
+    public event Action<ModInfo, string, TimeSpan>? Retrying;
+
+    /// <summary>
+    /// How long to wait before trying an update once more when Steam was busy, timed out or could not be reached; null
+    /// never retries. New items are not retried, since Steam may have created one without saying so.
+    /// </summary>
+    public TimeSpan? RetryAfter { get; init; }
+
+    static readonly Regex Transient = new(@"Timeout|Timed out|No ?Connection|Service ?Unavailable|\bBusy\b|ConnectFailed|Connection (?:reset|lost|closed)|Try ?Again", RegexOptions.IgnoreCase);
+
+    /// <summary>True when a failure looks like Steam being busy or unreachable, which a second try often gets past.</summary>
+    public static bool IsTransient(string reason) => Transient.IsMatch(reason) && !IsLoginFailure(reason);
 
     /// <param name="recordPath">Where uploaded versions are remembered; null for the per-user file (tests pass their own).</param>
     public BatchUpload(Publisher pub, string? recordPath = null)
@@ -62,18 +79,25 @@ public sealed class BatchUpload
             try
             {
                 var res = await _pub.RunAsync(m, upload, ct);
-                var id = m.WorkshopId ?? res.NewId;
+                var existing = _pub.TestItems ? m.TestWorkshopId : m.WorkshopId;
+                if (!res.Ok && upload && existing != null && RetryAfter is { } wait && IsTransient(res.Message))
+                {
+                    Retrying?.Invoke(m, res.Message, wait);
+                    await Task.Delay(wait, ct);
+                    res = await _pub.RunAsync(m, upload, ct);
+                }
+                var id = existing ?? res.NewId;
                 if (!res.Ok)
                 {
                     item = new BatchItem(m, BatchStatus.Failed, res.Message, id);
                     if (upload && IsLoginFailure(res.Message)) stopReason = "Steam refused the login";
                 }
-                else if (!upload) item = new BatchItem(m, BatchStatus.Checked, res.Message, id);
-                else if (res.Skipped) item = new BatchItem(m, BatchStatus.Skipped, res.Message, id);
+                else if (!upload) item = new BatchItem(m, BatchStatus.Checked, res.Message, id, res.Version);
+                else if (res.Skipped) item = new BatchItem(m, BatchStatus.Skipped, res.Message, id, res.Version);
                 else
                 {
-                    if (id != null) UploadedVersions.Remember(id, m.Version, _recordPath);
-                    item = new BatchItem(m, m.OnSteam ? BatchStatus.Uploaded : BatchStatus.Created, res.Message, id);
+                    if (id != null && !_pub.TestItems) UploadedVersions.Remember(id, res.Version ?? m.Version, _recordPath);
+                    item = new BatchItem(m, existing != null ? BatchStatus.Uploaded : BatchStatus.Created, res.Message, id, res.Version);
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -121,7 +145,7 @@ public sealed class BatchUpload
                 BatchStatus.Failed => "FAILED  ",
                 _ => "NOT RUN ",
             };
-            var version = r.Mod.Version.Length > 0 ? " v" + r.Mod.Version : "";
+            var version = r.Version.Length > 0 ? " v" + r.Version : "";
             var id = r.WorkshopId != null ? $" (Workshop id {r.WorkshopId})" : "";
             var detail = r.Ok && r.Status != BatchStatus.Skipped ? "" : ": " + r.Message;
             sb.AppendLine($"  {label} {r.Mod.Name}{version}{id}{detail}");

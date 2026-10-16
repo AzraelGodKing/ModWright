@@ -42,6 +42,12 @@ public sealed class AppSettings
     public Dictionary<string, string> NoteTemplates { get; set; } = new();
     /// <summary>When a mod's description file differs from its Workshop page: "Ask", "Always" (send it) or "Never".</summary>
     public string DescriptionSync { get; set; } = SteamCmdHelper.DescriptionSync.Ask;
+    /// <summary>A command run in the mods folder before packaging (e.g. "dotnet build -c Release"), per mods folder.</summary>
+    public Dictionary<string, string> BuildCommands { get; set; } = new();
+    /// <summary>The git branch or tag to upload from instead of the checked-out commit, per mods folder.</summary>
+    public Dictionary<string, string> PackageRefs { get; set; } = new();
+    /// <summary>Try an update once more after a short wait when Steam was busy or could not be reached.</summary>
+    public bool AutoRetry { get; set; } = true;
     /// <summary>Commit a newly created item's Workshop id file without asking.</summary>
     public bool CommitNewIds { get; set; }
     /// <summary>Saved profiles (mods folder, account, SteamCMD), by name.</summary>
@@ -75,6 +81,24 @@ public sealed class AppSettings
     {
         foreach (var k in NoteTemplates.Keys.Where(k => Same(k, repo)).ToList()) NoteTemplates.Remove(k);
         if (!string.IsNullOrWhiteSpace(template)) NoteTemplates[Key(repo)] = template.Replace("\r\n", "\n").Trim('\n');
+    }
+
+    /// <summary>The build step for <paramref name="repo"/>, or "" for none.</summary>
+    public string BuildFor(string repo) => ValueFor(BuildCommands, repo);
+
+    public void SetBuild(string repo, string command) => SetValue(BuildCommands, repo, command);
+
+    /// <summary>The branch or tag <paramref name="repo"/> uploads from, or "" for the checked-out commit.</summary>
+    public string RefFor(string repo) => ValueFor(PackageRefs, repo);
+
+    public void SetRef(string repo, string gitRef) => SetValue(PackageRefs, repo, gitRef);
+
+    static string ValueFor(Dictionary<string, string> map, string repo) => map.FirstOrDefault(kv => Same(kv.Key, repo)).Value ?? "";
+
+    static void SetValue(Dictionary<string, string> map, string repo, string value)
+    {
+        foreach (var k in map.Keys.Where(k => Same(k, repo)).ToList()) map.Remove(k);
+        if (!string.IsNullOrWhiteSpace(value)) map[Key(repo)] = value.Trim();
     }
 
     public bool GitHubReleasesFor(string repo) => GitHubReleaseRepos.Any(r => Same(r, repo));

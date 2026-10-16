@@ -93,6 +93,7 @@ leaves the mod list more room.
 6. Tick the mods (**Tick all** picks every mod that is ready) and press **Upload**. Several mods upload one after
    another with a single login check; if Steam refuses the login part-way, the rest are not tried. When more than
    one mod was picked, or anything failed, a summary lists what happened to each mod (it is also in the log).
+   **Tick changed** picks only the mods whose version Steam does not have yet (the window's `upload --changed`).
    **Dry run** does every check and builds the package but uploads nothing. The taskbar button shows the progress
    and flashes when a run ends while the window is in the background. If anything failed or was not reached,
    **Retry failed** uploads just those mods again.
@@ -260,6 +261,8 @@ unless you pass them, runs the same checks and upload code, and prints a summary
 SteamCmdHelper upload MyMod OtherMod          # by folder or display name
 SteamCmdHelper upload --all --dry-run         # check and package every ready mod, upload nothing
 SteamCmdHelper upload --changed               # only the mods whose version Steam does not have yet
+SteamCmdHelper upload MyMod --ref release      # package the release branch instead of the checked-out commit
+SteamCmdHelper upload MyMod --test             # send it to the mod's private test item
 SteamCmdHelper upload --all --repo D:\mods --account mysteamname --log upload.log
 SteamCmdHelper list                           # each mod's version, Workshop id and status
 SteamCmdHelper list --json                    # the same as JSON, for scripts
@@ -279,6 +282,30 @@ SteamCmdHelper help                           # every option
 - The app is a Windows program, so in a `cmd` window the prompt comes back before the output finishes. Use
   `start /wait SteamCmdHelper upload ...` (or `Start-Process -Wait` in PowerShell) when the next line needs the result,
   or `--log <file>`. Redirected output (CI steps, `> out.txt`) and exit codes work as usual.
+
+### Build step, uploading from a branch, test items and rolling back
+
+**Options > Uploading** has settings for the current mods folder, kept in your settings and never in the repo:
+
+- **Build step**: a command run in the mods folder before anything is packaged (for example `dotnet build -c Release`,
+  or a script), for uploads and dry runs alike. If it fails, nothing is uploaded and its output is in the log. The
+  command line runs it too (`--no-build` skips it).
+- **Upload from**: a git branch or tag to package instead of the checked-out commit, so a `release` branch can go out
+  while you work on another. The version and change note are read from that branch. `--ref` does the same on the
+  command line.
+- **Try again when Steam is busy**: an update that fails because Steam timed out, was busy or could not be reached is
+  tried once more after 30 seconds before it counts as failed (on by default; new items are never retried).
+
+**Upload to test items** (next to **Dry run**) sends each ticked mod to its own private copy on Steam instead of the
+real item: the first time, a private item titled "<name> (test)" is created and its id saved to
+`workshop_id.test.txt` in the mod folder (git-ignore it; it is never packaged). Subscribers of the real item get
+nothing, and pending Workshop page changes, the upload history, tags and announcements all wait for the real upload.
+Subscribe to the test item in the game to check the build first. `--test` does the same on the command line.
+
+To roll back a bad update, right-click the mod > **Upload history...**, pick an earlier upload and press **Upload this
+version again**. In a git repo with git packaging, the app packages the commit that upload came from (its upload tag
+when **Tag each upload in git** is on, else the newest commit at that time) and sends it with the old change note
+marked as rolled back. Your working folder is not touched; raise the version for the next real update.
 
 ### Mods not on Steam yet
 

@@ -31,6 +31,19 @@
 - **Keep the description in sync.** When a mod's description file differs from its Workshop page (or, for items Steam
   won't show, from what this PC last sent), the upload offers to send it too. **Options > Workshop page** can do it
   every time without asking (the command line follows that) or never.
+- **Build step** (Options > Uploading, per mods folder): a command such as `dotnet build -c Release` runs in the mods
+  folder before anything is packaged. If it fails, nothing is uploaded. The command line runs it too (`--no-build`
+  skips it).
+- **Upload from a branch or tag** (Options > Uploading, or `--ref` on the command line): git packaging takes that
+  branch or tag instead of the checked-out commit, with the version and change note read from it. Upload tags and
+  GitHub releases go on the commit that was uploaded.
+- **Roll back**: **Upload history...** has **Upload this version again**, which re-uploads an earlier version from its
+  upload tag (or the commit at that time) with its old change note marked as rolled back.
+- **Test items**: **Upload to test items** (or `--test`) sends the ticked mods to private copies on Steam, created on
+  first use and kept in `workshop_id.test.txt`, so a build can be checked in game before subscribers get it.
+- **Automatic retry**: an update that fails because Steam timed out, was busy or could not be reached is tried once
+  more after 30 seconds (Options > Uploading).
+- **Tick changed** ticks only the mods whose version Steam does not have yet.
 
 - **Change notes keep their line breaks on Steam.** Uploads used to show a literal `\n` wherever the changelog had a
   new line, because SteamCMD reads the build file without escape sequences. Line breaks are now written as real line
