@@ -6,6 +6,10 @@ public sealed class CliOptions
     public string Command = "help";
     public readonly List<string> Mods = new();
     public bool All, Changed, Json, DryRun, AllowCreate, AllowExperimental, CheckOnly, Test, NoBuild;
+    /// <summary>upload: the steps the window offers after an upload (tag, commit new ids, Discord and GitHub release).</summary>
+    public bool Tag, CommitIds, Announce;
+    /// <summary>upload: draft each mod's change note from its commits since the last upload, instead of the changelog.</summary>
+    public bool NoteFromGit;
     public string? Repo, Account, SteamCmd, LogFile, Note, Ref;
     /// <summary>Set when the arguments could not be understood; the command is then not run.</summary>
     public string? Error;
@@ -51,6 +55,16 @@ public static class Cli
           --no-build             skip the mods folder's build step (Options > Uploading)
           --log <file>           also write everything printed to this file
 
+        Upload options:
+          --note "<text>"        use this change note for every mod, instead of its changelog entry
+          --note-from-git        draft each change note from the mod's commits since its last upload
+          --tag                  tag each uploaded commit as <folder>-v<version> (git packaging only)
+          --commit-ids           commit the Workshop id files of newly created items
+          --announce             post to Discord and make GitHub releases, as set up in the window
+          --json                 print only a JSON summary of the results; progress goes to stderr
+
+        Every upload run's output is also saved with the window's past logs (the newest 50 are kept).
+
         The Steam login must already be saved: log in once from the window (Options > Log in...).
         Exit codes: 0 all done, 1 a mod failed or was not run, 2 bad arguments or nothing to upload,
         3 SteamCMD missing or not logged in.
@@ -93,6 +107,10 @@ public static class Cli
                 case "--ref": o.Ref = Value(); break;
                 case "--test": o.Test = true; break;
                 case "--no-build": o.NoBuild = true; break;
+                case "--tag": o.Tag = true; break;
+                case "--commit-ids": o.CommitIds = true; break;
+                case "--announce": o.Announce = true; break;
+                case "--note-from-git": o.NoteFromGit = true; break;
                 default:
                     if (a.StartsWith("--")) o.Error ??= $"Unknown option {a}.";
                     else o.Mods.Add(a);
@@ -102,14 +120,19 @@ public static class Cli
 
         if (o.Error != null) return o;
         if (o.Changed && o.Command != "upload") { o.Error = "--changed only goes with \"upload\"."; return o; }
-        if (o.Json && o.Command != "list") { o.Error = "--json only goes with \"list\"."; return o; }
+        if (o.Json && o.Command is not ("list" or "upload")) { o.Error = "--json only goes with \"list\" or \"upload\"."; return o; }
         if ((o.Ref != null || o.Test || o.NoBuild) && o.Command != "upload") { o.Error = "--ref, --test and --no-build only go with \"upload\"."; return o; }
+        foreach (var (on, name) in new[] { (o.Tag, "--tag"), (o.CommitIds, "--commit-ids"), (o.Announce, "--announce"), (o.NoteFromGit, "--note-from-git") })
+            if (on && o.Command != "upload") { o.Error = $"{name} only goes with \"upload\"."; return o; }
+        if (o.NoteFromGit && o.Note != null) { o.Error = "Give --note or --note-from-git, not both."; return o; }
+        if (o.Test && (o.Tag || o.CommitIds || o.Announce)) { o.Error = "--tag, --commit-ids and --announce do not go with --test: test items are private copies."; return o; }
         if (o.Command == "version")
         {
             if (o.Mods.Count < 2) o.Error = "Name the mods, then the new version: patch, minor, major or a number such as 1.4.0.";
             return o;
         }
-        if (o.Note != null) { o.Error = "--note only goes with \"version\"."; return o; }
+        if (o.Note != null && o.Command != "upload") { o.Error = "--note only goes with \"version\" or \"upload\"."; return o; }
+        if (o.Note != null && string.IsNullOrWhiteSpace(o.Note)) { o.Error = "--note needs some text."; return o; }
         if (o.Command == "upload" && (o.All || o.Changed) && o.Mods.Count > 0) o.Error = $"Give mod names or {(o.Changed ? "--changed" : "--all")}, not both.";
         else if (o.Command == "upload" && !o.All && !o.Changed && o.Mods.Count == 0) o.Error = "Name at least one mod to upload, or use --all or --changed.";
         else if (o.Command != "upload" && o.Mods.Count > 0) o.Error = $"\"{o.Command}\" does not take mod names.";
@@ -237,12 +260,23 @@ public static class Cli
     /// <param name="buildCommand">The mods folder's build step, run before packaging unless --no-build.</param>
     /// <param name="defaultRef">The branch or tag to upload from when --ref is not given; null for the checked-out commit.</param>
     /// <param name="retryAfter">Wait before trying an update again when Steam was busy; null never retries.</param>
+    /// <param name="webhook">The repo's Discord webhook, for "upload --announce"; empty when none is set.</param>
+    /// <param name="gitHubReleases">Whether "upload --announce" makes GitHub releases for this repo.</param>
+    /// <param name="json">Where "upload --json" writes its JSON; null for <paramref name="output"/>.</param>
     public static async Task<int> RunAsync(CliOptions o, string repo, string steamCmd, string account, TextWriter output,
         CancellationToken ct, string? recordPath = null, string? tempRoot = null, bool credit = false,
         string? noteTemplate = null, bool markdown = false, bool syncDescriptions = false,
-        string? buildCommand = null, string? defaultRef = null, TimeSpan? retryAfter = null)
+        string? buildCommand = null, string? defaultRef = null, TimeSpan? retryAfter = null,
+        string webhook = "", bool gitHubReleases = false, TextWriter? json = null)
     {
         void Say(string s) => output.WriteLine(s);
+        var tags = new Dictionary<ModInfo, string>();
+        // "upload --json" always ends with one JSON object, whatever stopped it.
+        int End(int code, string? error = null, List<BatchItem>? ran = null)
+        {
+            if (o.Json && o.Command == "upload" && o.Error == null) (json ?? output).WriteLine(UploadJson(repo, o.DryRun, code, error, ran ?? new(), tags));
+            return code;
+        }
 
         if (o.Error != null) { Say("Error: " + o.Error); Say(""); Say(Usage); return ExitUsage; }
         if (o.Command == "help") { Say(Usage); return ExitOk; }
@@ -250,8 +284,9 @@ public static class Cli
 
         if (string.IsNullOrWhiteSpace(repo) || !Directory.Exists(repo))
         {
-            Say(string.IsNullOrWhiteSpace(repo) ? "Error: no mods repo. Pass --repo <folder> or pick one in the window." : "Error: the mods repo folder does not exist: " + repo);
-            return ExitUsage;
+            var why = string.IsNullOrWhiteSpace(repo) ? "no mods repo. Pass --repo <folder> or pick one in the window." : "the mods repo folder does not exist: " + repo;
+            Say("Error: " + why);
+            return End(ExitUsage, why);
         }
 
         var cfg = ProjectConfig.Load(repo);
@@ -315,23 +350,51 @@ public static class Cli
                 Say("Nothing was uploaded:");
                 foreach (var p in problems) Say("  " + p);
                 if (mods.Count > 0) Say("Mods in this repo: " + string.Join(", ", mods.Select(m => m.Folder)));
-                return ExitUsage;
+                return End(ExitUsage, "Nothing was uploaded: " + string.Join(" ", problems));
             }
         }
-        if (picked.Count == 0 && o.Changed) { Say("Nothing to upload: every mod on Steam is up to date."); return ExitOk; }
-        if (picked.Count == 0) { Say("Nothing to upload."); return ExitUsage; }
+        if (picked.Count == 0 && o.Changed) { Say("Nothing to upload: every mod on Steam is up to date."); return End(ExitOk); }
+        if (picked.Count == 0) { Say("Nothing to upload."); return End(ExitUsage, "Nothing to upload."); }
 
-        if (!cfg.AppIdValid) { Say("Error: the Steam app ID is not set. Set it in the window or in " + ProjectConfig.FileName + "."); return ExitUsage; }
+        if (!cfg.AppIdValid) { Say("Error: the Steam app ID is not set. Set it in the window or in " + ProjectConfig.FileName + "."); return End(ExitUsage, "The Steam app ID is not set."); }
         var gitRef = o.Ref ?? (string.IsNullOrWhiteSpace(defaultRef) ? null : defaultRef);
         if (gitRef != null && cfg.UseGitArchive && ModScanner.IsGitRepo(repo) && !GitOps.RefExists(repo, gitRef))
         {
             Say($"Error: \"{gitRef}\" is not a branch, tag or commit in {repo}.");
-            return ExitUsage;
+            return End(ExitUsage, $"\"{gitRef}\" is not a branch, tag or commit.");
         }
         if (!o.DryRun && cfg.Experimental && !o.AllowExperimental)
         {
             Say($"Error: the \"{cfg.PresetName()}\" layout is experimental. Try a new private item first; add --allow-experimental to upload anyway.");
-            return ExitUsage;
+            return End(ExitUsage, $"The \"{cfg.PresetName()}\" layout is experimental.");
+        }
+        var isGit = ModScanner.IsGitRepo(repo);
+        if ((o.Tag || o.CommitIds || o.NoteFromGit) && !isGit)
+        {
+            Say("Error: --tag, --commit-ids and --note-from-git need the mods folder to be a git repo.");
+            return End(ExitUsage, "The mods folder is not a git repo.");
+        }
+        if (o.Tag && !cfg.UseGitArchive)
+        {
+            Say("Error: --tag needs git packaging; this layout copies the working folder, so no commit matches what is uploaded.");
+            return End(ExitUsage, "--tag needs git packaging.");
+        }
+
+        // ---- the change notes, when not the changelog's
+        var notes = new Dictionary<ModInfo, string>();
+        if (o.Note != null) foreach (var m in picked) notes[m] = o.Note.Trim();
+        else if (o.NoteFromGit)
+        {
+            var history = UploadHistory.Load(historyFile);
+            var record = UploadedVersions.LoadRecord(recordPath);
+            foreach (var m in picked)
+            {
+                var last = m.OnSteam ? UploadHistory.For(history, m.WorkshopId!).FirstOrDefault() : null;
+                var draft = GitOps.DraftNote(repo, m.RelPath, m.Folder, last?.Version ?? (m.OnSteam ? record.GetValueOrDefault(m.WorkshopId!) : null), last?.Time);
+                if (draft == null) { Say($"{m.Folder}: no commits to draft a note from; using its changelog entry."); continue; }
+                notes[m] = draft.Note;
+                Say($"{m.Folder}: change note drafted from {draft.Count} commit{(draft.Count == 1 ? "" : "s")} ({draft.Source}).");
+            }
         }
 
         if (!o.NoBuild && !await BuildStep.RunCheckedAsync(repo, buildCommand, Say, ct)) return ExitFailed;
@@ -339,16 +402,16 @@ public static class Cli
         // ---- one login check for the whole batch
         if (!o.DryRun)
         {
-            if (!SteamLogin.SteamCmdInstalled(steamCmd)) { Say("Error: SteamCMD is not installed at " + steamCmd + ". Install it from the window (Options) or pass --steamcmd."); return ExitSteam; }
-            if (string.IsNullOrWhiteSpace(account)) { Say("Error: no Steam account. Pass --account <name> or set it in the window."); return ExitSteam; }
+            if (!SteamLogin.SteamCmdInstalled(steamCmd)) { Say("Error: SteamCMD is not installed at " + steamCmd + ". Install it from the window (Options) or pass --steamcmd."); return End(ExitSteam, "SteamCMD is not installed."); }
+            if (string.IsNullOrWhiteSpace(account)) { Say("Error: no Steam account. Pass --account <name> or set it in the window."); return End(ExitSteam, "No Steam account."); }
             Say($"Checking the Steam login for {account}...");
             bool loggedIn;
             try { (loggedIn, _) = await SteamLogin.VerifyAsync(steamCmd, account, ct); }
-            catch (Exception e) when (e is not OperationCanceledException) { Say("Error: could not run SteamCMD: " + e.Message); return ExitSteam; }
+            catch (Exception e) when (e is not OperationCanceledException) { Say("Error: could not run SteamCMD: " + e.Message); return End(ExitSteam, "Could not run SteamCMD: " + e.Message); }
             if (!loggedIn)
             {
                 Say($"Error: no saved Steam login for {account}. Log in once from the window (Options > Log in...), then run this again.");
-                return ExitSteam;
+                return End(ExitSteam, $"No saved Steam login for {account}.");
             }
             Say("Logged in.");
         }
@@ -366,6 +429,7 @@ public static class Cli
         var pub = new Publisher(repo, cfg, steamCmd, account, tempRoot)
         {
             PageEdits = m => WorkshopPage.Get(m.Dir),
+            NoteOverride = m => notes.GetValueOrDefault(m),
             HistoryFile = historyFile,
             ManifestDir = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(historyFile))!, "manifests"),
             SentDescriptions = sentDescriptions,
@@ -381,6 +445,7 @@ public static class Cli
         var batch = new BatchUpload(pub, recordPath) { RetryAfter = retryAfter };
         batch.Retrying += (m, why, wait) => Say($"    Steam was busy or could not be reached ({why}). Trying {m.Folder} again in {wait.TotalSeconds:0} seconds...");
         batch.Starting += (m, i, n) => Say($"--- {m.Name} v{m.Version} ({i + 1} of {n}) ---");
+        var uploadedCommit = isGit && cfg.UseGitArchive ? ModScanner.Git(repo, $"rev-parse {gitRef ?? "HEAD"}^{{commit}}").Trim() : "";
         var results = await batch.RunAsync(picked, !o.DryRun, ct);
         if (!o.DryRun && !o.Test) foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created)) WorkshopPage.Clear(r.Mod.Dir);
 
@@ -388,8 +453,102 @@ public static class Cli
         Say(BatchUpload.Summary(results));
         if (o.Test && results.Any(r => r.Status == BatchStatus.Created))
             Say("New test items are PRIVATE and their ids were saved to " + ModInfo.TestIdFile + " in each mod folder: keep that file out of git.");
-        else if (results.Any(r => r.Status == BatchStatus.Created))
-            Say("New items are PRIVATE and their ids were saved to " + cfg.WorkshopIdFile + ": commit them.");
-        return results.All(r => r.Ok) ? ExitOk : ExitFailed;
+        var afterOk = true;
+        if (o.DryRun)
+        {
+            if (o.Tag || o.CommitIds || o.Announce) Say("Dry run: nothing was tagged, committed or announced.");
+        }
+        else if (!o.Test)
+        {
+            afterOk &= CommitNewIds(o, repo, cfg, results, Say);
+            if (o.Tag) afterOk &= TagUploads(repo, results, tags, uploadedCommit, Say);
+            if (o.Announce) afterOk &= await AnnounceAsync(repo, cfg, results, m => notes.GetValueOrDefault(m) ?? Publisher.NotesFor(m, cfg), uploadedCommit, webhook, gitHubReleases, Say, ct);
+        }
+        return End(results.All(r => r.Ok) && afterOk ? ExitOk : ExitFailed, ran: results);
     }
+
+    /// <summary>Commits the id files of newly created items with --commit-ids, else reminds to. False when git refused.</summary>
+    static bool CommitNewIds(CliOptions o, string repo, ProjectConfig cfg, List<BatchItem> results, Action<string> say)
+    {
+        var created = results.Where(r => r.Status == BatchStatus.Created).ToList();
+        if (created.Count == 0) return true;
+        if (!o.CommitIds) { say("New items are PRIVATE and their ids were saved to " + cfg.WorkshopIdFile + ": commit them (or use --commit-ids)."); return true; }
+        say("New items are PRIVATE.");
+        var files = created.Select(r => (r.Mod.RelPath + "/" + cfg.WorkshopIdFile).Replace('\\', '/').TrimStart('/')).ToList();
+        var names = string.Join(", ", created.Select(r => r.Mod.Name));
+        var error = GitOps.CommitPaths(repo, files, $"Add Workshop ID for {names}");
+        say(error == null ? $"Committed the Workshop ID file for {names}." : "Could not commit the Workshop ID: " + error);
+        return error == null;
+    }
+
+    /// <summary>Tags each uploaded mod's commit as <see cref="GitOps.TagName"/>. False when a tag could not be made.</summary>
+    static bool TagUploads(string repo, List<BatchItem> results, Dictionary<ModInfo, string> tags, string commit, Action<string> say)
+    {
+        var ok = true;
+        foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created))
+        {
+            var tag = GitOps.TagName(r.Mod.Folder, r.Version);
+            var result = GitOps.Tag(repo, tag, $"{r.Mod.Name} {r.Version} uploaded to Steam Workshop item {r.WorkshopId}", commit.Length > 0 ? commit : "HEAD");
+            if (result == null) { say($"Tagged {tag}."); tags[r.Mod] = tag; }
+            else if (result == "exists") { say($"Tag {tag} already exists; left as it is."); tags[r.Mod] = tag; }
+            else { say($"Could not tag {tag}: {result}"); ok = false; }
+        }
+        return ok;
+    }
+
+    /// <summary>
+    /// Posts updated mods to the repo's Discord webhook and makes GitHub releases for them, as set up in the window.
+    /// New items are private, so they are not announced. False when an announcement failed.
+    /// </summary>
+    static async Task<bool> AnnounceAsync(string repo, ProjectConfig cfg, List<BatchItem> results, Func<ModInfo, string> noteOf,
+        string commit, string webhook, bool gitHubReleases, Action<string> say, CancellationToken ct)
+    {
+        var done = results.Where(r => r.Status == BatchStatus.Uploaded && r.WorkshopId != null).ToList();
+        if (done.Count == 0) return true;
+        if (webhook.Length == 0 && !gitHubReleases)
+        {
+            say("Nothing to announce to: set a Discord webhook or turn on GitHub releases for this folder in the window (Options).");
+            return true;
+        }
+        var ok = true;
+        if (webhook.Length > 0)
+            foreach (var r in done)
+            {
+                var error = await Announce.PostDiscordAsync(webhook, Announce.DiscordPayload(r.Mod.Name, r.Version, r.WorkshopId!, noteOf(r.Mod), cfg.GameName), ct: ct);
+                say(error == null ? $"Announced {r.Mod.Name} {r.Version} on Discord." : $"Could not announce {r.Mod.Name} on Discord: {error}");
+                ok &= error == null;
+            }
+        if (!gitHubReleases) return ok;
+        if (commit.Length == 0) { say("No GitHub release: this layout does not upload a git commit."); return ok; }
+        foreach (var r in done)
+        {
+            var tag = GitOps.TagName(r.Mod.Folder, r.Version);
+            var note = noteOf(r.Mod) + $"\n\nSteam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id={r.WorkshopId}";
+            try { say($"GitHub release {tag}: {Announce.CreateGitHubRelease(repo, tag, $"{r.Mod.Name} {r.Version}", note, commit)}"); }
+            catch (Exception e) { say($"Could not make the GitHub release {tag}: {e.Message}"); ok = false; }
+        }
+        return ok;
+    }
+
+    /// <summary>"upload --json": what happened to each mod, for scripts. <paramref name="error"/> says why nothing ran.</summary>
+    public static string UploadJson(string repo, bool dryRun, int exitCode, string? error, IEnumerable<BatchItem> results, IReadOnlyDictionary<ModInfo, string> tags) =>
+        System.Text.Json.JsonSerializer.Serialize(new
+        {
+            repo,
+            dryRun,
+            exitCode,
+            ok = exitCode == ExitOk,
+            error,
+            mods = results.Select(r => new
+            {
+                folder = r.Mod.Folder,
+                name = r.Mod.Name,
+                version = r.Version,
+                workshopId = r.WorkshopId ?? r.Mod.WorkshopId,
+                status = r.Status.ToString().ToLowerInvariant(),
+                ok = r.Ok,
+                message = r.Message,
+                tag = tags.GetValueOrDefault(r.Mod),
+            }),
+        }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
 }

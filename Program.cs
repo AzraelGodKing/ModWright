@@ -119,24 +119,37 @@ static class Program
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
         var console = Console.Out;
         if (attached) console.WriteLine();
+        // "upload --json" keeps standard output for the JSON alone; the progress goes to standard error.
+        var jsonOut = o.Json && o.Command == "upload" && o.Error == null;
+        if (jsonOut) console = Console.Error;
         using var log = o.LogFile != null ? new StreamWriter(o.LogFile, false) { AutoFlush = true } : null;
-        using var output = new TeeWriter(console, log);
-        return Cli.RunAsync(o, settings.RepoPath, settings.EffectiveSteamCmd, settings.Account, TextWriter.Synchronized(output), cts.Token, credit: settings.UploadCredit,
-            noteTemplate: settings.TemplateFor(settings.RepoPath), markdown: settings.MarkdownNotes,
-            syncDescriptions: settings.DescriptionSync == DescriptionSync.Always,
-            buildCommand: settings.BuildFor(settings.RepoPath), defaultRef: settings.RefFor(settings.RepoPath),
-            retryAfter: settings.AutoRetry ? TimeSpan.FromSeconds(30) : null)
-            .GetAwaiter().GetResult();
+        // Every upload run is also saved with the window's past logs.
+        StreamWriter? runLog = null;
+        if (o.Command == "upload" && o.Error == null)
+            try { runLog = new StreamWriter(RunLogs.NewPath(RunLogs.DefaultDir, RunLogs.Label((o.DryRun ? "dry run" : o.Test ? "test upload" : "upload") + " (command line)", o.Mods.Count > 0 ? o.Mods : new[] { o.Changed ? "changed mods" : "all mods" }), DateTime.Now), false) { AutoFlush = true }; }
+            catch { runLog = null; }
+        using var output = new TeeWriter(console, log, runLog);
+        try
+        {
+            return Cli.RunAsync(o, settings.RepoPath, settings.EffectiveSteamCmd, settings.Account, TextWriter.Synchronized(output), cts.Token, credit: settings.UploadCredit,
+                noteTemplate: settings.TemplateFor(settings.RepoPath), markdown: settings.MarkdownNotes,
+                syncDescriptions: settings.DescriptionSync == DescriptionSync.Always,
+                buildCommand: settings.BuildFor(settings.RepoPath), defaultRef: settings.RefFor(settings.RepoPath),
+                retryAfter: settings.AutoRetry ? TimeSpan.FromSeconds(30) : null,
+                webhook: settings.WebhookFor(settings.RepoPath), gitHubReleases: settings.GitHubReleasesFor(settings.RepoPath),
+                json: jsonOut ? Console.Out : null).GetAwaiter().GetResult();
+        }
+        finally { runLog?.Dispose(); }
     }
 
-    /// <summary>Writes to the console and, when given, a log file.</summary>
-    sealed class TeeWriter(TextWriter a, TextWriter? b) : TextWriter
+    /// <summary>Writes to the console and, when given, log files.</summary>
+    sealed class TeeWriter(TextWriter a, params TextWriter?[] more) : TextWriter
     {
         public override System.Text.Encoding Encoding => a.Encoding;
-        public override void Write(char value) { a.Write(value); b?.Write(value); }
-        public override void Write(string? value) { a.Write(value); b?.Write(value); }
-        public override void WriteLine(string? value) { a.WriteLine(value); b?.WriteLine(value); }
-        public override void Flush() { a.Flush(); b?.Flush(); }
+        public override void Write(char value) { a.Write(value); foreach (var b in more) b?.Write(value); }
+        public override void Write(string? value) { a.Write(value); foreach (var b in more) b?.Write(value); }
+        public override void WriteLine(string? value) { a.WriteLine(value); foreach (var b in more) b?.WriteLine(value); }
+        public override void Flush() { a.Flush(); foreach (var b in more) b?.Flush(); }
     }
 
     [STAThread]

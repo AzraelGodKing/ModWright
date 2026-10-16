@@ -51,6 +51,13 @@
   value). The same applies to a Workshop page's title and description.
 - **"Uploaded via SteamCMD Helper"** is added to the end of each change note on Steam, linking to the newest release.
   Turn it off under Options > Change notes. The upload history and Discord announcements keep the entry as written.
+- **Command line:** `upload --tag`, `--commit-ids` and `--announce` do the steps the window offers after an upload:
+  tag what was uploaded, commit the Workshop id files of new items, and post to Discord and GitHub releases.
+- **Command line:** `upload --note "..."` uploads with that change note, and `upload --note-from-git` drafts each
+  mod's note from its commits since the last upload. `upload --json` prints a JSON summary of what happened to each
+  mod (status, Workshop id, tag) on standard output, with the progress on standard error.
+- **Past logs.** Every upload run's log is saved, from the window and the command line; **Past logs** in the Log card
+  lists them by time and what was uploaded. The newest 50 are kept.
 
 ## 1.2.1
 
