@@ -36,6 +36,7 @@ public sealed class MainForm : Form
     readonly CheckBox _ghReleases = new() { AutoSize = true, Text = "Make a GitHub &release for each upload (needs the gh tool, logged in with \"gh auth login\")" };
     Button _profileSave = null!, _profileDelete = null!, _webhookTest = null!;
     readonly CheckBox _tagUploads = new() { AutoSize = true, Text = "&Tag each upload in git as <mod folder>-v<version>" };
+    readonly CheckBox _uploadCredit = new() { AutoSize = true, Text = "End each change note with \"Uploaded via SteamCMD Helper\" and a link to its download page" };
     readonly CheckBox _commitIds = new() { AutoSize = true, Text = "Commit a new item's Workshop ID file without asking" };
     readonly System.Windows.Forms.Timer _clock = new() { Interval = 1000 };
     string _currentBase = "";
@@ -248,6 +249,7 @@ public sealed class MainForm : Form
         _ghReleases.CheckedChanged += (_, _) => { if (!_populating) SaveAnnounce(); };
         _tagUploads.CheckedChanged += (_, _) => { if (!_populating) { _s.TagUploads = _tagUploads.Checked; _s.Save(); } };
         _commitIds.CheckedChanged += (_, _) => { if (!_populating) { _s.CommitNewIds = _commitIds.Checked; _s.Save(); } };
+        _uploadCredit.CheckedChanged += (_, _) => { if (!_populating) { _s.UploadCredit = _uploadCredit.Checked; _s.Save(); } };
         _clock.Tick += (_, _) => ShowClock();
         _checkUpdates.CheckedChanged += (_, _) =>
         {
@@ -592,6 +594,11 @@ public sealed class MainForm : Form
             _tagUploads,
             _commitIds,
             Hint("Used when the mods folder is a git repository. Tags are made on the commit that was uploaded and stay on this PC until you push them (git push --tags).")));
+
+        _uploadCredit.Checked = _s.UploadCredit;
+        page.Controls.Add(Card("Change notes", null,
+            _uploadCredit,
+            Hint("Added to the change note on Steam only, below the changelog entry. The upload history and Discord announcements keep the entry as written.")));
 
         _webhookTest = Btn("Send t&est", async (_, _) => await TestWebhookAsync());
         page.Controls.Add(Card("Announcements", null,
@@ -1832,7 +1839,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _filter, _hideUpToDate, _profile, _profileSave, _webhook, _webhookTest, _ghReleases })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _filter, _hideUpToDate, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -2275,6 +2282,7 @@ public sealed class MainForm : Form
             NoteOverride = m => edited.TryGetValue(m.Dir, out var n) ? n : null,
             HistoryFile = UploadHistory.DefaultFile,
             SteamCheck = Publisher.LiveSteamCheck,
+            Credit = _s.UploadCredit,
         };
         var history = UploadHistory.Load();
         pub.Log += l => BeginInvoke(() => Append(l, Display.KindOf(l)));

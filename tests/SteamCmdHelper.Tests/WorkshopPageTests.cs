@@ -136,7 +136,7 @@ public sealed class WorkshopPageTests : IDisposable
         var vdf = await CapturedVdf(mod, new WorkshopPageEdit { Title = " Alpha \"Remastered\" ", Visibility = 3 });
 
         Assert.Equal("123456789", VdfValue(vdf, "publishedfileid"));
-        Assert.Equal("Alpha \"Remastered\"", VdfValue(vdf, "title"));
+        Assert.Equal("Alpha \u201CRemastered\u201D", VdfValue(vdf, "title"));
         Assert.Equal("3", VdfValue(vdf, "visibility"));
         Assert.Null(VdfValue(vdf, "description"));
         Assert.Null(VdfValue(vdf, "previewfile"));

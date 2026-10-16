@@ -33,6 +33,12 @@ public sealed class Publisher
     /// <summary>A change note typed in the upload confirmation, used instead of the changelog entry; null keeps the entry.</summary>
     public Func<ModInfo, string?>? NoteOverride { get; set; }
 
+    /// <summary>Ends each change note sent to Steam with <see cref="CreditLine"/> (Options > Change notes; on by default in the app).</summary>
+    public bool Credit { get; init; }
+
+    /// <summary>The line <see cref="Credit"/> adds, in Steam's BBCode, linking to the newest release.</summary>
+    public const string CreditLine = "[i]Uploaded via [url=" + UpdateCheck.ReleasesPage + "/latest]SteamCMD Helper[/url][/i]";
+
     /// <summary>Raised once a mod is packaged, with what the package holds (also used by "Preview package").</summary>
     public event Action<ModInfo, PackageReport>? Packaged;
 
@@ -72,7 +78,10 @@ public sealed class Publisher
         if (!_cfg.AppIdValid) return new PublishResult(false, "The Steam app ID is not set. Enter the game's app ID in the window first.");
         if (_cfg.ChangelogByVersion && notes.Length == 0 && typed == null)
             return new PublishResult(false, $"{_cfg.Changelog} has no entry for version {(m.Version.Length > 0 ? m.Version : "(unknown)")}.");
-        if (notes.Length > 7900) notes = notes.Substring(0, 7900) + "\n[i]...see the full changelog on the project page.[/i]";
+        var sent = Credit ? notes + (notes.Length > 0 ? "\n\n" : "") + CreditLine : notes;
+        if (sent.Length > 7900)
+            sent = notes.Substring(0, 7900 - (Credit ? CreditLine.Length + 2 : 0)) + "\n[i]...see the full changelog on the project page.[/i]"
+                + (Credit ? "\n" + CreditLine : "");
 
         SweepStale(_tempRoot, StaleAfter);
         var stageRoot = Path.Combine(_tempRoot, StagePrefix + Guid.NewGuid().ToString("N"));
@@ -116,7 +125,7 @@ public sealed class Publisher
                     "appid"           "{{_cfg.AppId}}"
                     "publishedfileid" "{{m.WorkshopId ?? "0"}}"
                     "contentfolder"   "{{stage}}"{{extra}}
-                    "changenote"      "{{Esc(notes)}}"
+                    "changenote"      "{{Esc(sent)}}"
                 }
                 """;
             var vdfPath = Path.Combine(stageRoot, m.Folder + ".vdf");
@@ -319,8 +328,22 @@ public sealed class Publisher
     }
 
     /// <summary>Escapes text for a Valve .vdf quoted value.</summary>
-    public static string Esc(string s) =>
-        s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r\n", "\n").Replace("\n", "\\n");
+    /// <summary>
+    /// Makes text safe inside a quoted .vdf value. SteamCMD reads build files with escape sequences off, so \n, \" and
+    /// \\ reach Steam as typed: line breaks stay real line breaks (a quoted value may span lines), backslashes are left
+    /// alone, and straight double quotes, which would end the value, become curly ones.
+    /// </summary>
+    public static string Esc(string s)
+    {
+        var sb = new StringBuilder(s.Length);
+        var open = true;
+        foreach (var c in s.Replace("\r\n", "\n").Replace('\r', '\n'))
+        {
+            if (c == '"') { sb.Append(open ? '\u201C' : '\u201D'); open = !open; }
+            else sb.Append(c);
+        }
+        return sb.ToString();
+    }
 
     static void TryDelete(string dir) { try { Directory.Delete(dir, true); } catch { } }
 
