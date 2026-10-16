@@ -98,7 +98,10 @@ leaves the mod list more room.
 
 Before anything is sent, the confirmation lists each mod and what it will do on Steam, with its change note. Click a
 mod to read or edit its note; an edit changes only what is sent to Steam, not the changelog file (**Use the changelog
-entry** puts it back). If git packaging would leave a mod's uncommitted changes out, the confirmation offers to commit
+entry** puts it back). In a git repo, **Draft from git commits** fills the note with one line per commit that touched
+the mod since its last upload from this PC: since its upload tag (**Tag each upload in git**) when there is one, else
+since that upload's time, else its newest ten commits. Fixup, squash, WIP and merge commits are left out. The same
+button is in the box that asks what changed in a new RimWorld version. If git packaging would leave a mod's uncommitted changes out, the confirmation offers to commit
 them first. While a mod uploads, the progress card shows the package size, how long it has been running and, once this
 PC has a few uploads in its history, about how long is left. When Steam turns an upload down, the summary says what to
 do (for example, log in again, wait out a login rate limit, or accept the Workshop agreement), and a refused login

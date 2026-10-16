@@ -61,6 +61,56 @@ public static class GitOps
         return name.Length == 0 ? "upload" : name;
     }
 
+    /// <summary>A change note drafted from commit subjects, and what it covers ("commits since the last upload on ...").</summary>
+    public sealed record CommitNote(string Note, string Source, int Count);
+
+    /// <summary>Most commits a drafted note lists; a longer history is cut to the newest.</summary>
+    public const int MaxCommits = 30;
+
+    static readonly Regex Noise = new(@"^(fixup!|squash!|amend!|wip\b|merge\b)", RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// The note lines for commit <paramref name="subjects"/> (newest first): one "- subject" line each, leaving out
+    /// fixup/squash/WIP/merge commits and repeats.
+    /// </summary>
+    public static string NoteFromSubjects(IEnumerable<string> subjects) =>
+        string.Join("\n", subjects.Select(s => s.Trim()).Where(s => s.Length > 0 && !Noise.IsMatch(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase).Select(s => "- " + s));
+
+    /// <summary>
+    /// Drafts a change note for a mod from the commits that touched its folder since it was last uploaded: since its
+    /// upload tag (<see cref="TagName"/> of <paramref name="lastVersion"/>) when that exists, else since
+    /// <paramref name="lastUpload"/>, else its newest few commits. Null when git cannot be read or nothing qualifies.
+    /// </summary>
+    public static CommitNote? DraftNote(string repo, string relPath, string folder, string? lastVersion, DateTimeOffset? lastUpload)
+    {
+        var args = new List<string> { "log", "--no-merges", "--format=%s", "-n", MaxCommits.ToString() };
+        string source;
+        var tag = lastVersion is { Length: > 0 } ? TagName(folder, lastVersion) : null;
+        if (tag != null && Run(repo, "rev-parse", "-q", "--verify", "refs/tags/" + tag).code == 0)
+        {
+            args.Add(tag + "..HEAD");
+            source = $"commits since the {tag} tag";
+        }
+        else if (lastUpload is { } t)
+        {
+            args.Add("--since=" + t.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"));
+            source = $"commits since the last upload from this PC ({t.ToLocalTime():d MMM yyyy})";
+        }
+        else
+        {
+            args[4] = "10";
+            source = "the newest commits (no upload from this PC to start from)";
+        }
+        args.Add("--");
+        args.Add(relPath.Length > 0 ? relPath : ".");
+        var (code, output) = Run(repo, args.ToArray());
+        if (code != 0) return null;
+        var subjects = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var note = NoteFromSubjects(subjects);
+        return note.Length == 0 ? null : new CommitNote(note, source, note.Split('\n').Length);
+    }
+
     /// <summary>Tags HEAD. Returns null on success, "exists" when the tag is already there, else git's message.</summary>
     public static string? Tag(string repo, string name, string message)
     {

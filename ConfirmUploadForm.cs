@@ -17,6 +17,8 @@ public sealed class ConfirmUploadForm : Form
     readonly Label _noteTitle = new() { AutoSize = true, Margin = new Padding(0, 8, 0, 2) };
     readonly Label _count = new Label { AutoSize = true, Anchor = AnchorStyles.Right }.Role(ThemeRole.Muted);
     readonly LinkLabel _reset = new() { Text = "Use the changelog entry", AutoSize = true, Anchor = AnchorStyles.Left, LinkBehavior = LinkBehavior.HoverUnderline };
+    readonly LinkLabel _fromGit = new() { Text = "Draft from git commits", AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(12, 3, 3, 3) };
+    readonly Func<ModInfo, GitOps.CommitNote?>? _draft;
     readonly CheckBox _commitFirst = new() { AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
     ModInfo? _shown;
 
@@ -30,9 +32,12 @@ public sealed class ConfirmUploadForm : Form
     /// <param name="actions">What each mod will do, by mod folder ("update 123", "NEW private item", plus page changes).</param>
     /// <param name="notes">Each mod's change note from its changelog, by mod folder.</param>
     /// <param name="offerCommit">Git packaging is in use, so uncommitted changes would be left out.</param>
+    /// <param name="draft">Drafts a mod's note from its git commits since its last upload; null hides the link.</param>
     public ConfirmUploadForm(string heading, IReadOnlyList<ModInfo> mods, IReadOnlyDictionary<string, string> actions,
-        IReadOnlyDictionary<string, string> notes, bool dry, bool offerCommit)
+        IReadOnlyDictionary<string, string> notes, bool dry, bool offerCommit, Func<ModInfo, GitOps.CommitNote?>? draft = null)
     {
+        _draft = draft;
+        _fromGit.Visible = draft != null;
         _mods = mods.ToList();
         foreach (var m in _mods) { _original[m.Dir] = notes.TryGetValue(m.Dir, out var n) ? n : ""; _notes[m.Dir] = _original[m.Dir]; }
         Text = dry ? "Dry run" : "Upload to Steam";
@@ -64,7 +69,11 @@ public sealed class ConfirmUploadForm : Form
         var noteRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true, Margin = Padding.Empty };
         noteRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         noteRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        noteRow.Controls.Add(_reset, 0, 0);
+        var links = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty, Anchor = AnchorStyles.Left };
+        _reset.Margin = new Padding(0, 3, 3, 3);
+        links.Controls.Add(_reset);
+        links.Controls.Add(_fromGit);
+        noteRow.Controls.Add(links, 0, 0);
         noteRow.Controls.Add(_count, 1, 0);
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 8, Padding = new Padding(12) };
@@ -97,6 +106,15 @@ public sealed class ConfirmUploadForm : Form
             ShowCount();
         };
         _reset.LinkClicked += (_, _) => { if (_shown != null) _note.Text = Crlf(_original[_shown.Dir]); };
+        _fromGit.LinkClicked += (_, _) =>
+        {
+            if (_shown == null || _draft == null) return;
+            var n = _draft(_shown);
+            if (n == null) { _noteTitle.Text = $"Change note for {_shown.Name} (no commits touched it since its last upload from this PC)"; return; }
+            _note.Text = Crlf(n.Note);
+            _noteTitle.Text = $"Change note for {_shown.Name} (drafted from {n.Source})";
+            _note.Focus();
+        };
         go.Click += (_, e) =>
         {
             var tooLong = _mods.FirstOrDefault(m => _notes[m.Dir].Length > MaxNote);
