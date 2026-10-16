@@ -1647,11 +1647,31 @@ public sealed class MainForm : Form
         RefreshAll();
     }
 
+    /// <summary>
+    /// Drafts a mod's change note from the commits that touched it since its last upload from this PC (its upload tag,
+    /// else the upload's time). Null when the repo is not a git repo.
+    /// </summary>
+    Func<ModInfo, GitOps.CommitNote?>? DraftNoteFn()
+    {
+        if (!ModScanner.IsGitRepo(_s.RepoPath)) return null;
+        var repo = _s.RepoPath;
+        var history = UploadHistory.Load();
+        var record = UploadedVersions.LoadRecord();
+        return m =>
+        {
+            var last = m.OnSteam ? UploadHistory.For(history, m.WorkshopId!).FirstOrDefault() : null;
+            var version = last?.Version ?? (m.OnSteam ? record.GetValueOrDefault(m.WorkshopId!) : null);
+            return GitOps.DraftNote(repo, m.RelPath, m.Folder, version, last?.Time);
+        };
+    }
+
     /// <summary>Asks for the release notes of <paramref name="version"/> and adds them to the mod's changelog. True when written.</summary>
     bool AskChangelogEntry(ModInfo m, string version)
     {
+        var draft = DraftNoteFn();
         var notes = PromptLines($"What changed in {m.Name} {version}?",
-            $"Added to {_cfg.Changelog} as the {version} entry; Steam shows it as the change note.", "- ");
+            $"Added to {_cfg.Changelog} as the {version} entry; Steam shows it as the change note.", "- ",
+            draft == null ? null : () => draft(m));
         if (notes == null) return false;
         var error = ModScanner.AddChangelogEntry(m, _cfg, version, notes);
         if (error != null) { MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Information); return false; }
@@ -1659,8 +1679,11 @@ public sealed class MainForm : Form
         return true;
     }
 
-    /// <summary>A multi-line text box dialog. Null when cancelled.</summary>
-    string? PromptLines(string label, string hint, string value)
+    /// <summary>
+    /// A multi-line text box dialog. Null when cancelled. With <paramref name="draft"/>, a "Draft from git commits" button
+    /// fills the box from the mod's commits.
+    /// </summary>
+    string? PromptLines(string label, string hint, string value, Func<GitOps.CommitNote?>? draft = null)
     {
         using var f = new Form { Text = Text, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false, ClientSize = new Size(480, 300), Font = Font };
         var l = new Label { Text = label, AutoSize = true, Location = new Point(12, 12) };
@@ -1669,6 +1692,19 @@ public sealed class MainForm : Form
         var ok = new Button { Text = "Save", DialogResult = DialogResult.OK, Location = new Point(312, 262), Width = 75 };
         var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(393, 262), Width = 75 };
         f.Controls.AddRange(new Control[] { l, t, h, ok, cancel });
+        if (draft != null)
+        {
+            var fromGit = new Button { Text = "&Draft from git commits", AutoSize = true, Location = new Point(12, 262) };
+            fromGit.Click += (_, _) =>
+            {
+                var n = draft();
+                if (n == null) { h.Text = "No commits touched this mod since its last upload from this PC."; return; }
+                t.Text = n.Note.Replace("\n", "\r\n");
+                h.Text = $"Drafted from {n.Source}. Edit it before saving.";
+                t.Focus();
+            };
+            f.Controls.Add(fromGit);
+        }
         f.CancelButton = cancel; // no AcceptButton: Enter starts a new line
         ok.Role(ThemeRole.Accent);
         Theme.Apply(f);
@@ -2175,7 +2211,7 @@ public sealed class MainForm : Form
         var gitPackaging = _cfg.UseGitArchive && ModScanner.IsGitRepo(_s.RepoPath);
         Dictionary<string, string> edited;
         bool commitFirst;
-        using (var confirm = new ConfirmUploadForm(heading, picked, actions, notes, dry, gitPackaging))
+        using (var confirm = new ConfirmUploadForm(heading, picked, actions, notes, dry, gitPackaging, DraftNoteFn()))
         {
             if (confirm.ShowDialog(this) != DialogResult.OK) return;
             edited = confirm.EditedNotes;

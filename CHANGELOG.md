@@ -10,6 +10,9 @@
   (such as a Paradox `descriptor.mod`), not only XML.
 - **Command line:** `version <mod> patch|minor|major|<number>` sets the version to upload, and `--note "..."` adds the
   new version's changelog entry where the layout needs one (RimWorld).
+- **Draft from git commits** (in the upload confirmation and the "What changed?" box for a new version) writes the
+  change note from the commits that touched the mod since its last upload from this PC, one line each, leaving out
+  fixup, WIP and merge commits. It starts from the mod's upload tag when there is one, else from the upload's time.
 
 ## 1.2.0
 
