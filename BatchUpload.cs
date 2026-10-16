@@ -3,12 +3,12 @@ using System.Text.RegularExpressions;
 
 namespace SteamCmdHelper;
 
-public enum BatchStatus { Uploaded, Created, Checked, Failed, NotRun }
+public enum BatchStatus { Uploaded, Created, Checked, Skipped, Failed, NotRun }
 
 /// <summary>What happened to one mod in a batch.</summary>
 public sealed record BatchItem(ModInfo Mod, BatchStatus Status, string Message, string? WorkshopId)
 {
-    public bool Ok => Status is BatchStatus.Uploaded or BatchStatus.Created or BatchStatus.Checked;
+    public bool Ok => Status is BatchStatus.Uploaded or BatchStatus.Created or BatchStatus.Checked or BatchStatus.Skipped;
 }
 
 /// <summary>
@@ -69,6 +69,7 @@ public sealed class BatchUpload
                     if (upload && IsLoginFailure(res.Message)) stopReason = "Steam refused the login";
                 }
                 else if (!upload) item = new BatchItem(m, BatchStatus.Checked, res.Message, id);
+                else if (res.Skipped) item = new BatchItem(m, BatchStatus.Skipped, res.Message, id);
                 else
                 {
                     if (id != null) UploadedVersions.Remember(id, m.Version, _recordPath);
@@ -98,6 +99,7 @@ public sealed class BatchUpload
         Add(results.Count(r => r.Status == BatchStatus.Uploaded), "uploaded");
         Add(results.Count(r => r.Status == BatchStatus.Created), "created");
         Add(results.Count(r => r.Status == BatchStatus.Checked), "checked");
+        Add(results.Count(r => r.Status == BatchStatus.Skipped), "skipped");
         Add(results.Count(r => r.Status == BatchStatus.Failed), "failed");
         Add(results.Count(r => r.Status == BatchStatus.NotRun), "not run");
         return parts.Count == 0 ? "nothing to do" : string.Join(", ", parts);
@@ -115,12 +117,13 @@ public sealed class BatchUpload
                 BatchStatus.Uploaded => "UPLOADED",
                 BatchStatus.Created => "CREATED ",
                 BatchStatus.Checked => "CHECKED ",
+                BatchStatus.Skipped => "SKIPPED ",
                 BatchStatus.Failed => "FAILED  ",
                 _ => "NOT RUN ",
             };
             var version = r.Mod.Version.Length > 0 ? " v" + r.Mod.Version : "";
             var id = r.WorkshopId != null ? $" (Workshop id {r.WorkshopId})" : "";
-            var detail = r.Ok ? "" : ": " + r.Message;
+            var detail = r.Ok && r.Status != BatchStatus.Skipped ? "" : ": " + r.Message;
             sb.AppendLine($"  {label} {r.Mod.Name}{version}{id}{detail}");
             if (r.Status == BatchStatus.Failed && SteamCmdOutput.Advice(r.Message) is { } advice) sb.AppendLine("           What to do: " + advice);
         }

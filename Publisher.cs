@@ -5,7 +5,8 @@ using System.Text.RegularExpressions;
 
 namespace SteamCmdHelper;
 
-public sealed record PublishResult(bool Ok, string Message, string? NewId = null);
+/// <param name="Skipped">Nothing was sent because the user chose not to upload an unchanged package (counts as OK).</param>
+public sealed record PublishResult(bool Ok, string Message, string? NewId = null, bool Skipped = false);
 
 /// <summary>
 /// Packages one mod, writes the SteamCMD build file and runs the upload. Updates send the content and the change note,
@@ -41,6 +42,18 @@ public sealed class Publisher
 
     /// <summary>Raised once a mod is packaged, with what the package holds (also used by "Preview package").</summary>
     public event Action<ModInfo, PackageReport>? Packaged;
+
+    /// <summary>
+    /// When set, each upload's file list is kept in this folder (<see cref="PackageDiffs"/>) and the next package of the
+    /// same item is compared with it.
+    /// </summary>
+    public string? ManifestDir { get; init; }
+
+    /// <summary>
+    /// Asked when a package is identical to the last upload and no page change goes with it: true uploads it anyway (Steam
+    /// then gets only the change note), false skips the mod. Null uploads it with a warning.
+    /// </summary>
+    public Func<ModInfo, PackageDiff, bool>? UploadUnchanged { get; set; }
 
     /// <summary>When set, each successful upload is added to this <see cref="UploadHistory"/> file.</summary>
     public string? HistoryFile { get; init; }
@@ -96,10 +109,21 @@ public sealed class Publisher
             At("Packaging...", 10);
             await PackageAsync(m, stageRoot, stage, ct);
 
-            var report = PackageCheck.Inspect(stage);
+            var report = PackageCheck.Inspect(stage, hash: ManifestDir != null);
+            var last = ManifestDir != null && m.OnSteam ? PackageDiffs.Load(ManifestDir, m.WorkshopId!) : null;
+            if (last != null) report = report with { Diff = PackageDiffs.Compare(last, report.Files) };
             Packaged?.Invoke(m, report);
             if (report.Files.Count == 0) return new PublishResult(false, "The package is empty, so the upload would remove every file from the item on Steam.");
+            var missing = PackageCheck.MissingRequired(report.Files, _cfg.RequiredInPackage());
+            if (missing.Count > 0)
+                return new PublishResult(false, $"The package has no {string.Join(", ", missing)}, so the mod would break for everyone who updates. " +
+                    (_cfg.UseGitArchive && ModScanner.IsGitRepo(_repo) ? "Check it is committed and not left out by an export-ignore rule in .gitattributes." : "Check it exists and is not in the layout's Exclude list."));
             foreach (var w in report.Warnings) Say("Warning: the package " + w + ".");
+            if (report.Diff is { } diff)
+            {
+                foreach (var line in PackageDiffs.Describe(diff)) Say(line);
+                foreach (var w in diff.Warnings()) Say("Warning: the package " + w + ".");
+            }
 
             var page = PageEdits?.Invoke(m);
             if (page != null && WorkshopPage.Validate(page) is { } bad) return new PublishResult(false, "Workshop page: " + bad);
@@ -139,6 +163,16 @@ public sealed class Publisher
             {
                 Say("Dry run: nothing uploaded. The package was built and checked, then removed.");
                 return new PublishResult(true, "Dry run OK");
+            }
+
+            if (report.Diff is { Identical: true } same && page == null)
+            {
+                if (UploadUnchanged != null && !UploadUnchanged(m, same))
+                {
+                    Say($"Skipped {m.Name}: its package is the same as {same.LastUpload}.");
+                    return new PublishResult(true, "Skipped: nothing changed " + same.Since, Skipped: true);
+                }
+                Say($"Warning: no file changed {same.Since}, so subscribers get only the change note.");
             }
 
             var started = DateTimeOffset.UtcNow;
@@ -200,6 +234,7 @@ public sealed class Publisher
                 if (HistoryFile != null) UploadHistory.Add(new UploadEntry(DateTimeOffset.UtcNow, id, m.Name, m.Version, notes, newId != null, _cfg.AppId,
                     report.TotalBytes, (DateTimeOffset.UtcNow - started).TotalSeconds), HistoryFile);
                 WorkshopStatus.Forget(id);
+                if (ManifestDir != null) PackageDiffs.Save(ManifestDir, id, new PackageManifest(DateTimeOffset.UtcNow, m.Version, report.Files.ToList()));
             }
 
             At("Uploaded", 100);

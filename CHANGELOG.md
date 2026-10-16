@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **What changed since the last upload.** Each upload remembers which files it sent, so the next upload of that item
+  lists in the log what was added, changed and removed since then, and **Preview package...** marks each file (removed
+  files are listed at the end).
+- **Nothing changed?** When a package is the same, file for file, as the last upload from this PC and no Workshop page
+  change goes with it, the app asks before uploading it again (subscribers would only get a new change note). Skipped
+  mods show as `SKIPPED` in the summary. The command line uploads it with a warning.
+- **Size jumps** are warned about: a package less than half or more than twice the size of the last upload (by at
+  least 1 MB), or one that lost many of its files, usually means a missing build folder or something added by mistake.
+- **Paths that break for some players** are warned about: paths over 160 characters (they can pass Windows'
+  260-character limit once installed), names that differ only in capital letters, and names Windows refuses
+  (`CON`, `NUL`, `aux.ogg`, `<>:"|?*`, a trailing dot or space).
+- **Required files must ship.** A package without the layout's marker file (RimWorld's `About/About.xml`, a Paradox
+  `descriptor.mod`) is refused, as it would break the mod for everyone who updates. Custom layouts can list more with
+  `RequiredFiles` (paths or globs).
+
 - **Change notes keep their line breaks on Steam.** Uploads used to show a literal `\n` wherever the changelog had a
   new line, because SteamCMD reads the build file without escape sequences. Line breaks are now written as real line
   breaks, backslashes are left as typed, and straight double quotes become curly ones (a straight quote would end the

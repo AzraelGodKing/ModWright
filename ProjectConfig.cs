@@ -112,6 +112,17 @@ public sealed class ProjectConfig
     /// </summary>
     public bool UseGitArchive { get; set; } = true;
 
+    /// <summary>
+    /// Files every package must contain, as paths or globs inside the mod folder (e.g. "Assemblies/*.dll"). The marker
+    /// file always counts too. An upload is refused when packaging left one out, for example through a .gitattributes
+    /// export-ignore rule, since the mod would then break for everyone who updates.
+    /// </summary>
+    public string[] RequiredFiles { get; set; } = Array.Empty<string>();
+
+    /// <summary>The files a package must contain: the marker file (when the layout has one) and <see cref="RequiredFiles"/>.</summary>
+    public IEnumerable<string> RequiredInPackage() =>
+        (string.IsNullOrWhiteSpace(ModMarker) ? Array.Empty<string>() : new[] { ModMarker }).Concat(RequiredFiles ?? Array.Empty<string>());
+
     /// <summary>Names or *.ext patterns left out of the package in copy mode.</summary>
     public string[] Exclude { get; set; } = { ".git", ".vs", "obj", "bin", "*.pdb" };
 
@@ -209,7 +220,7 @@ public sealed class ProjectConfig
         Changelog = p.Changelog; ChangelogRequired = p.ChangelogRequired;
         ChangelogFirstLineIsVersion = p.ChangelogFirstLineIsVersion; ChangelogByVersion = p.ChangelogByVersion;
         WorkshopIdFile = p.WorkshopIdFile; WorkshopIdKey = p.WorkshopIdKey; Preview = p.Preview; SteamDescriptionFile = p.SteamDescriptionFile;
-        BuiltFiles = p.BuiltFiles; UseGitArchive = p.UseGitArchive; Exclude = p.Exclude;
+        BuiltFiles = p.BuiltFiles; RequiredFiles = p.RequiredFiles; UseGitArchive = p.UseGitArchive; Exclude = p.Exclude;
         Source = p.Source;
     }
 

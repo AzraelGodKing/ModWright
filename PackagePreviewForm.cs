@@ -23,11 +23,28 @@ public sealed class PackagePreviewForm : Form
             ForeColor = Theme.Current.Warn,
         }.Role(ThemeRole.Keep);
 
+        var diff = report.Diff;
+        if (diff != null)
+        {
+            summary.Text += $" Compared with {diff.LastUpload}: {diff.Summary}.";
+            var w = diff.Warnings();
+            if (w.Count > 0)
+            {
+                warnings.Visible = true;
+                warnings.Text = string.Join("\n", report.Warnings.Concat(w).Select(x => "• The package " + x + "."));
+            }
+        }
+
         var list = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HeaderStyle = ColumnHeaderStyle.Nonclickable };
-        list.Columns.Add("File", 520);
-        list.Columns.Add("Size", 100, HorizontalAlignment.Right);
+        list.Columns.Add("File", 440);
+        list.Columns.Add("Size", 90, HorizontalAlignment.Right);
+        list.Columns.Add(diff != null ? "Since last upload" : "", diff != null ? 110 : 0);
+        string Change(string path) => diff == null ? "" : diff.Added.Contains(path) ? "added" : diff.Changed.Contains(path) ? "changed" : "";
         list.BeginUpdate();
-        foreach (var f in report.Files) list.Items.Add(new ListViewItem(new[] { f.Path, PackageCheck.Size(f.Bytes) }));
+        foreach (var f in report.Files) list.Items.Add(new ListViewItem(new[] { f.Path, PackageCheck.Size(f.Bytes), Change(f.Path) }));
+        // Files the last upload had and this one does not, at the end so they read as gone.
+        foreach (var gone in diff?.Removed ?? Array.Empty<string>())
+            list.Items.Add(new ListViewItem(new[] { gone, "", "removed" }) { ForeColor = Theme.Current.Warn });
         list.EndUpdate();
 
         var open = new Button { Text = "Open mod folder", AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
@@ -47,6 +64,6 @@ public sealed class PackagePreviewForm : Form
         Controls.Add(root);
         CancelButton = close;
         Theme.Apply(this);
-        Shown += (_, _) => list.Columns[0].Width = Math.Max(200, list.ClientSize.Width - list.Columns[1].Width - 4);
+        Shown += (_, _) => list.Columns[0].Width = Math.Max(200, list.ClientSize.Width - list.Columns[1].Width - list.Columns[2].Width - 4);
     }
 }
