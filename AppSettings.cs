@@ -36,6 +36,10 @@ public sealed class AppSettings
     public bool TagUploads { get; set; }
     /// <summary>End each change note sent to Steam with "Uploaded via SteamCMD Helper" and a link to the newest release.</summary>
     public bool UploadCredit { get; set; } = true;
+    /// <summary>Turn Markdown in .md changelogs into the BBCode Steam's change notes use.</summary>
+    public bool MarkdownNotes { get; set; } = true;
+    /// <summary>A template around each change note sent to Steam (see ChangeNotes.Apply), per mods folder.</summary>
+    public Dictionary<string, string> NoteTemplates { get; set; } = new();
     /// <summary>Commit a newly created item's Workshop id file without asking.</summary>
     public bool CommitNewIds { get; set; }
     /// <summary>Saved profiles (mods folder, account, SteamCMD), by name.</summary>
@@ -60,6 +64,15 @@ public sealed class AppSettings
     {
         foreach (var k in DiscordWebhooks.Keys.Where(k => Same(k, repo)).ToList()) DiscordWebhooks.Remove(k);
         if (!string.IsNullOrWhiteSpace(url)) DiscordWebhooks[Key(repo)] = url.Trim();
+    }
+
+    /// <summary>The change note template for <paramref name="repo"/>, or "" for none.</summary>
+    public string TemplateFor(string repo) => NoteTemplates.FirstOrDefault(kv => Same(kv.Key, repo)).Value ?? "";
+
+    public void SetTemplate(string repo, string template)
+    {
+        foreach (var k in NoteTemplates.Keys.Where(k => Same(k, repo)).ToList()) NoteTemplates.Remove(k);
+        if (!string.IsNullOrWhiteSpace(template)) NoteTemplates[Key(repo)] = template.Replace("\r\n", "\n").Trim('\n');
     }
 
     public bool GitHubReleasesFor(string repo) => GitHubReleaseRepos.Any(r => Same(r, repo));

@@ -37,6 +37,12 @@ public sealed class MainForm : Form
     Button _profileSave = null!, _profileDelete = null!, _webhookTest = null!;
     readonly CheckBox _tagUploads = new() { AutoSize = true, Text = "&Tag each upload in git as <mod folder>-v<version>" };
     readonly CheckBox _uploadCredit = new() { AutoSize = true, Text = "End each change note with \"Uploaded via SteamCMD Helper\" and a link to its download page" };
+    readonly CheckBox _markdownNotes = new() { AutoSize = true, Text = "Turn &Markdown in .md changelogs into Steam formatting (headings, bold, lists, links)" };
+    readonly TextBox _noteTemplate = new()
+    {
+        Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, Width = 520, Height = 64, Font = new Font("Consolas", 9f),
+        PlaceholderText = "{note}", AccessibleName = "Change note template for this mods folder",
+    };
     readonly CheckBox _commitIds = new() { AutoSize = true, Text = "Commit a new item's Workshop ID file without asking" };
     readonly System.Windows.Forms.Timer _clock = new() { Interval = 1000 };
     string _currentBase = "";
@@ -250,6 +256,13 @@ public sealed class MainForm : Form
         _tagUploads.CheckedChanged += (_, _) => { if (!_populating) { _s.TagUploads = _tagUploads.Checked; _s.Save(); } };
         _commitIds.CheckedChanged += (_, _) => { if (!_populating) { _s.CommitNewIds = _commitIds.Checked; _s.Save(); } };
         _uploadCredit.CheckedChanged += (_, _) => { if (!_populating) { _s.UploadCredit = _uploadCredit.Checked; _s.Save(); } };
+        _markdownNotes.CheckedChanged += (_, _) => { if (!_populating) { _s.MarkdownNotes = _markdownNotes.Checked; _s.Save(); } };
+        _noteTemplate.Leave += (_, _) =>
+        {
+            if (_populating || !Directory.Exists(_s.RepoPath)) return;
+            _s.SetTemplate(_s.RepoPath, _noteTemplate.Text);
+            _s.Save();
+        };
         _clock.Tick += (_, _) => ShowClock();
         _checkUpdates.CheckedChanged += (_, _) =>
         {
@@ -596,9 +609,14 @@ public sealed class MainForm : Form
             Hint("Used when the mods folder is a git repository. Tags are made on the commit that was uploaded and stay on this PC until you push them (git push --tags).")));
 
         _uploadCredit.Checked = _s.UploadCredit;
+        _markdownNotes.Checked = _s.MarkdownNotes;
         page.Controls.Add(Card("Change notes", null,
             _uploadCredit,
-            Hint("Added to the change note on Steam only, below the changelog entry. The upload history and Discord announcements keep the entry as written.")));
+            _markdownNotes,
+            Row(Lbl("&Template"), _noteTemplate),
+            Hint("The template is for the current mods folder: {note} is the changelog entry, and {name}, {version}, {date} and {game} fill themselves in " +
+                 "(e.g. \"{version} ({date})\" on the first line, then {note}). Without {note} the entry goes after it. For RimWorld, start with {version}, " +
+                 "so the Steam version column can still read it. All of this changes only the note on Steam; the upload history and Discord announcements keep the entry as written.")));
 
         _webhookTest = Btn("Send t&est", async (_, _) => await TestWebhookAsync());
         page.Controls.Add(Card("Announcements", null,
@@ -1839,7 +1857,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _filter, _hideUpToDate, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _filter, _hideUpToDate, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -2243,6 +2261,9 @@ public sealed class MainForm : Form
         var dry = _dry.Checked;
         var actions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var notes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // Steam already has the version to upload: usually the version was not raised after the last upload.
+        var sameVersion = _rows.Where(it => it.Checked && StateOf(it) == RowState.UpToDate).Select(it => (ModInfo)it.Tag!).ToList();
+        var checkFirst = sameVersion.Select(m => $"Steam already has {m.Name} v{m.Version}. Raise the version first (F2) if this upload changes anything, or players can't tell the updates apart.").ToList();
         foreach (var m in picked)
         {
             var pageEdit = WorkshopPage.Get(m.Dir);
@@ -2251,12 +2272,13 @@ public sealed class MainForm : Form
                 + (pageEdit != null && m.OnSteam ? "; also page: " + pageEdit.Summary() : "")
                 + (m.Warnings.Count > 0 ? "  (" + m.Warnings[0] + ")" : "");
             notes[m.Dir] = Publisher.NotesFor(m, _cfg);
+            if (sameVersion.Contains(m)) actions[m.Dir] = "same version as on Steam; " + actions[m.Dir];
         }
         var heading = dry ? "Dry run for:" : $"Publish to the Steam Workshop ({(_cfg.GameName.Length > 0 ? _cfg.GameName : "app " + _cfg.AppId)}):";
         var gitPackaging = _cfg.UseGitArchive && ModScanner.IsGitRepo(_s.RepoPath);
         Dictionary<string, string> edited;
         bool commitFirst;
-        using (var confirm = new ConfirmUploadForm(heading, picked, actions, notes, dry, gitPackaging, DraftNoteFn()))
+        using (var confirm = new ConfirmUploadForm(heading, picked, actions, notes, dry, gitPackaging, DraftNoteFn(), checkFirst))
         {
             if (confirm.ShowDialog(this) != DialogResult.OK) return;
             edited = confirm.EditedNotes;
@@ -2285,6 +2307,8 @@ public sealed class MainForm : Form
             UploadUnchanged = AskUploadUnchanged,
             SteamCheck = Publisher.LiveSteamCheck,
             Credit = _s.UploadCredit,
+            NoteTemplate = _s.TemplateFor(_s.RepoPath),
+            MarkdownToSteam = _s.MarkdownNotes,
         };
         var history = UploadHistory.Load();
         pub.Log += l => BeginInvoke(() => Append(l, Display.KindOf(l)));
@@ -2552,6 +2576,8 @@ public sealed class MainForm : Form
         _populating = true;
         var hasRepo = Directory.Exists(_s.RepoPath);
         _webhook.Text = hasRepo ? _s.WebhookFor(_s.RepoPath) : "";
+        _noteTemplate.Text = hasRepo ? _s.TemplateFor(_s.RepoPath).Replace("\n", "\r\n") : "";
+        _noteTemplate.Enabled = hasRepo && !_busy;
         _ghReleases.Checked = hasRepo && _s.GitHubReleasesFor(_s.RepoPath);
         _webhook.Enabled = _ghReleases.Enabled = _webhookTest.Enabled = hasRepo && !_busy;
         _populating = false;

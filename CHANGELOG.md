@@ -16,6 +16,15 @@
 - **Required files must ship.** A package without the layout's marker file (RimWorld's `About/About.xml`, a Paradox
   `descriptor.mod`) is refused, as it would break the mod for everyone who updates. Custom layouts can list more with
   `RequiredFiles` (paths or globs).
+- **Markdown change notes look right on Steam.** When the changelog is a `.md` file, headings, bold, italics,
+  strike-through, bullet and numbered lists, links, quotes, rules and code blocks are turned into Steam's BBCode for
+  the change note. Untick it under **Options > Change notes**.
+- **Change note template** (Options > Change notes, per mods folder): text wrapped around every note sent to Steam,
+  with `{note}`, `{name}`, `{version}`, `{date}` and `{game}` filled in. The command line uses it too.
+- **Same version as on Steam?** The upload confirmation warns when Steam already has the version a ticked mod would
+  upload, which usually means the version was not raised.
+- **Version mismatches** are warned about in the list: a changelog with an entry newer than the version to upload,
+  and an `About/Manifest.xml` whose version differs from `About.xml`'s.
 
 - **Change notes keep their line breaks on Steam.** Uploads used to show a literal `\n` wherever the changelog had a
   new line, because SteamCMD reads the build file without escape sequences. Line breaks are now written as real line
