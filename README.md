@@ -211,8 +211,10 @@ unless you pass them, runs the same checks and upload code, and prints a summary
 ```powershell
 SteamCmdHelper upload MyMod OtherMod          # by folder or display name
 SteamCmdHelper upload --all --dry-run         # check and package every ready mod, upload nothing
+SteamCmdHelper upload --changed               # only the mods whose version Steam does not have yet
 SteamCmdHelper upload --all --repo D:\mods --account mysteamname --log upload.log
 SteamCmdHelper list                           # each mod's version, Workshop id and status
+SteamCmdHelper list --json                    # the same as JSON, for scripts
 SteamCmdHelper update                         # install the newest release of the helper (--check: only report it)
 SteamCmdHelper help                           # every option
 ```
@@ -220,7 +222,9 @@ SteamCmdHelper help                           # every option
 - The Steam login must already be saved: log in once from the window (**Options > Log in...**). The command checks
   it once, then uploads each mod in turn.
 - A named mod that needs fixing, or does not exist, stops the command before anything is uploaded. `--all` skips
-  such mods and says why. New items need `--allow-create`; experimental layouts need `--allow-experimental`.
+  such mods and says why. `--changed` also skips mods whose version Steam already has, found the same way as the
+  window's **Steam version** column (the newest change note on Steam, else this PC's uploads); a mod whose version on
+  Steam is not known is uploaded. With nothing to upload it exits `0`, so it can run after every push. New items need `--allow-create`; experimental layouts need `--allow-experimental`.
 - Exit codes: `0` everything worked, `1` a mod failed or was not run, `2` bad arguments or nothing to upload,
   `3` SteamCMD missing or not logged in.
 - The app is a Windows program, so in a `cmd` window the prompt comes back before the output finishes. Use

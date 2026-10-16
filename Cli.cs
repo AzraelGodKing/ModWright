@@ -5,7 +5,7 @@ public sealed class CliOptions
 {
     public string Command = "help";
     public readonly List<string> Mods = new();
-    public bool All, DryRun, AllowCreate, AllowExperimental, CheckOnly;
+    public bool All, Changed, Json, DryRun, AllowCreate, AllowExperimental, CheckOnly;
     public string? Repo, Account, SteamCmd, LogFile;
     /// <summary>Set when the arguments could not be understood; the command is then not run.</summary>
     public string? Error;
@@ -27,7 +27,10 @@ public static class Cli
         Usage:
           SteamCmdHelper upload <mod> [<mod>...] [options]   upload these mods (folder or display name)
           SteamCmdHelper upload --all [options]              upload every ready mod that is on Steam
-          SteamCmdHelper list [options]                      show the mods and whether they are ready
+          SteamCmdHelper upload --changed [options]          upload every ready mod whose version Steam does not
+                                                             have yet (skips the ones already up to date)
+          SteamCmdHelper list [--json] [options]             show the mods and whether they are ready
+                                                             (--json: as JSON, for scripts)
           SteamCmdHelper update [--check]                    install the newest release of this program
                                                              (--check: only say whether there is one)
           SteamCmdHelper help                                show this text
@@ -69,6 +72,8 @@ public static class Cli
             switch (a.ToLowerInvariant())
             {
                 case "--all": o.All = true; break;
+                case "--changed": o.Changed = true; break;
+                case "--json": o.Json = true; break;
                 case "--dry-run": o.DryRun = true; break;
                 case "--allow-create": o.AllowCreate = true; break;
                 case "--allow-experimental": o.AllowExperimental = true; break;
@@ -85,8 +90,10 @@ public static class Cli
         }
 
         if (o.Error != null) return o;
-        if (o.Command == "upload" && o.All && o.Mods.Count > 0) o.Error = "Give mod names or --all, not both.";
-        else if (o.Command == "upload" && !o.All && o.Mods.Count == 0) o.Error = "Name at least one mod to upload, or use --all.";
+        if (o.Command == "upload" && (o.All || o.Changed) && o.Mods.Count > 0) o.Error = $"Give mod names or {(o.Changed ? "--changed" : "--all")}, not both.";
+        else if (o.Command == "upload" && !o.All && !o.Changed && o.Mods.Count == 0) o.Error = "Name at least one mod to upload, or use --all or --changed.";
+        else if (o.Changed && o.Command != "upload") o.Error = "--changed only goes with \"upload\".";
+        else if (o.Json && o.Command != "list") o.Error = "--json only goes with \"list\".";
         else if (o.Command != "upload" && o.Mods.Count > 0) o.Error = $"\"{o.Command}\" does not take mod names.";
         else if (o.CheckOnly && o.Command != "update") o.Error = "--check only goes with \"update\".";
         return o;
@@ -121,6 +128,41 @@ public static class Cli
         catch (Exception e) { say("Error: could not update: " + e.Message); return ExitFailed; }
     }
 
+    /// <summary>
+    /// The version Steam has, the way the window's Steam version column works it out: the newest change note on Steam,
+    /// else this PC's last upload or record. Null when unknown. (The command line does not read the item's live
+    /// "updated" time, so an upload from another PC since this one's is not noticed here.)
+    /// </summary>
+    public static string? SteamVersion(string? fromSteamNote, UploadEntry? last, string? recorded)
+    {
+        var (text, _) = UploadedVersions.Resolve(fromSteamNote, null, last, recorded);
+        return text == "?" ? null : text;
+    }
+
+    /// <summary>"list --json": the repo and each mod, for scripts.</summary>
+    public static string ListJson(string repo, ProjectConfig cfg, IEnumerable<ModInfo> mods) =>
+        System.Text.Json.JsonSerializer.Serialize(new
+        {
+            repo,
+            appId = cfg.AppId,
+            game = cfg.GameName,
+            layout = cfg.Source,
+            warning = cfg.Error,
+            mods = mods.Select(m => new
+            {
+                folder = m.Folder,
+                path = m.RelPath,
+                name = m.Name,
+                version = m.Version,
+                workshopId = m.WorkshopId,
+                ready = m.Ready,
+                status = m.StatusText,
+                problems = m.Problems,
+                warnings = m.Warnings,
+                uncommittedChanges = m.Dirty,
+            }),
+        }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
     /// <summary>Finds a mod by folder name, path in the repo, or display name (case-insensitive).</summary>
     public static ModInfo? Find(IEnumerable<ModInfo> mods, string name)
     {
@@ -149,9 +191,13 @@ public static class Cli
         }
 
         var cfg = ProjectConfig.Load(repo);
-        if (cfg.Error != null) Say("Warning: " + cfg.Error);
         var mods = ModScanner.Scan(repo, cfg);
+        // JSON goes out alone, so a script can parse everything printed.
+        if (o.Command == "list" && o.Json) { Say(ListJson(repo, cfg, mods)); return ExitOk; }
+        if (cfg.Error != null) Say("Warning: " + cfg.Error);
         Say($"Repo: {repo}  |  {(cfg.GameName.Length > 0 ? cfg.GameName : "app " + cfg.AppId)}  |  layout: {cfg.Source}");
+        // Kept beside the uploaded-versions record, so tests that pass their own record keep their history too.
+        var historyFile = recordPath == null ? UploadHistory.DefaultFile : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(recordPath))!, "history.json");
 
         if (o.Command == "list")
         {
@@ -163,12 +209,27 @@ public static class Cli
 
         // ---- upload: pick the mods
         var picked = new List<ModInfo>();
-        if (o.All)
+        if (o.All || o.Changed)
         {
+            // Only ask Steam when it matters; runs with their own record (tests) stay offline.
+            var history = o.Changed ? UploadHistory.Load(historyFile) : new();
+            var record = o.Changed ? UploadedVersions.LoadRecord(recordPath) : new();
             foreach (var m in mods)
             {
                 if (!m.Ready) Say($"Skipping {m.Folder}: {m.StatusText}");
                 else if (!m.OnSteam && !o.AllowCreate) Say($"Skipping {m.Folder}: not on Steam yet (add --allow-create to create it as a private item).");
+                else if (o.Changed && m.OnSteam)
+                {
+                    var note = recordPath == null ? await UploadedVersions.FetchAsync(m.WorkshopId!, ct) : null;
+                    var last = UploadHistory.For(history, m.WorkshopId!).FirstOrDefault();
+                    var onSteam = SteamVersion(note, last, record.GetValueOrDefault(m.WorkshopId!));
+                    if (ModRows.State(m, onSteam, false) == RowState.UpToDate) Say($"Skipping {m.Folder}: Steam already has v{m.Version}.");
+                    else
+                    {
+                        Say(onSteam == null ? $"{m.Folder}: the version on Steam is not known, so it is uploaded." : $"{m.Folder}: Steam has v{onSteam}, uploading v{m.Version}.");
+                        picked.Add(m);
+                    }
+                }
                 else picked.Add(m);
             }
         }
@@ -191,6 +252,7 @@ public static class Cli
                 return ExitUsage;
             }
         }
+        if (picked.Count == 0 && o.Changed) { Say("Nothing to upload: every mod on Steam is up to date."); return ExitOk; }
         if (picked.Count == 0) { Say("Nothing to upload."); return ExitUsage; }
 
         if (!cfg.AppIdValid) { Say("Error: the Steam app ID is not set. Set it in the window or in " + ProjectConfig.FileName + "."); return ExitUsage; }
@@ -222,8 +284,7 @@ public static class Cli
         var pub = new Publisher(repo, cfg, steamCmd, account, tempRoot)
         {
             PageEdits = m => WorkshopPage.Get(m.Dir),
-            // Kept beside the uploaded-versions record, so tests that pass their own record keep their history too.
-            HistoryFile = recordPath == null ? UploadHistory.DefaultFile : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(recordPath))!, "history.json"),
+            HistoryFile = historyFile,
             // Asks Steam whether each update landed; runs with their own record (tests) stay offline.
             SteamCheck = recordPath == null ? Publisher.LiveSteamCheck : null,
         };

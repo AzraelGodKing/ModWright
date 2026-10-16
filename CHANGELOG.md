@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Command line:** `upload --changed` uploads only the mods whose version Steam does not have yet and exits `0`
+  when there is nothing to do, so a CI job can run it after every push. `list --json` prints the mods (version,
+  Workshop id, ready, problems and warnings) as JSON for scripts.
+
 ## 1.2.0
 
 - **Shrink preview image under 1 MB** (right-click a mod): re-saves an oversized preview just small enough for Steam,

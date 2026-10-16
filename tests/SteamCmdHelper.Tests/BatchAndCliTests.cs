@@ -116,6 +116,47 @@ public sealed class BatchAndCliTests : IDisposable
         Assert.Contains("Fix:", text);
     }
 
+    [Theory]
+    [InlineData("upload", "Alpha", "--changed")]
+    [InlineData("list", "--changed")]
+    [InlineData("upload", "--all", "--json")]
+    public async Task Changed_and_json_only_go_where_they_belong(params string[] args)
+    {
+        var (code, text) = await Run("steamcmd", args);
+        Assert.Equal(Cli.ExitUsage, code);
+        Assert.Contains("Usage:", text);
+    }
+
+    [Fact]
+    public async Task List_json_is_the_only_output_and_parses()
+    {
+        _repo.AddMod("Alpha", workshopId: "1111111");
+        _repo.AddMod("Broken", changelog: null, workshopId: null);
+        var (code, text) = await Run("steamcmd", "list", "--json");
+        Assert.Equal(Cli.ExitOk, code);
+        using var doc = System.Text.Json.JsonDocument.Parse(text);
+        var mods = doc.RootElement.GetProperty("mods").EnumerateArray().ToList();
+        Assert.Equal(2, mods.Count);
+        var alpha = mods.Single(m => m.GetProperty("folder").GetString() == "Alpha");
+        Assert.Equal("1.2.3", alpha.GetProperty("version").GetString());
+        Assert.Equal("1111111", alpha.GetProperty("workshopId").GetString());
+        Assert.True(alpha.GetProperty("ready").GetBoolean());
+        var broken = mods.Single(m => m.GetProperty("folder").GetString() == "Broken");
+        Assert.False(broken.GetProperty("ready").GetBoolean());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, broken.GetProperty("workshopId").ValueKind);
+        Assert.NotEmpty(broken.GetProperty("problems").EnumerateArray());
+    }
+
+    [Fact]
+    public void Steam_version_prefers_the_change_note_then_this_pcs_uploads()
+    {
+        var last = new UploadEntry(DateTimeOffset.UtcNow, "1", "Alpha", "1.0.1", "");
+        Assert.Equal("2.0.0", Cli.SteamVersion("2.0.0", last, "1.0.0"));
+        Assert.Equal("1.0.1", Cli.SteamVersion(null, last, "1.0.0"));
+        Assert.Equal("1.0.0", Cli.SteamVersion(null, null, "1.0.0"));
+        Assert.Null(Cli.SteamVersion(null, null, null));
+    }
+
     [Fact]
     public async Task Unknown_mod_uploads_nothing_and_names_the_mods()
     {
@@ -202,6 +243,37 @@ public sealed class BatchAndCliTests : IDisposable
         var record = UploadedVersions.LoadRecord(_record);
         Assert.Equal("1.2.3", record["1111111"]);
         Assert.Equal("1.2.3", record["2222222"]);
+    }
+
+    [Fact]
+    public async Task Upload_changed_skips_mods_steam_already_has()
+    {
+        if (!CanFakeSteamCmd) return;
+        _repo.AddMod("Alpha", workshopId: "1111111");                 // Steam has 1.2.3 already
+        _repo.AddMod("Beta", workshopId: "2222222");                  // Steam has an older version
+        _repo.AddMod("Gamma", workshopId: "3333333");                 // never uploaded from here: unknown
+        UploadedVersions.Remember("1111111", "1.2.3", _record);
+        UploadedVersions.Remember("2222222", "1.2.2", _record);
+        var steam = FakeSteamCmd();
+
+        var (code, text) = await Run(steam, "upload", "--changed");
+
+        Assert.Equal(Cli.ExitOk, code);
+        Assert.Contains("Skipping Alpha: Steam already has v1.2.3.", text);
+        Assert.Contains("Beta: Steam has v1.2.2, uploading v1.2.3.", text);
+        Assert.Contains("Gamma: the version on Steam is not known", text);
+        Assert.Contains("Finished: 2 uploaded.", text);
+        Assert.Equal(3, Calls().Length); // the login check, then Beta and Gamma
+    }
+
+    [Fact]
+    public async Task Upload_changed_with_everything_up_to_date_does_nothing_and_exits_0()
+    {
+        _repo.AddMod("Alpha", workshopId: "1111111");
+        UploadedVersions.Remember("1111111", "1.2.3", _record);
+        var (code, text) = await Run("no-steamcmd-needed", "upload", "--changed");
+        Assert.Equal(Cli.ExitOk, code);
+        Assert.Contains("every mod on Steam is up to date", text);
     }
 
     [Fact]
