@@ -199,6 +199,33 @@ public static class ModScanner
         return m.Success && Version.TryParse(m.Value, out var v) ? v : null;
     }
 
+    /// <summary>The highest version an Add Changenote style changelog has an entry for (lines starting with # skipped), or null.</summary>
+    public static Version? NewestChangelogVersion(IEnumerable<string> lines) =>
+        lines.Where(l => !l.StartsWith('#')).Select(ParseVersion).Where(v => v != null).Max();
+
+    /// <summary>
+    /// A warning when the manifest and the marker file both give a version and they differ (the manifest's is the one
+    /// uploaded, so the other is usually a forgotten edit); null when they agree or only one has a version.
+    /// </summary>
+    /// <summary>1.2 and 1.2.0 are the same version: missing parts count as 0.</summary>
+    static Version Full(Version v) => new(v.Major, v.Minor, Math.Max(0, v.Build), Math.Max(0, v.Revision));
+
+    static string? VersionMismatch(string dir, string markerFile, ProjectConfig cfg)
+    {
+        if (string.IsNullOrWhiteSpace(cfg.ManifestFile) || string.IsNullOrWhiteSpace(cfg.VersionKey)) return null;
+        string? fromManifest, fromMarker;
+        try
+        {
+            fromManifest = ReadMeta(Path.Combine(dir, ProjectConfig.Norm(cfg.ManifestFile)), "Manifest/version");
+            fromMarker = ReadMeta(markerFile, cfg.VersionKey);
+        }
+        catch { return null; }
+        if (fromManifest == null || fromMarker == null) return null;
+        static string Plain(string v) => v.Trim().TrimStart('v', 'V');
+        return Plain(fromManifest) == Plain(fromMarker) ? null
+            : $"{cfg.ManifestFile} says {fromManifest} but {cfg.ModMarker} says {fromMarker}; {fromManifest} is uploaded (F2 sets both)";
+    }
+
     /// <summary>The version: the manifest's &lt;version&gt; when the layout has one and it is set, else the marker's.</summary>
     static string ReadVersion(string dir, string markerFile, ProjectConfig cfg)
     {
@@ -358,6 +385,7 @@ public static class ModScanner
                 {
                     m.Name = ReadMeta(markerFile, cfg.NameKey) ?? folder;
                     m.Version = ReadVersion(dir, markerFile, cfg);
+                    if (VersionMismatch(dir, markerFile, cfg) is { } mismatch) m.Warnings.Add(mismatch);
                 }
                 catch (Exception e) { m.Problems.Add(cfg.ModMarker + " unreadable (" + e.Message + ")"); }
             }
@@ -387,6 +415,9 @@ public static class ModScanner
                     m.Problems.Add("no " + cfg.Changelog);
                 else if (ReadChangelog(clPath, cfg, m.Version).notes.Length == 0)
                     m.Problems.Add($"{cfg.Changelog} has no entry for {m.Version}");
+                if (m.Version.Length > 0 && File.Exists(clPath) && NewestChangelogVersion(File.ReadAllLines(clPath)) is { } newest
+                    && ParseVersion(m.Version) is { } current && Full(newest) > Full(current))
+                    m.Warnings.Add($"{cfg.Changelog} has an entry for {newest}, newer than the version to upload ({m.Version}): raise the version (F2)?");
             }
             else if (!File.Exists(clPath))
             {

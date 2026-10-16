@@ -224,8 +224,10 @@ public static class Cli
     /// <param name="recordPath">Where uploaded versions are remembered; null for the per-user file.</param>
     /// <param name="tempRoot">Where packages are staged; null for the system temp folder.</param>
     /// <param name="credit">End change notes with <see cref="Publisher.CreditLine"/> (the app passes its Options setting).</param>
+    /// <param name="noteTemplate">The mods folder's change note template; <paramref name="markdown"/> converts .md notes to BBCode.</param>
     public static async Task<int> RunAsync(CliOptions o, string repo, string steamCmd, string account, TextWriter output,
-        CancellationToken ct, string? recordPath = null, string? tempRoot = null, bool credit = false)
+        CancellationToken ct, string? recordPath = null, string? tempRoot = null, bool credit = false,
+        string? noteTemplate = null, bool markdown = false)
     {
         void Say(string s) => output.WriteLine(s);
 
@@ -340,6 +342,8 @@ public static class Cli
             // Asks Steam whether each update landed; runs with their own record (tests) stay offline.
             SteamCheck = recordPath == null ? Publisher.LiveSteamCheck : null,
             Credit = credit,
+            NoteTemplate = noteTemplate,
+            MarkdownToSteam = markdown,
         };
         pub.Log += l => Say("    " + l);
         var batch = new BatchUpload(pub, recordPath);

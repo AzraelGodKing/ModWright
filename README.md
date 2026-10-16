@@ -97,7 +97,9 @@ leaves the mod list more room.
    and flashes when a run ends while the window is in the background. If anything failed or was not reached,
    **Retry failed** uploads just those mods again.
 
-Before anything is sent, the confirmation lists each mod and what it will do on Steam, with its change note. Click a
+Before anything is sent, the confirmation lists each mod and what it will do on Steam, with its change note. When Steam
+already has the version a ticked mod would upload, it says so at the top: raise the version first (F2) if the upload
+changes anything. Click a
 mod to read or edit its note; an edit changes only what is sent to Steam, not the changelog file (**Use the changelog
 entry** puts it back). In a git repo, **Draft from git commits** fills the note with one line per commit that touched
 the mod since its last upload from this PC: since its upload tag (**Tag each upload in git**) when there is one, else
@@ -162,8 +164,9 @@ or go wrong:
   `About/Changelog.txt` must have an entry for that version: a line starting with the version number, plus the lines
   under it up to the next version line (lines starting with `#` are skipped). That entry becomes the Workshop change note.
 
-Everything else is only a warning: other layouts' changelog issues, missing build output, and uncommitted tracked
-changes (git packaging uses `HEAD`). Hover over a row to see its problems and warnings; problems are also listed in the log.
+Everything else is only a warning: other layouts' changelog issues, missing build output, uncommitted tracked
+changes (git packaging uses `HEAD`), a changelog that already has an entry newer than the version to upload, and a
+`Manifest.xml` whose version differs from `About.xml`'s (the manifest's is uploaded; F2 sets both). Hover over a row to see its problems and warnings; problems are also listed in the log.
 
 The list columns:
 
@@ -199,6 +202,25 @@ SteamCMD cannot change tags, so they are only shown (the game's own uploader set
 
 The same right-click menu has **Upload history...** (every upload of the mod made from this PC: when, which
 version, and the change note sent) and **Open on Steam** (the item's page in your browser).
+
+### How change notes look on Steam
+
+Steam's change notes use BBCode, not Markdown. When the layout's changelog is a `.md` file (Generic's `CHANGELOG.md`),
+the note sent to Steam is converted: `#` headings become `[h1]` to `[h3]`, `-` and `1.` lists `[list]` and `[olist]`,
+`**bold**`, `*italic*`, `~~strike~~`, `[text](https://...)` links, `>` quotes, `---` rules and fenced code blocks their
+tags, and inline `` `code` `` keeps its text. Untick it under **Options > Change notes**.
+
+The same card has a **template** for the current mods folder, wrapped around every note sent to Steam: `{note}` is the
+changelog entry and `{name}`, `{version}`, `{date}` (yyyy-MM-dd) and `{game}` fill themselves in, for example
+
+```
+[b]{name} {version}[/b] ({date})
+{note}
+```
+
+A template without `{note}` gets the entry after it. For RimWorld, start with `{version}`: the **Steam version** column
+reads the version from the start of the newest note. The template, the conversion and the credit line change only what
+Steam gets; the changelog file, the upload history and Discord announcements keep the entry as written.
 
 ### Profiles, announcements and dependencies
 

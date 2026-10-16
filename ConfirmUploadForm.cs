@@ -33,8 +33,10 @@ public sealed class ConfirmUploadForm : Form
     /// <param name="notes">Each mod's change note from its changelog, by mod folder.</param>
     /// <param name="offerCommit">Git packaging is in use, so uncommitted changes would be left out.</param>
     /// <param name="draft">Drafts a mod's note from its git commits since its last upload; null hides the link.</param>
+    /// <param name="warnings">Things to check before sending (such as a version Steam already has), shown above the note.</param>
     public ConfirmUploadForm(string heading, IReadOnlyList<ModInfo> mods, IReadOnlyDictionary<string, string> actions,
-        IReadOnlyDictionary<string, string> notes, bool dry, bool offerCommit, Func<ModInfo, GitOps.CommitNote?>? draft = null)
+        IReadOnlyDictionary<string, string> notes, bool dry, bool offerCommit, Func<ModInfo, GitOps.CommitNote?>? draft = null,
+        IReadOnlyList<string>? warnings = null)
     {
         _draft = draft;
         _fromGit.Visible = draft != null;
@@ -76,25 +78,32 @@ public sealed class ConfirmUploadForm : Form
         noteRow.Controls.Add(links, 0, 0);
         noteRow.Controls.Add(_count, 1, 0);
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 8, Padding = new Padding(12) };
-        foreach (var size in new[] { 0, 0, 0, 100, 0, 0, 0, 0 })
+        var warn = new Label
+        {
+            AutoSize = true, MaximumSize = new Size(700, 0), Margin = new Padding(0, 8, 0, 0), ForeColor = Theme.Current.Warn,
+            Visible = warnings is { Count: > 0 }, Text = string.Join("\n", (warnings ?? Array.Empty<string>()).Select(w => "• " + w)),
+        }.Role(ThemeRole.Keep);
+
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 9, Padding = new Padding(12) };
+        foreach (var size in new[] { 0, 0, 0, 0, 100, 0, 0, 0, 0 })
             root.RowStyles.Add(size == 0 ? new RowStyle(SizeType.AutoSize) : new RowStyle(SizeType.Percent, size));
         var listHost = new Panel { Dock = DockStyle.Top, Height = _list.Height, Margin = Padding.Empty };
         listHost.Controls.Add(_list);
         root.Controls.Add(intro, 0, 0);
         root.Controls.Add(listHost, 0, 1);
-        root.Controls.Add(_noteTitle, 0, 2);
-        root.Controls.Add(_note, 0, 3);
-        root.Controls.Add(noteRow, 0, 4);
-        root.Controls.Add(_commitFirst, 0, 5);
-        root.Controls.Add(foot, 0, 6);
+        root.Controls.Add(warn, 0, 2);
+        root.Controls.Add(_noteTitle, 0, 3);
+        root.Controls.Add(_note, 0, 4);
+        root.Controls.Add(noteRow, 0, 5);
+        root.Controls.Add(_commitFirst, 0, 6);
+        root.Controls.Add(foot, 0, 7);
 
         var go = new Button { Text = dry ? "Dry run" : "Upload", AutoSize = true, Padding = new Padding(12, 2, 12, 2), DialogResult = DialogResult.OK }.Role(ThemeRole.Accent);
         var cancel = new Button { Text = "Cancel", AutoSize = true, Padding = new Padding(8, 2, 8, 2), DialogResult = DialogResult.Cancel };
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
         buttons.Controls.Add(cancel);
         buttons.Controls.Add(go);
-        root.Controls.Add(buttons, 0, 7);
+        root.Controls.Add(buttons, 0, 8);
         Controls.Add(root);
         CancelButton = cancel;
 

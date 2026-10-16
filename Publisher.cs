@@ -37,6 +37,19 @@ public sealed class Publisher
     /// <summary>Ends each change note sent to Steam with <see cref="CreditLine"/> (Options > Change notes; on by default in the app).</summary>
     public bool Credit { get; init; }
 
+    /// <summary>Wraps each change note sent to Steam (see <see cref="ChangeNotes.Apply"/>); null or empty sends the note as it is.</summary>
+    public string? NoteTemplate { get; init; }
+
+    /// <summary>Turns Markdown in change notes into Steam's BBCode when the layout's changelog is a .md file.</summary>
+    public bool MarkdownToSteam { get; init; }
+
+    /// <summary>The change note as Steam gets it: the template filled in, Markdown converted, without the credit line.</summary>
+    public string Shape(ModInfo m, string notes)
+    {
+        var shaped = ChangeNotes.Apply(NoteTemplate, notes, m.Name, m.Version, _cfg.GameName);
+        return MarkdownToSteam && ChangeNotes.IsMarkdown(_cfg.Changelog) ? ChangeNotes.MarkdownToBBCode(shaped) : shaped;
+    }
+
     /// <summary>The line <see cref="Credit"/> adds, in Steam's BBCode, linking to the newest release.</summary>
     public const string CreditLine = "[i]Uploaded via [url=" + UpdateCheck.ReleasesPage + "/latest]SteamCMD Helper[/url][/i]";
 
@@ -91,9 +104,10 @@ public sealed class Publisher
         if (!_cfg.AppIdValid) return new PublishResult(false, "The Steam app ID is not set. Enter the game's app ID in the window first.");
         if (_cfg.ChangelogByVersion && notes.Length == 0 && typed == null)
             return new PublishResult(false, $"{_cfg.Changelog} has no entry for version {(m.Version.Length > 0 ? m.Version : "(unknown)")}.");
-        var sent = Credit ? notes + (notes.Length > 0 ? "\n\n" : "") + CreditLine : notes;
+        var shaped = Shape(m, notes);
+        var sent = Credit ? shaped + (shaped.Length > 0 ? "\n\n" : "") + CreditLine : shaped;
         if (sent.Length > 7900)
-            sent = notes.Substring(0, 7900 - (Credit ? CreditLine.Length + 2 : 0)) + "\n[i]...see the full changelog on the project page.[/i]"
+            sent = shaped.Substring(0, 7900 - (Credit ? CreditLine.Length + 2 : 0)) + "\n[i]...see the full changelog on the project page.[/i]"
                 + (Credit ? "\n" + CreditLine : "");
 
         SweepStale(_tempRoot, StaleAfter);
