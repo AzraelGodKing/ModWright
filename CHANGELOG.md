@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.1
 
 - **Updating the app no longer crashes it.** The running app used to replace its own exe and then crash with "Something
   went wrong" (a missing `System.Text.Encoding.CodePages`) as it closed, because .NET still reads parts of the program
