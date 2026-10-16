@@ -119,7 +119,7 @@ public sealed class BatchAndCliTests : IDisposable
     [Theory]
     [InlineData("upload", "Alpha", "--changed")]
     [InlineData("list", "--changed")]
-    [InlineData("upload", "--all", "--json")]
+    [InlineData("version", "Alpha", "patch", "--json")]
     public async Task Changed_and_json_only_go_where_they_belong(params string[] args)
     {
         var (code, text) = await Run("steamcmd", args);

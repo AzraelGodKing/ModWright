@@ -91,7 +91,7 @@ public sealed class VersionBumpTests : IDisposable
     [Theory]
     [InlineData("version")]
     [InlineData("version", "Alpha")]
-    [InlineData("upload", "Alpha", "--note", "x")]
+    [InlineData("list", "--note", "x")]
     public async Task Version_command_needs_mods_and_a_version(params string[] args)
     {
         _repo.AddMod("Alpha");

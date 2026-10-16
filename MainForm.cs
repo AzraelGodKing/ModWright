@@ -456,11 +456,13 @@ public sealed class MainForm : Form
         var save = SmallBtn("&Save...", (_, _) => SaveLog());
         var clear = SmallBtn("Clear", (_, _) => { _logLines.Clear(); _log.Clear(); });
         var steamLogs = SmallBtn("SteamCMD lo&gs", (_, _) => OpenSteamCmdLogs());
+        var pastLogs = SmallBtn("&Past logs", (_, _) => ShowPastLogs());
         _tip.SetToolTip(copy, "Copy the whole log");
+        _tip.SetToolTip(pastLogs, $"Read the logs of earlier uploads. Every upload run's log is saved; the newest {RunLogs.Keep} are kept.");
         _tip.SetToolTip(_logFilter, "Show every line, or only the ones that need attention. Copy and Save always take the whole log.");
         _tip.SetToolTip(_autoScroll, "Keep the newest line in view. Untick to read back while an upload runs.");
         _tip.SetToolTip(steamLogs, "Open SteamCMD's own log folder (workshop_log.txt and others)");
-        var log = Card("Log", new Control[] { _logFilter, _autoScroll, copy, save, clear, steamLogs }, _log);
+        var log = Card("Log", new Control[] { _logFilter, _autoScroll, copy, save, clear, pastLogs, steamLogs }, _log);
         log.AutoSize = false; log.Dock = DockStyle.Fill;
         log.Margin = Padding.Empty;
 
@@ -2076,6 +2078,20 @@ public sealed class MainForm : Form
         catch (Exception e) { Append("Could not save the log: " + e.Message, LogKind.Error); }
     }
 
+    /// <summary>Saves the log lines from <paramref name="from"/> on as this upload run's own log.</summary>
+    void SaveRunLog(int from, DateTime started, string label)
+    {
+        var lines = _logLines.Skip(Math.Min(from, _logLines.Count))
+            .Select(e => e.Time.ToString("HH:mm:ss") + "  " + e.Text);
+        RunLogs.Save(RunLogs.DefaultDir, label, started, string.Join(Environment.NewLine, lines));
+    }
+
+    void ShowPastLogs()
+    {
+        using var f = new PastLogsForm(RunLogs.DefaultDir);
+        f.ShowDialog(this);
+    }
+
     void OpenSteamCmdLogs()
     {
         var logs = Path.Combine(Path.GetDirectoryName(_s.EffectiveSteamCmd)!, "logs");
@@ -2466,6 +2482,9 @@ public sealed class MainForm : Form
         _idx = 0;
         _count = picked.Count;
         Taskbar.Progress(this, 0);
+        var logFrom = _logLines.Count;
+        var started = DateTime.Now;
+        Append($"{(dry ? "Dry run" : "Upload")} of {picked.Count} mod{(picked.Count == 1 ? "" : "s")} started.", LogKind.Note);
         var uploadedCommit = gitPackaging ? ModScanner.Git(_s.RepoPath, $"rev-parse {gitRef ?? "HEAD"}^{{commit}}").Trim() : "";
         string NoteSent(ModInfo m) => edited.TryGetValue(m.Dir, out var n) ? n : notes[m.Dir];
         List<BatchItem> results;
@@ -2495,6 +2514,7 @@ public sealed class MainForm : Form
         Taskbar.FlashIfInBackground(this);
         if (!dry && !test) AfterUploadGit(results, uploadedCommit);
         if (!dry && !test) await AnnounceAsync(results, NoteSent, uploadedCommit);
+        SaveRunLog(logFrom, started, RunLogs.Label(dry ? "dry run" : test ? "test upload" : "upload", picked.Select(m => m.Name).ToList()));
         RefreshAll();
         if (!allOk)
         {

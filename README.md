@@ -148,7 +148,9 @@ orange warnings, red errors). The drop-down next to its title shows everything, 
 errors; untick **Auto-scroll** to read back while an upload runs. Drag the bar between the mod list and the log (or Tab
 to it and use the arrow keys) to give either more room; the log keeps that height. **Copy** and **Save...** take the
 whole log whatever is shown, **Clear** empties it, and **SteamCMD logs** opens SteamCMD's own log folder, which is
-where to look when Steam turns an upload down.
+where to look when Steam turns an upload down. Every upload run's log is also saved on its own, from the window and
+the command line alike: **Past logs** lists them by time and what was uploaded, so a failure can be read back after
+the window was closed. The newest 50 are kept, in `%LOCALAPPDATA%\SteamCmdHelper\logs`.
 
 The app uses a dark theme by default. Under **Options > Appearance** pick **Light**, or **Match Windows** to follow
 Windows' light or dark app mode (it switches when Windows does). When Windows High Contrast is on, the app uses its
@@ -264,6 +266,9 @@ SteamCmdHelper upload --changed               # only the mods whose version Stea
 SteamCmdHelper upload MyMod --ref release      # package the release branch instead of the checked-out commit
 SteamCmdHelper upload MyMod --test             # send it to the mod's private test item
 SteamCmdHelper upload --all --repo D:\mods --account mysteamname --log upload.log
+SteamCmdHelper upload MyMod --note "Hotfix for the save bug"   # this change note instead of the changelog's
+SteamCmdHelper upload --changed --note-from-git --tag --announce # notes from commits, then tag and announce
+SteamCmdHelper upload --changed --json        # only a JSON summary on stdout; progress goes to stderr
 SteamCmdHelper list                           # each mod's version, Workshop id and status
 SteamCmdHelper list --json                    # the same as JSON, for scripts
 SteamCmdHelper version MyMod patch --note "- Fixed the thing"   # 1.2.3 -> 1.2.4, with its changelog entry
@@ -277,6 +282,16 @@ SteamCmdHelper help                           # every option
   such mods and says why. `--changed` also skips mods whose version Steam already has, found the same way as the
   window's **Steam version** column (the newest change note on Steam, else this PC's uploads); a mod whose version on
   Steam is not known is uploaded. With nothing to upload it exits `0`, so it can run after every push. New items need `--allow-create`; experimental layouts need `--allow-experimental`.
+- After an upload, `--tag` tags each uploaded commit as `<folder>-v<version>` (git packaging only), `--commit-ids`
+  commits the Workshop id files of newly created items, and `--announce` posts to the Discord webhook and makes the
+  GitHub releases set up for the folder in the window (Options > Announcements). These are the steps the window
+  offers; a dry run does none of them.
+- `--note "..."` uploads every mod with that change note instead of its changelog entry. `--note-from-git` drafts each
+  note from the mod's commits since its last upload, like **Draft from git commits** in the window; a mod with no
+  such commits keeps its changelog entry.
+- `upload --json` prints one JSON object on standard output, whatever happened: `ok`, `exitCode`, `error` (why nothing
+  ran), and each mod's `status` (`uploaded`, `created`, `checked`, `failed` or `notrun`), `workshopId`, `message` and
+  `tag`. Everything else goes to standard error.
 - Exit codes: `0` everything worked, `1` a mod failed or was not run, `2` bad arguments or nothing to upload,
   `3` SteamCMD missing or not logged in.
 - The app is a Windows program, so in a `cmd` window the prompt comes back before the output finishes. Use
