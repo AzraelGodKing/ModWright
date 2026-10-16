@@ -137,9 +137,11 @@ public sealed class MainForm : Form
         _populating = false;
         Shown += async (_, _) =>
         {
-            RefreshAll();
+            if (NoStartupPrompts) RefreshAll(); // --shot expects the list filled as soon as the window shows
+            else await RefreshAllAsync();
+            if (IsDisposed) return;
             if (UpdatedFrom != null) Append($"Updated SteamCMD Helper from {UpdatedFrom} to {UpdateCheck.CurrentVersion}.", LogKind.Ok);
-            if (!NoStartupPrompts) _ = Task.Run(() => SelfUpdate.CleanUp(SelfUpdate.AppDir)); // files the last update replaced
+            if (!NoStartupPrompts) _ = Task.Run(() => { SelfUpdate.CleanUp(SelfUpdate.AppDir); SelfUpdate.CleanStaging(UpdateCheck.CurrentVersion); }); // what the last update left
             if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { if (!NoStartupPrompts) await OfferInstallAsync(); }
             else if (SteamLogin.LooksCached(_s.EffectiveSteamCmd, _s.Account)) _ = VerifyLoginAsync(false);
             if (_s.CheckForUpdates && !NoStartupPrompts) await CheckForUpdateAsync(false);
@@ -1059,22 +1061,54 @@ public sealed class MainForm : Form
         catch (Exception e) { Append("Could not open the file: " + e.Message, LogKind.Error); }
     }
 
+    /// <summary>What reading a mods folder found: everything <see cref="RefreshAll"/> shows that needs the disk or git.</summary>
+    sealed record FolderScan(string Repo, ProjectConfig Cfg, string? Branch, List<ModInfo> Mods,
+        Dictionary<string, string> Uploaded, Dictionary<string, UploadEntry> History);
+
+    /// <summary>Reads the mods folder, its layout, git branch and this PC's upload records. Touches no controls.</summary>
+    static FolderScan ScanFolder(string repo)
+    {
+        var cfg = ProjectConfig.Load(repo);
+        var branch = ModScanner.GitBranch(repo);
+        var mods = ModScanner.Scan(repo, cfg);
+        foreach (var m in mods)
+            if (WorkshopPage.Get(m.Dir) is { } page) m.Warnings.Add("Workshop page changes go out with the next upload: " + page.Summary());
+        return new FolderScan(repo, cfg, branch, mods, UploadedVersions.LoadRecord(), UploadHistory.Latest(UploadHistory.Load()));
+    }
+
     void RefreshAll()
     {
         SaveFields();
         ShowProfiles();
         ShowAnnounce();
-        _cfg = ProjectConfig.Load(_s.RepoPath);
-        var branch = ModScanner.GitBranch(_s.RepoPath);
-        _branch.Text = !Directory.Exists(_s.RepoPath) ? "" : branch == null ? "(not a git repo)" : "branch: " + branch;
+        ShowScan(ScanFolder(_s.RepoPath));
+    }
+
+    /// <summary>
+    /// <see cref="RefreshAll"/> with the folder read on a worker thread, so the window is drawn and responds while git and
+    /// the disk are slow (used at start-up).
+    /// </summary>
+    async Task RefreshAllAsync()
+    {
+        SaveFields();
+        ShowProfiles();
+        ShowAnnounce();
+        var repo = _s.RepoPath;
+        var scan = await Task.Run(() => ScanFolder(repo));
+        if (IsDisposed || repo != _s.RepoPath) return; // closed, or another folder was opened meanwhile
+        ShowScan(scan);
+    }
+
+    void ShowScan(FolderScan scan)
+    {
+        _cfg = scan.Cfg;
+        _branch.Text = !Directory.Exists(scan.Repo) ? "" : scan.Branch == null ? "(not a git repo)" : "branch: " + scan.Branch;
         ShowGame();
         if (_cfg.Error != null) Append(_cfg.Error, LogKind.Warn);
 
-        _mods = ModScanner.Scan(_s.RepoPath, _cfg);
-        foreach (var m in _mods)
-            if (WorkshopPage.Get(m.Dir) is { } page) m.Warnings.Add("Workshop page changes go out with the next upload: " + page.Summary());
-        var uploaded = UploadedVersions.LoadRecord();
-        var history = UploadHistory.Latest(UploadHistory.Load());
+        _mods = scan.Mods;
+        var uploaded = scan.Uploaded;
+        var history = scan.History;
         _rows.Clear();
         foreach (var m in _mods)
         {
@@ -1496,7 +1530,8 @@ public sealed class MainForm : Form
     {
         ListViewItem? Row(ModInfo m) => IsDisposed ? null : _rows.FirstOrDefault(i => ReferenceEquals(i.Tag, m));
 
-        var deps = _mods.ToDictionary(m => m, m => Dependencies.Find(m, _cfg));
+        var (all, cfg) = (_mods, _cfg);
+        var deps = await Task.Run(() => all.ToDictionary(m => m, m => Dependencies.Find(m, cfg))); // reads every mod's metadata
         var live = await WorkshopStatus.FetchAsync(mods.Select(m => m.WorkshopId!).Concat(deps.Values.SelectMany(d => d)));
         var stats = SubscriberStats.Record(mods.Where(m => live.ContainsKey(m.WorkshopId!)).Select(m => live[m.WorkshopId!]), DateOnly.FromDateTime(DateTime.Now));
         foreach (var (m, ids) in deps)
@@ -2146,7 +2181,11 @@ public sealed class MainForm : Form
         if (InstallPendingUpdate(restart: true)) Close();
     }
 
-    /// <summary>Installs <see cref="_pendingUpdate"/> over this program's files. Returns false (and says why) when it could not.</summary>
+    /// <summary>
+    /// Hands <see cref="_pendingUpdate"/> to the downloaded program, which installs it over this one's files once this
+    /// window has closed (and starts it when <paramref name="restart"/> is true). Returns false (and says why) when it
+    /// could not.
+    /// </summary>
     bool InstallPendingUpdate(bool restart)
     {
         var u = _pendingUpdate;
@@ -2154,9 +2193,8 @@ public sealed class MainForm : Form
         var exe = Environment.ProcessPath ?? Path.Combine(SelfUpdate.AppDir, SelfUpdate.ExeName);
         try
         {
-            SelfUpdate.Apply(u, SelfUpdate.AppDir, Path.GetFileName(exe));
+            SelfUpdate.HandOff(u, SelfUpdate.AppDir, Path.GetFileName(exe), UpdateCheck.CurrentVersion, restart);
             _pendingUpdate = null;
-            if (restart) SelfUpdate.Restart(exe, UpdateCheck.CurrentVersion);
             return true;
         }
         catch (Exception e)

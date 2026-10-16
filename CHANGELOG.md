@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Updating the app no longer crashes it.** The running app used to replace its own exe and then crash with "Something
+  went wrong" (a missing `System.Text.Encoding.CodePages`) as it closed, because .NET still reads parts of the program
+  from that file. Now the downloaded version installs itself after the old one has closed, then starts. Updates from
+  1.2.0 and earlier still run the old way once, so that one update may still show the error; the new version is
+  installed regardless.
+- **Opens faster.** The standalone exe is no longer compressed (it unpacked the whole .NET runtime on every start)
+  and is compiled ahead of time; the mods folder is read after the window appears instead of before; and git no
+  longer searches for untracked files when checking for uncommitted changes. The download is bigger as a result.
 - **Command line:** `upload --changed` uploads only the mods whose version Steam does not have yet and exits `0`
   when there is nothing to do, so a CI job can run it after every push. `list --json` prints the mods (version,
   Workshop id, ready, problems and warnings) as JSON for scripts.

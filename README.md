@@ -31,7 +31,8 @@ Each [GitHub Release](../../releases) has:
 At start-up the app asks GitHub for the latest release and, when it is newer, offers **Update now**, **Release notes**,
 or **Later**, with a box to stop reminding you about that version. **Update now** downloads the release file that matches
 how you run the app (the standalone exe, or the framework-dependent zip for the folder build), checks it against the
-release's `SHA256SUMS.txt`, swaps it in and restarts. If anything fails, the old files are put back. When the app's folder
+release's `SHA256SUMS.txt` and restarts: the new version installs itself once the old one has closed, then opens. If
+anything fails, the old files are put back. When the app's folder
 cannot be written to (for example under Program Files), it offers **Download** through your browser instead.
 
 Tick **Install new versions automatically** under **Options > About** to skip the question: a newer release is then

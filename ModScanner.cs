@@ -332,7 +332,9 @@ public static class ModScanner
         var root = ModsRoot(repo, cfg);
         if (!Directory.Exists(root)) return list;
 
-        var dirtyLines = Git(repo, "status --porcelain")
+        // Untracked files are not counted, so git is told not to look for them: in a folder full of build output that
+        // search is most of the time a refresh takes.
+        var dirtyLines = Git(repo, "status --porcelain --untracked-files=no")
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Where(l => l.Length > 3 && !l.StartsWith("??"))
             .Select(l => l.Substring(3).Trim().Trim('"').Replace('\\', '/'))

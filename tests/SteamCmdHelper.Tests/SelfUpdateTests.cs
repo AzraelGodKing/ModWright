@@ -163,6 +163,48 @@ public class SelfUpdateTests : IDisposable
     }
 
     [Fact]
+    public async Task Installer_waits_out_a_file_that_is_still_in_use()
+    {
+        File.WriteAllText(Path.Combine(App, "SteamCmdHelper.exe"), "old exe");
+        var staging = Path.Combine(Temp, "stage");
+        var files = Path.Combine(staging, "files");
+        Directory.CreateDirectory(files);
+        File.WriteAllText(Path.Combine(files, "SteamCmdHelper.exe"), "new exe");
+        var u = new PreparedUpdate("1.2.0", InstallKind.SingleFile, staging);
+
+        // The first attempts fail as if Windows still held the old exe; the installer keeps trying.
+        var blocker = Path.Combine(App, "SteamCmdHelper.exe" + SelfUpdate.OldSuffix);
+        Directory.CreateDirectory(blocker);
+        var free = Task.Run(async () => { await Task.Delay(700); Directory.Delete(blocker); });
+        SelfUpdate.Install(u, App, attempts: 20);
+        await free;
+
+        Assert.Equal("new exe", File.ReadAllText(Path.Combine(App, "SteamCmdHelper.exe")));
+        Assert.True(Directory.Exists(files), "the installer runs from the staging folder, so it is left for the next start");
+    }
+
+    [Fact]
+    public void Installer_needs_its_details()
+    {
+        string? said = null;
+        Assert.Equal(2, SelfUpdate.Finish(new[] { "not a pid" }, m => said = m));
+        Assert.NotNull(said);
+    }
+
+    [Fact]
+    public void Next_start_removes_installed_downloads_but_keeps_a_newer_one()
+    {
+        foreach (var v in new[] { "1.1.0", "1.2.0", "1.3.0" })
+            Directory.CreateDirectory(SelfUpdate.StagingFor(v, Temp));
+
+        SelfUpdate.CleanStaging("1.2.0", Temp);
+
+        Assert.False(Directory.Exists(SelfUpdate.StagingFor("1.1.0", Temp)));
+        Assert.False(Directory.Exists(SelfUpdate.StagingFor("1.2.0", Temp)));
+        Assert.True(Directory.Exists(SelfUpdate.StagingFor("1.3.0", Temp)));
+    }
+
+    [Fact]
     public void No_in_place_update_without_checksums_or_a_matching_file()
     {
         Assert.NotNull(SelfUpdate.CannotUpdateReason(Release with { ChecksumsUrl = null }, App));

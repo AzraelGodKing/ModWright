@@ -64,7 +64,7 @@ jobs:
           PROJECTID: ${{ secrets.PROJECTID }}
           LABELIDS: ${{ secrets.LABELIDS }}
           LABELMAP: ${{ secrets.LABELMAP }}
-        run: dotnet publish SteamCmdHelper.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+        run: dotnet publish SteamCmdHelper.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishReadyToRun=true -o publish
 
       - name: Upload exe
         uses: actions/upload-artifact@v4
