@@ -1,33 +1,33 @@
 {
-    "version": "1.1.0",
-    "description": "Upload Steam Workshop mod updates without remembering SteamCMD commands.",
-    "homepage": "https://github.com/AzraelGodKing/SteamCMDHelper",
-    "license": "MIT",
-    "notes": "SteamCMD Helper downloads SteamCMD itself the first time it needs it (Options > Install SteamCMD).",
-    "architecture": {
-        "64bit": {
-            "url": "https://github.com/AzraelGodKing/SteamCMDHelper/releases/download/v1.1.0/SteamCmdHelper-1.1.0-win-x64.exe#/SteamCmdHelper.exe",
-            "hash": "2da1d3182ef65a89a47357e12b51eaf4670d81a41a498e5d08b109084f7c69eb"
-        }
-    },
-    "bin": "SteamCmdHelper.exe",
-    "shortcuts": [
-        [
-            "SteamCmdHelper.exe",
-            "SteamCMD Helper"
-        ]
-    ],
-    "checkver": {
-        "github": "https://github.com/AzraelGodKing/SteamCMDHelper"
-    },
-    "autoupdate": {
-        "architecture": {
-            "64bit": {
-                "url": "https://github.com/AzraelGodKing/SteamCMDHelper/releases/download/v$version/SteamCmdHelper-$version-win-x64.exe#/SteamCmdHelper.exe",
-                "hash": {
-                    "url": "https://github.com/AzraelGodKing/SteamCMDHelper/releases/download/v$version/SHA256SUMS.txt"
-                }
-            }
-        }
+  "version": "1.2.0",
+  "description": "Upload Steam Workshop mod updates without remembering SteamCMD commands.",
+  "homepage": "https://github.com/AzraelGodKing/SteamCMDHelper",
+  "license": "MIT",
+  "notes": "SteamCMD Helper downloads SteamCMD itself the first time it needs it (Options > Install SteamCMD).",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/AzraelGodKing/SteamCMDHelper/releases/download/v1.2.0/SteamCmdHelper-1.2.0-win-x64.exe#/SteamCmdHelper.exe",
+      "hash": "2d82c51ffc293723f53294408a1430311a9d58c4a4cd11acbb87a511402c6f0b"
     }
+  },
+  "bin": "SteamCmdHelper.exe",
+  "shortcuts": [
+    [
+      "SteamCmdHelper.exe",
+      "SteamCMD Helper"
+    ]
+  ],
+  "checkver": {
+    "github": "https://github.com/AzraelGodKing/SteamCMDHelper"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/AzraelGodKing/SteamCMDHelper/releases/download/v$version/SteamCmdHelper-$version-win-x64.exe#/SteamCmdHelper.exe",
+        "hash": {
+          "url": "https://github.com/AzraelGodKing/SteamCMDHelper/releases/download/v$version/SHA256SUMS.txt"
+        }
+      }
+    }
+  }
 }
