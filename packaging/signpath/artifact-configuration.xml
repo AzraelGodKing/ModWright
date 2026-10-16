@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration for the release build (paste it into the SignPath project as its default artifact
+  configuration; SignPath keeps its own copy, this file is the reference). The release workflow uploads out/ as one
+  GitHub artifact, so the zip holds standalone/ (the single-file exe) and portable/ (the framework-dependent folder),
+  and passes the release version as the "version" parameter. A file is only signed when its product name and product
+  version match, so nothing but this project's own build of this release can go through.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" default-value="0.0.0" />
+  </parameters>
+  <zip-file>
+    <pe-file path="standalone/SteamCmdHelper.exe" product-name="SteamCMD Helper" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="portable/SteamCmdHelper.exe" product-name="SteamCMD Helper" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="portable/SteamCmdHelper.dll" product-name="SteamCMD Helper" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

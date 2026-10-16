@@ -48,6 +48,8 @@ jobs:
             echo "::error::CHANGELOG.md has no '## $version' section"
             exit 1
           fi
+          # SignPath Foundation asks for the code signing policy to be linked from every download page.
+          printf '\n---\n[Code signing policy](https://github.com/%s#code-signing-policy)\n' "$GITHUB_REPOSITORY" >> notes.md
           echo "VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Test
@@ -71,7 +73,7 @@ jobs:
           # or where antivirus refuses large unsigned single-file exes.
           dotnet publish SteamCmdHelper.csproj -c Release -r win-x64 --no-self-contained -p:PublishReadyToRun=true -o out/portable
 
-      # Code signing through SignPath (free for open source; see "Code signing" in the README). Until the
+      # Code signing through SignPath (free for open source; see "Code signing (maintainer)" in the README). Until the
       # SIGNPATH_API_TOKEN secret exists these steps are skipped and the release is unsigned, as before. Signing
       # happens before the zip and the checksums are made, so both cover the signed files.
       - name: Upload unsigned files for signing
@@ -93,7 +95,12 @@ jobs:
           project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'SteamCMDHelper' }}
           signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
           github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          # Checked against each file's product version (packaging/signpath/artifact-configuration.xml).
+          parameters: |
+            version: "${{ env.VERSION }}"
           wait-for-completion: true
+          # Every release waits for a manual approval in SignPath; give it an hour instead of the default 10 minutes.
+          wait-for-completion-timeout-in-seconds: 3600
           output-artifact-directory: signed
 
       - name: Use the signed files
