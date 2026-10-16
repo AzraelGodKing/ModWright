@@ -5,6 +5,11 @@
 - **Command line:** `upload --changed` uploads only the mods whose version Steam does not have yet and exits `0`
   when there is nothing to do, so a CI job can run it after every push. `list --json` prints the mods (version,
   Workshop id, ready, problems and warnings) as JSON for scripts.
+- **Change the version** (F2, or double-click it) has **Patch**, **Minor** and **Major** buttons that fill in the
+  next version. It can now also write the version into a JSON marker file (such as `mod.json`) and a `version=` line
+  (such as a Paradox `descriptor.mod`), not only XML.
+- **Command line:** `version <mod> patch|minor|major|<number>` sets the version to upload, and `--note "..."` adds the
+  new version's changelog entry where the layout needs one (RimWorld).
 
 ## 1.2.0
 

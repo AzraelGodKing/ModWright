@@ -1615,7 +1615,7 @@ public sealed class MainForm : Form
     void ChangeVersion(ModInfo m)
     {
         if (_busy) return;
-        var entered = Prompt($"Version to upload for {m.Name}:", m.Version);
+        var entered = PromptVersion(m);
         if (entered == null || entered.Trim() == m.Version) return;
         var error = ModScanner.SetVersion(m, _cfg, entered);
         if (error != null) { MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
@@ -1673,6 +1673,34 @@ public sealed class MainForm : Form
         ok.Role(ThemeRole.Accent);
         Theme.Apply(f);
         f.Shown += (_, _) => { t.SelectionStart = t.TextLength; t.SelectionLength = 0; };
+        return f.ShowDialog(this) == DialogResult.OK ? t.Text : null;
+    }
+
+    /// <summary>
+    /// The version box for <see cref="ChangeVersion"/>, with Patch, Minor and Major buttons that fill in the next version
+    /// (Alt+P, Alt+N, Alt+J). Null when cancelled.
+    /// </summary>
+    string? PromptVersion(ModInfo m)
+    {
+        using var f = new Form { Text = Text, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false, ClientSize = new Size(360, 146), Font = Font };
+        var l = new Label { Text = $"Version to upload for {m.Name}:", AutoSize = true, Location = new Point(12, 12) };
+        var t = new TextBox { Text = m.Version, Location = new Point(12, 36), Width = 336, AccessibleName = "Version" };
+        var bumps = new List<Control>();
+        var x = 12;
+        foreach (var (part, label) in new[] { (ModScanner.Bump.Patch, "&Patch"), (ModScanner.Bump.Minor, "Mi&nor"), (ModScanner.Bump.Major, "Ma&jor") })
+        {
+            var next = ModScanner.NextVersion(m.Version, part);
+            var b = new Button { Text = next == null ? label : $"{label} {next}", Location = new Point(x, 68), Width = 108, AutoEllipsis = true, Enabled = next != null };
+            b.Click += (_, _) => { t.Text = next; t.Focus(); t.SelectAll(); };
+            bumps.Add(b);
+            x += 114;
+        }
+        var ok = new Button { Text = "Save", DialogResult = DialogResult.OK, Location = new Point(192, 108), Width = 75 };
+        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(273, 108), Width = 75 };
+        f.Controls.Add(l); f.Controls.Add(t); f.Controls.AddRange(bumps.ToArray()); f.Controls.Add(ok); f.Controls.Add(cancel);
+        f.AcceptButton = ok; f.CancelButton = cancel;
+        ok.Role(ThemeRole.Accent);
+        Theme.Apply(f);
         return f.ShowDialog(this) == DialogResult.OK ? t.Text : null;
     }
 

@@ -6,7 +6,7 @@ public sealed class CliOptions
     public string Command = "help";
     public readonly List<string> Mods = new();
     public bool All, Changed, Json, DryRun, AllowCreate, AllowExperimental, CheckOnly;
-    public string? Repo, Account, SteamCmd, LogFile;
+    public string? Repo, Account, SteamCmd, LogFile, Note;
     /// <summary>Set when the arguments could not be understood; the command is then not run.</summary>
     public string? Error;
 }
@@ -19,7 +19,7 @@ public static class Cli
 {
     public const int ExitOk = 0, ExitFailed = 1, ExitUsage = 2, ExitSteam = 3;
 
-    static readonly string[] Commands = { "upload", "list", "update", "help" };
+    static readonly string[] Commands = { "upload", "list", "version", "update", "help" };
 
     public const string Usage = """
         SteamCMD Helper command line
@@ -31,6 +31,9 @@ public static class Cli
                                                              have yet (skips the ones already up to date)
           SteamCmdHelper list [--json] [options]             show the mods and whether they are ready
                                                              (--json: as JSON, for scripts)
+          SteamCmdHelper version <mod> [<mod>...] <new>      set the version to upload: patch, minor, major
+                [--note "<text>"]                            or a number such as 1.4.0. --note adds the new
+                                                             version's changelog entry where the layout needs one
           SteamCmdHelper update [--check]                    install the newest release of this program
                                                              (--check: only say whether there is one)
           SteamCmdHelper help                                show this text
@@ -81,6 +84,7 @@ public static class Cli
                 case "--account": o.Account = Value(); break;
                 case "--steamcmd": o.SteamCmd = Value(); break;
                 case "--log": o.LogFile = Value(); break;
+                case "--note": o.Note = Value(); break;
                 case "--check": o.CheckOnly = true; break;
                 default:
                     if (a.StartsWith("--")) o.Error ??= $"Unknown option {a}.";
@@ -90,10 +94,16 @@ public static class Cli
         }
 
         if (o.Error != null) return o;
+        if (o.Changed && o.Command != "upload") { o.Error = "--changed only goes with \"upload\"."; return o; }
+        if (o.Json && o.Command != "list") { o.Error = "--json only goes with \"list\"."; return o; }
+        if (o.Command == "version")
+        {
+            if (o.Mods.Count < 2) o.Error = "Name the mods, then the new version: patch, minor, major or a number such as 1.4.0.";
+            return o;
+        }
+        if (o.Note != null) { o.Error = "--note only goes with \"version\"."; return o; }
         if (o.Command == "upload" && (o.All || o.Changed) && o.Mods.Count > 0) o.Error = $"Give mod names or {(o.Changed ? "--changed" : "--all")}, not both.";
         else if (o.Command == "upload" && !o.All && !o.Changed && o.Mods.Count == 0) o.Error = "Name at least one mod to upload, or use --all or --changed.";
-        else if (o.Changed && o.Command != "upload") o.Error = "--changed only goes with \"upload\".";
-        else if (o.Json && o.Command != "list") o.Error = "--json only goes with \"list\".";
         else if (o.Command != "upload" && o.Mods.Count > 0) o.Error = $"\"{o.Command}\" does not take mod names.";
         else if (o.CheckOnly && o.Command != "update") o.Error = "--check only goes with \"update\".";
         return o;
@@ -163,6 +173,44 @@ public static class Cli
             }),
         }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
 
+    /// <summary>"version": writes the new version into each named mod, and its changelog entry when given one.</summary>
+    static int SetVersions(CliOptions o, ProjectConfig cfg, List<ModInfo> mods, Action<string> say)
+    {
+        var spec = o.Mods[^1].Trim();
+        ModScanner.Bump? part = spec.ToLowerInvariant() switch
+        {
+            "patch" => ModScanner.Bump.Patch, "minor" => ModScanner.Bump.Minor, "major" => ModScanner.Bump.Major, _ => null,
+        };
+        var picked = new List<ModInfo>();
+        foreach (var name in o.Mods.Take(o.Mods.Count - 1))
+        {
+            var m = Find(mods, name);
+            if (m == null) { say($"Error: {name}: no such mod in the repo. Nothing was changed."); return ExitUsage; }
+            if (!picked.Contains(m)) picked.Add(m);
+        }
+        var failed = false;
+        foreach (var m in picked)
+        {
+            var version = part is { } p ? ModScanner.NextVersion(m.Version, p) : spec.TrimStart('v', 'V');
+            if (version == null) { say($"{m.Folder}: its version \"{m.Version}\" is not a number, so it cannot be raised. Give the new version instead."); failed = true; continue; }
+            var error = ModScanner.SetVersion(m, cfg, version);
+            if (error != null) { say($"{m.Folder}: {error}"); failed = true; continue; }
+            var old = m.Version;
+            m.Version = version;
+            say($"{m.Folder}: version {(old.Length > 0 ? old : "?")} -> {version}.");
+            if (!ModScanner.NeedsChangelogEntry(m, cfg)) continue;
+            if (string.IsNullOrWhiteSpace(o.Note))
+            {
+                say($"  {cfg.Changelog} has no {version} entry yet, and the upload needs one. Add it, or run this with --note \"...\".");
+                continue;
+            }
+            var noteError = ModScanner.AddChangelogEntry(m, cfg, version, o.Note);
+            if (noteError != null) { say("  " + noteError); failed = true; }
+            else say($"  Added the {version} entry to {cfg.Changelog}.");
+        }
+        return failed ? ExitFailed : ExitOk;
+    }
+
     /// <summary>Finds a mod by folder name, path in the repo, or display name (case-insensitive).</summary>
     public static ModInfo? Find(IEnumerable<ModInfo> mods, string name)
     {
@@ -198,6 +246,8 @@ public static class Cli
         Say($"Repo: {repo}  |  {(cfg.GameName.Length > 0 ? cfg.GameName : "app " + cfg.AppId)}  |  layout: {cfg.Source}");
         // Kept beside the uploaded-versions record, so tests that pass their own record keep their history too.
         var historyFile = recordPath == null ? UploadHistory.DefaultFile : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(recordPath))!, "history.json");
+
+        if (o.Command == "version") return SetVersions(o, cfg, mods, Say);
 
         if (o.Command == "list")
         {
