@@ -111,7 +111,18 @@ offers **Log in again and retry**.
 Every package is checked for files that are rarely meant for players: `.git` or `obj` folders, source art such as
 `.psd` or `.blend`, debug and leftover files (`.pdb`, `Thumbs.db`, ...), archives, and very large files. These are
 warnings in the log; only an empty package is refused, because it would remove every file from the item.
+Paths that break for some players are warned about too: paths long enough to pass Windows' 260-character limit once
+installed, names that differ only in capital letters (they overwrite each other on Windows and macOS), and names
+Windows refuses (`CON`, `NUL`, `aux.ogg`, `<>:"|?*`, a trailing dot or space). A package that is missing the layout's
+marker file (such as RimWorld's `About/About.xml`) or one of its `RequiredFiles` is refused, because the mod would break
+for everyone who updates; that usually means a `.gitattributes` export-ignore rule or the `Exclude` list dropped it.
 Right-click a mod and choose **Preview package...** to see every file and its size before uploading.
+
+Each upload remembers which files it sent (`%LocalAppData%\SteamCmdHelper\manifests`), so the next one of the same item
+says in the log what was added, changed and removed since then, and **Preview package...** marks each file. A package
+that is much smaller or larger than last time, or that lost many files, is warned about. When nothing at all changed
+since the last upload (and no Workshop page change goes with it), the app asks before uploading it again, since
+subscribers would only get the change note; the command line uploads it with a warning.
 
 In a git repo, after a new item is created the app offers to commit its Workshop ID file, so nobody creates the item
 twice (**Options > Git** can do it without asking). Tick **Tag each upload in git** there to tag the uploaded commit
@@ -265,6 +276,7 @@ The **Generic** layout expects, inside each mod folder: `CHANGELOG.md` (the Work
 | `WorkshopIdKey` | empty | When set, the id is that key inside `WorkshopIdFile` (read like `NameKey`, e.g. `remote_file_id`), and a new id is written back to it |
 | `Preview`, `SteamDescriptionFile` | `preview.png`, `steam_description.txt` | Used when creating (empty `Preview` = none) |
 | `BuiltFiles` | `[]` | Build outputs copied from the working tree, e.g. `["Assemblies/*.dll"]` (a warning when missing) |
+| `RequiredFiles` | `[]` | Files every package must contain, as paths or globs (e.g. `["Assemblies/*.dll"]`). The marker file always counts. A package without one is refused |
 | `UseGitArchive` | true | Package with `git archive HEAD` (honours `export-ignore`); false copies the folder using `Exclude` |
 | `Exclude` | `.git`, `bin`, `obj`, ... | Skipped when `UseGitArchive` is false |
 

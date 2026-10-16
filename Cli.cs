@@ -336,6 +336,7 @@ public static class Cli
         {
             PageEdits = m => WorkshopPage.Get(m.Dir),
             HistoryFile = historyFile,
+            ManifestDir = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(historyFile))!, "manifests"),
             // Asks Steam whether each update landed; runs with their own record (tests) stay offline.
             SteamCheck = recordPath == null ? Publisher.LiveSteamCheck : null,
             Credit = credit,

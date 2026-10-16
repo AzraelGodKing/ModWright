@@ -2281,6 +2281,8 @@ public sealed class MainForm : Form
             PageEdits = m => WorkshopPage.Get(m.Dir),
             NoteOverride = m => edited.TryGetValue(m.Dir, out var n) ? n : null,
             HistoryFile = UploadHistory.DefaultFile,
+            ManifestDir = PackageDiffs.DefaultDir,
+            UploadUnchanged = AskUploadUnchanged,
             SteamCheck = Publisher.LiveSteamCheck,
             Credit = _s.UploadCredit,
         };
@@ -2374,6 +2376,24 @@ public sealed class MainForm : Form
         }
         else if (picked.Count > 1)
             MessageBox.Show(this, BatchUpload.Summary(results), Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    /// <summary>Asks whether to upload a package that is identical to the mod's last upload (true = upload anyway).</summary>
+    bool AskUploadUnchanged(ModInfo m, PackageDiff same)
+    {
+        if (InvokeRequired) return (bool)Invoke(() => AskUploadUnchanged(m, same));
+        var upload = new TaskDialogButton("Upload anyway");
+        var skip = new TaskDialogButton("Skip it");
+        var page = new TaskDialogPage
+        {
+            Caption = Text,
+            Heading = $"Nothing in {m.Name} changed",
+            Text = $"Every file in the package is the same as in {same.LastUpload}. Uploading it again only posts the change note to subscribers.",
+            Icon = TaskDialogIcon.Information,
+            Buttons = { skip, upload },
+            DefaultButton = skip,
+        };
+        return TaskDialog.ShowDialog(this, page) == upload;
     }
 
     /// <summary>The current mod, its package size, how long it has run and, from past uploads, about how long is left.</summary>
@@ -2597,7 +2617,7 @@ public sealed class MainForm : Form
     {
         if (_busy) return;
         PackageReport? report = null;
-        var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account);
+        var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account) { ManifestDir = PackageDiffs.DefaultDir };
         pub.Packaged += (_, r) => report = r;
         SetBusy(true);
         PublishResult res;
