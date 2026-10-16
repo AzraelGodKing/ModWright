@@ -7,6 +7,8 @@ sending anything, handles the Steam login, and shows progress bars and a live lo
 It works for **any game with a Steam Workshop**: you give it the game's Steam app ID and tell it how your
 mods are laid out. The upload logic is built in; the only outside tool it needs is SteamCMD.
 
+Releases are signed for free through SignPath; see the [Code signing policy](#code-signing-policy).
+
 SteamCMD Helper is an independent tool. It is not affiliated with or endorsed by Valve Corporation or Steam.
 Steam and SteamCMD are trademarks of Valve Corporation.
 
@@ -26,7 +28,9 @@ Each [GitHub Release](../../releases) has:
 - `SteamCmdHelper-<version>-win-x64.exe`: a single self-contained exe; no .NET install needed.
 - `SteamCmdHelper-<version>-win-x64-framework-dependent.zip`: a small folder build that needs the
   [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0). Use it if Windows or your antivirus
-  refuses to launch the large unsigned exe.
+  refuses to launch the large single-file exe.
+
+Both are built from this repository by GitHub Actions; see the [Code signing policy](#code-signing-policy).
 
 At start-up the app asks GitHub for the latest release and, when it is newer, offers **Update now**, **Release notes**,
 or **Later**, with a box to stop reminding you about that version. **Update now** downloads the release file that matches
@@ -431,6 +435,41 @@ The key is stored masked, but anyone with the exe could still extract it. Keep i
 - Headless checks: `SteamCmdHelper.exe [--repo <folder>] --selftest out.txt`, `... --package <ModFolder> out.txt`.
   `--shot <folder>` saves screenshots of the main window, the Options tab and the request form in both themes.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+Only files built from this repository by its release workflow (`.github/workflows/release.yml`, on GitHub-hosted
+runners) are signed: the standalone exe and the app's own exe and dll in the framework-dependent zip. The .NET runtime
+files inside them come from Microsoft and are not built by this project.
+
+**Team roles**
+
+- Committers and reviewers: [Azrael (AzraelGodKing)](https://github.com/AzraelGodKing). Changes from anyone else come
+  in as pull requests and are reviewed before they are merged.
+- Approvers: [Azrael (AzraelGodKing)](https://github.com/AzraelGodKing). Every release is approved by hand before it
+  is signed.
+
+**Privacy**
+
+This program will not transfer any information to other networked systems unless specifically requested by the user
+or the person installing or operating it. What it does connect to, and why:
+
+- **GitHub** ([privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement)):
+  at start-up it reads the public list of this project's releases to look for a newer version, and downloads the
+  release when you choose to update. Nothing about you or your mods is sent. Turn it off under **Options > About**
+  (**Check for a newer version at start-up**). Making a GitHub release for an upload (**Options > Announcements**) runs your
+  own `gh` tool, only when you turn it on for a mods folder.
+- **Steam** ([Valve privacy policy](https://store.steampowered.com/privacy_agreement/)): uploads go through Valve's
+  SteamCMD, which you sign in to yourself. The app reads public Workshop details and changelog pages for the Workshop ids
+  in your mods folder, looks up a game's name from its app ID when you enter one, and downloads SteamCMD from Valve when
+  you ask it to install it. Only the Workshop ids and app ID are sent.
+- **Linear** ([privacy policy](https://linear.app/privacy)): only when you press **Send** in the request form (or
+  **Report it** after a crash and then Send). It sends exactly the text shown in the form.
+- **Discord** ([privacy policy](https://discord.com/privacy)): only when you add a webhook link for a mods folder; after
+  an upload it posts the mod's name, Workshop link and change note there.
+
 ## Accessibility
 
 Every window is laid out at 100% and scaled to the display's DPI, so it stays readable at 150% and 200% scaling, and
@@ -469,18 +508,21 @@ builds, signs (when set up), and publishes the release. After a non-prerelease i
   with `public_repo`). The package must be in [winget-pkgs](https://github.com/microsoft/winget-pkgs) first: submit
   the manifests in `packaging/winget` once by hand (`wingetcreate submit packaging/winget`).
 
-### Code signing
+### Code signing (maintainer)
 
-Unsigned exes trip SmartScreen and some antivirus. The release signs the exe, and the files in the framework-dependent
-zip, through [SignPath](https://signpath.org) (free for open-source projects) when these are set:
+Unsigned exes trip SmartScreen and some antivirus. The release signs the exe, and the app's exe and dll in the
+framework-dependent zip, through [SignPath](https://signpath.org) (free for open-source projects) when these are set:
 
-- secret `SIGNPATH_API_TOKEN`
+- secret `SIGNPATH_API_TOKEN` (a SignPath CI user with submitter rights on the project)
 - variable `SIGNPATH_ORGANIZATION_ID`
 - optional variables `SIGNPATH_PROJECT_SLUG` (default `SteamCMDHelper`) and `SIGNPATH_POLICY_SLUG`
   (default `release-signing`)
 
-The SignPath project's artifact configuration should sign `standalone/SteamCmdHelper.exe` and
-`portable/SteamCmdHelper.exe` / `portable/SteamCmdHelper.dll`. Without the secret, releases are built unsigned as before.
+The SignPath project's artifact configuration is [packaging/signpath/artifact-configuration.xml](packaging/signpath/artifact-configuration.xml):
+it signs only files whose product name is `SteamCMD Helper` and whose product version is the release's version, which
+the workflow passes in. The project needs the GitHub trusted build system linked to it. Each release waits up to an
+hour for the signing request to be approved in SignPath; if nobody approves it, the release run fails and nothing is
+published. Without the secret, releases are built unsigned as before.
 
 ## License
 
