@@ -111,11 +111,43 @@ public static class GitOps
         return note.Length == 0 ? null : new CommitNote(note, source, note.Split('\n').Length);
     }
 
-    /// <summary>Tags HEAD. Returns null on success, "exists" when the tag is already there, else git's message.</summary>
-    public static string? Tag(string repo, string name, string message)
+    /// <summary>Tags <paramref name="commit"/> (HEAD by default). Returns null on success, "exists" when the tag is already there, else git's message.</summary>
+    public static string? Tag(string repo, string name, string message, string commit = "HEAD")
     {
         if (Run(repo, "rev-parse", "-q", "--verify", "refs/tags/" + name).code == 0) return "exists";
-        var r = Run(repo, "tag", "-a", name, "-m", message);
+        var r = Run(repo, "tag", "-a", name, "-m", message, commit);
         return r.code == 0 ? null : r.output;
+    }
+
+    /// <summary>True when <paramref name="gitRef"/> names a commit in the repo (a branch, tag or commit id).</summary>
+    public static bool RefExists(string repo, string gitRef) =>
+        gitRef.Length > 0 && !gitRef.StartsWith('-') && Run(repo, "rev-parse", "-q", "--verify", gitRef + "^{commit}").code == 0;
+
+    /// <summary>
+    /// The commit a past upload was made from: its upload tag (<see cref="TagName"/>) when that exists, else the newest
+    /// commit at the upload's time. Null when git has neither. The second value says which, for people.
+    /// </summary>
+    public static (string Ref, string Source)? FindUpload(string repo, string folder, string version, DateTimeOffset time)
+    {
+        var tag = TagName(folder, version);
+        if (RefExists(repo, "refs/tags/" + tag)) return ("refs/tags/" + tag, $"its upload tag {tag}");
+        var (code, output) = Run(repo, "rev-list", "-1", "--before=" + time.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"), "HEAD");
+        var commit = output.Trim();
+        return code == 0 && commit.Length >= 7 ? (commit, $"the newest commit on {time.ToLocalTime():d MMM yyyy HH:mm} ({commit[..7]}), as it has no upload tag") : null;
+    }
+
+    /// <summary>
+    /// The change note for re-uploading an old version: the old note marked as a roll-back. A note that starts with its
+    /// version (Add Changenote style) keeps the version first, so the Steam version column still reads it.
+    /// </summary>
+    public static string RollbackNote(string version, string oldNote)
+    {
+        var note = oldNote.Replace("\r\n", "\n").Trim();
+        if (version.Length > 0 && note.StartsWith(version))
+        {
+            var firstLine = note.Split('\n')[0];
+            return $"{firstLine} (rolled back to this version)" + note[firstLine.Length..];
+        }
+        return $"Rolled back to version {version}." + (note.Length > 0 ? "\n\n" + note : "");
     }
 }

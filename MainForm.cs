@@ -44,6 +44,10 @@ public sealed class MainForm : Form
         PlaceholderText = "{note}", AccessibleName = "Change note template for this mods folder",
     };
     readonly ComboBox _descSync = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, AccessibleName = "When a description file differs from Steam" };
+    readonly CheckBox _testItems = new() { AutoSize = true, Text = "Upload to t&est items" };
+    readonly TextBox _buildCmd = new() { Width = 420, PlaceholderText = "e.g. dotnet build -c Release", AccessibleName = "Build step for this mods folder" };
+    readonly TextBox _packageRef = new() { Width = 200, PlaceholderText = "the checked-out commit", AccessibleName = "Branch or tag to upload from" };
+    readonly CheckBox _autoRetry = new() { AutoSize = true, Text = "Try an update once more when Steam is busy or can't be reached (after 30 seconds)" };
     readonly CheckBox _commitIds = new() { AutoSize = true, Text = "Commit a new item's Workshop ID file without asking" };
     readonly System.Windows.Forms.Timer _clock = new() { Interval = 1000 };
     string _currentBase = "";
@@ -95,6 +99,7 @@ public sealed class MainForm : Form
     // "Get set up": the steps a new user still has to do, each a link that does it.
     readonly LinkLabel[] _steps = Enumerable.Range(0, 4).Select(_ => new LinkLabel { AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(0, 2, 24, 2) }.Role(ThemeRole.Keep)).ToArray();
 
+    Button _changed = null!;
     Button _help = null!, _checkUpdateNow = null!, _editPage = null!, _browse = null!, _refresh = null!, _all = null!, _none = null!, _go = null!, _cancel = null!, _retry = null!,
         _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!, _emptyBrowse = null!, _emptyLayout = null!, _emptyClear = null!;
     NavButton _navUpload = null!, _navOptions = null!;
@@ -198,6 +203,7 @@ public sealed class MainForm : Form
         _refresh = Btn("&Refresh", (_, _) => RefreshAll());
         _all = Btn("&Tick all", (_, _) => TickAll(true));
         _none = Btn("Tick &none", (_, _) => TickAll(false));
+        _changed = Btn("Tick c&hanged", (_, _) => TickChanged());
         _editPage = Btn("&Workshop page...", (_, _) => EditWorkshopPage(SelectedMod()));
         _go = Btn("Upload selected", async (_, _) => await GoAsync()).Role(ThemeRole.Accent);
         _go.Font = new Font(Font, FontStyle.Bold);
@@ -253,6 +259,17 @@ public sealed class MainForm : Form
         _loginLink.LinkClicked += (_, _) => ShowPage(_optionsPage);
         _profile.SelectedIndexChanged += (_, _) => { if (!_populating) SwitchProfile(); };
         _webhook.Leave += (_, _) => SaveAnnounce();
+        _buildCmd.Leave += (_, _) => { if (!_populating && Directory.Exists(_s.RepoPath)) { _s.SetBuild(_s.RepoPath, _buildCmd.Text); _s.Save(); } };
+        _packageRef.Leave += (_, _) =>
+        {
+            if (_populating || !Directory.Exists(_s.RepoPath)) return;
+            var r = _packageRef.Text.Trim();
+            if (r.Length > 0 && ModScanner.IsGitRepo(_s.RepoPath) && !GitOps.RefExists(_s.RepoPath, r))
+                Append($"\"{r}\" is not a branch or tag in this repo yet; uploads will stop until it exists.", LogKind.Warn);
+            _s.SetRef(_s.RepoPath, r);
+            _s.Save();
+            UpdateProjectCard();
+        };
         _ghReleases.CheckedChanged += (_, _) => { if (!_populating) SaveAnnounce(); };
         _tagUploads.CheckedChanged += (_, _) => { if (!_populating) { _s.TagUploads = _tagUploads.Checked; _s.Save(); } };
         _commitIds.CheckedChanged += (_, _) => { if (!_populating) { _s.CommitNewIds = _commitIds.Checked; _s.Save(); } };
@@ -402,7 +419,7 @@ public sealed class MainForm : Form
         listHost.Controls.Add(_empty);
         listHost.Controls.Add(_detail); // docked first, so it keeps its strip under the list
 
-        var mods = Card("Mods", new Control[] { _filter, _hideUpToDate, _editPage, _all, _none, _refresh }, listHost);
+        var mods = Card("Mods", new Control[] { _filter, _hideUpToDate, _editPage, _all, _changed, _none, _refresh }, listHost);
         mods.AutoSize = false; mods.Dock = DockStyle.Fill;
 
         // Only while uploading and afterwards (with the result); nothing to show before the first run.
@@ -415,11 +432,13 @@ public sealed class MainForm : Form
 
         _tip.SetToolTip(_loginLink, "Steam login settings are on the Options tab");
         _tip.SetToolTip(_all, "Tick every mod that is ready to upload, then upload them in one go");
+        _tip.SetToolTip(_changed, "Tick only the mods whose version Steam does not have yet (Changed, or not known)");
+        _tip.SetToolTip(_testItems, "Send the ticked mods to their private test copies on Steam instead of the real items, to check them in game first");
         _tip.SetToolTip(_dry, "Check everything and build the upload, but send nothing to Steam");
         _tip.SetToolTip(_allowCreate, "Mods that are not on Steam yet are created as new private Workshop items");
         _tip.SetToolTip(_go, "Upload the ticked mods (Ctrl+Enter)");
         _tip.SetToolTip(_retry, "Upload again only the mods that failed or were not reached in the last run");
-        var actions = Row(_dry, _allowCreate, _loginLink, _retry, _cancel, _go);
+        var actions = Row(_dry, _allowCreate, _testItems, _loginLink, _retry, _cancel, _go);
         actions.Margin = new Padding(0, 2, 0, 8);
 
         var top = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Margin = Padding.Empty, Padding = Padding.Empty };
@@ -618,6 +637,19 @@ public sealed class MainForm : Form
             Hint("The template is for the current mods folder: {note} is the changelog entry, and {name}, {version}, {date} and {game} fill themselves in " +
                  "(e.g. \"{version} ({date})\" on the first line, then {note}). Without {note} the entry goes after it. For RimWorld, start with {version}, " +
                  "so the Steam version column can still read it. All of this changes only the note on Steam; the upload history and Discord announcements keep the entry as written.")));
+
+        _autoRetry.Checked = _s.AutoRetry;
+        _autoRetry.CheckedChanged += (_, _) => { _s.AutoRetry = _autoRetry.Checked; _s.Save(); };
+        page.Controls.Add(Card("Uploading", null,
+            Row(Lbl("&Build step"), _buildCmd),
+            Hint("Run in the mods folder before anything is packaged, also for a dry run. If it fails, nothing is uploaded and its output is in the log. " +
+                 "Set for the current mods folder and kept in your settings, never in the repo."),
+            Row(Lbl("Upload &from"), _packageRef),
+            Hint("A git branch or tag to package instead of the checked-out commit (git packaging only), so a release branch can be uploaded while you work elsewhere. " +
+                 "The version and change note are then read from that branch."),
+            _autoRetry,
+            Hint("Upload to test items (next to Dry run) sends each ticked mod to its own private copy on Steam, created on first use and kept in " +
+                 ModInfo.TestIdFile + " in the mod folder (keep it out of git). Subscribers get nothing; page changes and records wait for the real upload.")));
 
         _webhookTest = Btn("Send t&est", async (_, _) => await TestWebhookAsync());
         page.Controls.Add(Card("Announcements", null,
@@ -1200,7 +1232,8 @@ public sealed class MainForm : Form
         if (complete)
         {
             var game = _cfg.GameName.Length > 0 ? $"{_cfg.GameName} ({_cfg.AppId})" : "app " + _cfg.AppId;
-            _projectSummary.Text = string.Join("   ·   ", new[] { Path.GetFileName(_s.RepoPath.TrimEnd('\\', '/')), game, _cfg.PresetName() + " layout", _branch.Text }.Where(t => t.Length > 0));
+            _projectSummary.Text = string.Join("   ·   ", new[] { Path.GetFileName(_s.RepoPath.TrimEnd('\\', '/')), game, _cfg.PresetName() + " layout", _branch.Text,
+                _s.RefFor(_s.RepoPath) is { Length: > 0 } from ? "uploads from " + from : "" }.Where(t => t.Length > 0));
             _tip.SetToolTip(_projectSummary, _s.RepoPath + "\n" + _game.Text + "\nClick to change the mods folder, app ID or layout.");
         }
         ResumeLayout(true);
@@ -1667,11 +1700,33 @@ public sealed class MainForm : Form
         split.Panel1.Controls.Add(list);
         split.Panel2.Controls.Add(note);
         f.Controls.Add(split);
+
+        // Roll back: package the commit an old upload came from and send it again, marked as a roll-back.
+        var canRollBack = _cfg.UseGitArchive && ModScanner.IsGitRepo(_s.RepoPath);
+        var again = new Button { Text = "&Upload this version again...", AutoSize = true, Padding = new Padding(8, 2, 8, 2), Enabled = false };
+        _tip.SetToolTip(again, canRollBack ? "Re-upload the selected version from git, to roll back a bad update"
+            : "Rolling back needs a git repo and git packaging, to get the old files back");
+        list.SelectedIndexChanged += (_, _) => again.Enabled = canRollBack && !_busy && list.SelectedItems.Count == 1 && list.SelectedIndices[0] > 0;
+        (string Ref, string Version, string Note)? chosen = null;
+        again.Click += (_, _) =>
+        {
+            if (list.SelectedItems.Count != 1 || list.SelectedItems[0].Tag is not UploadEntry e) return;
+            var found = GitOps.FindUpload(_s.RepoPath, m.Folder, e.Version, e.Time);
+            if (found is not { } at) { MessageBox.Show(f, "git has no commit from the time of that upload, so it cannot be uploaded again.", Text); return; }
+            var ask = $"Upload {m.Name} {e.Version} again from {at.Source}?\n\nSubscribers get those files with the note \"rolled back\". " +
+                      "The working folder is not changed; raise the version afterwards for the next real update.";
+            if (MessageBox.Show(f, ask, Text, MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            chosen = (at.Ref, e.Version, GitOps.RollbackNote(e.Version, e.ChangeNote));
+            f.DialogResult = DialogResult.OK;
+        };
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(4) };
+        bar.Controls.Add(again);
+        if (entries.Count > 1) f.Controls.Add(bar);
         if (entries.Count == 0) f.Controls.Add(empty);
         else list.Items[0].Selected = true;
         f.Load += (_, _) => split.SplitterDistance = split.Height / 2;
         Theme.Apply(f);
-        f.ShowDialog(this);
+        if (f.ShowDialog(this) == DialogResult.OK && chosen is { } go) _ = GoAsync(new List<ModInfo> { m }, go);
     }
 
     void OnListDoubleClick(object? sender, MouseEventArgs e)
@@ -1836,6 +1891,20 @@ public sealed class MainForm : Form
     }
 
     /// <summary>Ticks every shown mod that can be picked (the same rules as ticking by hand), or clears them all.</summary>
+    /// <summary>Ticks the mods whose version Steam does not have yet (Changed, or on Steam with the version not known), like upload --changed.</summary>
+    void TickChanged()
+    {
+        if (_busy) return;
+        _list.BeginUpdate();
+        foreach (var it in _rows)
+        {
+            var m = (ModInfo)it.Tag!;
+            it.Checked = m.OnSteam && CanTick(m) && StateOf(it) is RowState.Changed or RowState.Ready;
+        }
+        _list.EndUpdate();
+        UpdateGoButton();
+    }
+
     void TickAll(bool on)
     {
         if (_busy) return;
@@ -1871,7 +1940,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _filter, _hideUpToDate, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _filter, _hideUpToDate, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _testItems, _changed, _buildCmd, _packageRef, _autoRetry })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -2264,34 +2333,50 @@ public sealed class MainForm : Form
         await GoAsync();
     }
 
-    async Task GoAsync()
+    /// <param name="only">Upload these mods instead of the ticked ones.</param>
+    /// <param name="rollback">Re-upload a past version: the commit to package and the note to send.</param>
+    async Task GoAsync(List<ModInfo>? only = null, (string Ref, string Version, string Note)? rollback = null)
     {
         SaveFields();
-        var picked = Selected().ToList();
+        var picked = only ?? Selected().ToList();
         if (picked.Count == 0) return;
         if (!_cfg.AppIdValid) { Nudge(_appId, _projectNote, "Enter the game's Steam app ID first (the number in its store page URL)."); return; }
         if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { Nudge(_install, _accountNote, "SteamCMD is not installed yet. Press Install SteamCMD below."); return; }
 
-        if (_s.DescriptionSync != DescriptionSync.Never && Directory.Exists(_s.RepoPath)) await OfferDescriptionsAsync(picked);
-
         var dry = _dry.Checked;
+        var test = _testItems.Checked && rollback == null;
+        // Test items keep their own page, and a roll back sends the old version as it was.
+        if (!test && rollback == null && _s.DescriptionSync != DescriptionSync.Never && Directory.Exists(_s.RepoPath)) await OfferDescriptionsAsync(picked);
+        var gitPackaging = _cfg.UseGitArchive && ModScanner.IsGitRepo(_s.RepoPath);
+        var gitRef = rollback?.Ref ?? (_s.RefFor(_s.RepoPath) is { Length: > 0 } fromRef ? fromRef : null);
+        if (gitRef != null && gitPackaging && !GitOps.RefExists(_s.RepoPath, gitRef))
+        {
+            ShowPage(_optionsPage);
+            MessageBox.Show(this, $"\"{gitRef}\" is not a branch, tag or commit in this repo, so nothing can be packaged from it. Change Upload from under Options > Uploading.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
         var actions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var notes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         // Steam already has the version to upload: usually the version was not raised after the last upload.
-        var sameVersion = _rows.Where(it => it.Checked && StateOf(it) == RowState.UpToDate).Select(it => (ModInfo)it.Tag!).ToList();
+        var sameVersion = only != null || test ? new List<ModInfo>()
+            : _rows.Where(it => it.Checked && StateOf(it) == RowState.UpToDate).Select(it => (ModInfo)it.Tag!).ToList();
         var checkFirst = sameVersion.Select(m => $"Steam already has {m.Name} v{m.Version}. Raise the version first (F2) if this upload changes anything, or players can't tell the updates apart.").ToList();
         foreach (var m in picked)
         {
             var pageEdit = WorkshopPage.Get(m.Dir);
             var create = "NEW " + WorkshopPage.VisibilityName(pageEdit?.Visibility ?? WorkshopPage.Private).ToLowerInvariant() + " item";
-            actions[m.Dir] = (m.OnSteam ? "update " + m.WorkshopId : create)
-                + (pageEdit != null && m.OnSteam ? "; also page: " + pageEdit.Summary() : "")
-                + (m.Warnings.Count > 0 ? "  (" + m.Warnings[0] + ")" : "");
-            notes[m.Dir] = Publisher.NotesFor(m, _cfg);
+            actions[m.Dir] = test
+                ? (m.TestWorkshopId != null ? "update test item " + m.TestWorkshopId : "NEW private test item")
+                : (m.OnSteam ? "update " + m.WorkshopId : create)
+                    + (pageEdit != null && m.OnSteam ? "; also page: " + pageEdit.Summary() : "")
+                    + (rollback is { } rb ? $"; roll back to v{rb.Version}" : gitRef != null && gitPackaging ? "; from " + gitRef : "")
+                    + (m.Warnings.Count > 0 ? "  (" + m.Warnings[0] + ")" : "");
+            notes[m.Dir] = rollback?.Note ?? Publisher.NotesFor(m, _cfg);
             if (sameVersion.Contains(m)) actions[m.Dir] = "same version as on Steam; " + actions[m.Dir];
         }
-        var heading = dry ? "Dry run for:" : $"Publish to the Steam Workshop ({(_cfg.GameName.Length > 0 ? _cfg.GameName : "app " + _cfg.AppId)}):";
-        var gitPackaging = _cfg.UseGitArchive && ModScanner.IsGitRepo(_s.RepoPath);
+        var heading = dry ? "Dry run for:"
+            : test ? "Upload to TEST items (private copies on Steam; subscribers get nothing):"
+            : $"Publish to the Steam Workshop ({(_cfg.GameName.Length > 0 ? _cfg.GameName : "app " + _cfg.AppId)}):";
         Dictionary<string, string> edited;
         bool commitFirst;
         using (var confirm = new ConfirmUploadForm(heading, picked, actions, notes, dry, gitPackaging, DraftNoteFn(), checkFirst))
@@ -2312,12 +2397,26 @@ public sealed class MainForm : Form
             if (warn != DialogResult.Yes) return;
         }
 
+        if (_s.BuildFor(_s.RepoPath) is { Length: > 0 } build)
+        {
+            _cts = new CancellationTokenSource();
+            SetBusy(true);
+            bool built;
+            try { built = await BuildStep.RunCheckedAsync(_s.RepoPath, build, l => Append(l, Display.KindOf(l)), _cts.Token); }
+            catch (OperationCanceledException) { built = false; Append("Build step cancelled; nothing was uploaded.", LogKind.Warn); }
+            finally { SetBusy(false); _cts.Dispose(); _cts = null; }
+            if (!built) { Say("The build step failed, so nothing was uploaded."); return; }
+            RefreshAll();
+        }
+
         if (!dry && !await LoginFlowAsync()) { Append("Stopped: not logged in to Steam.", LogKind.Warn); return; }
 
         var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account)
         {
             PageEdits = m => WorkshopPage.Get(m.Dir),
-            NoteOverride = m => edited.TryGetValue(m.Dir, out var n) ? n : null,
+            NoteOverride = m => edited.TryGetValue(m.Dir, out var n) ? n : rollback?.Note,
+            GitRef = gitRef,
+            TestItems = test,
             HistoryFile = UploadHistory.DefaultFile,
             ManifestDir = PackageDiffs.DefaultDir,
             UploadUnchanged = AskUploadUnchanged,
@@ -2338,7 +2437,8 @@ public sealed class MainForm : Form
         pub.Stage += (t, p) => BeginInvoke(() => SetStage(t, p));
 
         // One login check above covers the batch; each mod then reuses Steam's saved login.
-        var batch = new BatchUpload(pub);
+        var batch = new BatchUpload(pub) { RetryAfter = _s.AutoRetry ? TimeSpan.FromSeconds(30) : null };
+        batch.Retrying += (m, why, wait) => Append($"{m.Name}: Steam was busy or could not be reached ({why}). Trying again in {wait.TotalSeconds:0} seconds...", LogKind.Warn);
         batch.Starting += (m, i, n) =>
         {
             _idx = i;
@@ -2366,7 +2466,7 @@ public sealed class MainForm : Form
         _idx = 0;
         _count = picked.Count;
         Taskbar.Progress(this, 0);
-        var uploadedCommit = gitPackaging ? ModScanner.Git(_s.RepoPath, "rev-parse HEAD").Trim() : "";
+        var uploadedCommit = gitPackaging ? ModScanner.Git(_s.RepoPath, $"rev-parse {gitRef ?? "HEAD"}^{{commit}}").Trim() : "";
         string NoteSent(ModInfo m) => edited.TryGetValue(m.Dir, out var n) ? n : notes[m.Dir];
         List<BatchItem> results;
         _clock.Start();
@@ -2378,7 +2478,7 @@ public sealed class MainForm : Form
             SetBusy(false);
         }
         // Page changes went out with each successful upload.
-        if (!dry) foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created)) WorkshopPage.Clear(r.Mod.Dir);
+        if (!dry && !test) foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created)) WorkshopPage.Clear(r.Mod.Dir);
         _failed.Clear(); _retrySet.Clear();
         foreach (var r in results.Where(r => !r.Ok))
         {
@@ -2393,8 +2493,8 @@ public sealed class MainForm : Form
         Append(BatchUpload.Summary(results), allOk ? LogKind.Ok : LogKind.Warn);
         Taskbar.Progress(this, 100, allOk ? Taskbar.State.None : Taskbar.State.Error);
         Taskbar.FlashIfInBackground(this);
-        if (!dry) AfterUploadGit(results);
-        if (!dry) await AnnounceAsync(results, NoteSent, uploadedCommit);
+        if (!dry && !test) AfterUploadGit(results, uploadedCommit);
+        if (!dry && !test) await AnnounceAsync(results, NoteSent, uploadedCommit);
         RefreshAll();
         if (!allOk)
         {
@@ -2522,7 +2622,7 @@ public sealed class MainForm : Form
     /// After an upload in a git repo: offers to commit the id files of newly created items (so they are never created
     /// twice), and tags what was uploaded when that option is on.
     /// </summary>
-    void AfterUploadGit(List<BatchItem> results)
+    void AfterUploadGit(List<BatchItem> results, string uploaded)
     {
         if (!ModScanner.IsGitRepo(_s.RepoPath)) return;
         var created = results.Where(r => r.Status == BatchStatus.Created).ToList();
@@ -2559,8 +2659,8 @@ public sealed class MainForm : Form
         if (!_cfg.UseGitArchive) { Append("Not tagging: this layout copies the working folder, so no commit matches what was uploaded.", LogKind.Note); return; }
         foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created))
         {
-            var tag = GitOps.TagName(r.Mod.Folder, r.Mod.Version);
-            var result = GitOps.Tag(_s.RepoPath, tag, $"{r.Mod.Name} {r.Mod.Version} uploaded to Steam Workshop item {r.WorkshopId}");
+            var tag = GitOps.TagName(r.Mod.Folder, r.Version);
+            var result = GitOps.Tag(_s.RepoPath, tag, $"{r.Mod.Name} {r.Version} uploaded to Steam Workshop item {r.WorkshopId}", uploaded.Length > 0 ? uploaded : "HEAD");
             if (result == null) Append($"Tagged {tag}.", LogKind.Ok);
             else if (result == "exists") Append($"Tag {tag} already exists; left as it is.", LogKind.Note);
             else Append($"Could not tag {tag}: {result}", LogKind.Warn);
@@ -2629,6 +2729,9 @@ public sealed class MainForm : Form
         _webhook.Text = hasRepo ? _s.WebhookFor(_s.RepoPath) : "";
         _noteTemplate.Text = hasRepo ? _s.TemplateFor(_s.RepoPath).Replace("\n", "\r\n") : "";
         _noteTemplate.Enabled = hasRepo && !_busy;
+        _buildCmd.Text = hasRepo ? _s.BuildFor(_s.RepoPath) : "";
+        _packageRef.Text = hasRepo ? _s.RefFor(_s.RepoPath) : "";
+        _buildCmd.Enabled = _packageRef.Enabled = hasRepo && !_busy;
         _ghReleases.Checked = hasRepo && _s.GitHubReleasesFor(_s.RepoPath);
         _webhook.Enabled = _ghReleases.Enabled = _webhookTest.Enabled = hasRepo && !_busy;
         _populating = false;
@@ -2670,15 +2773,15 @@ public sealed class MainForm : Form
         if (hook.Length > 0)
             foreach (var r in done)
             {
-                var error = await Announce.PostDiscordAsync(hook, Announce.DiscordPayload(r.Mod.Name, r.Mod.Version, r.WorkshopId!, noteOf(r.Mod), _cfg.GameName));
-                Append(error == null ? $"Announced {r.Mod.Name} {r.Mod.Version} on Discord." : $"Could not announce {r.Mod.Name} on Discord: {error}", error == null ? LogKind.Ok : LogKind.Warn);
+                var error = await Announce.PostDiscordAsync(hook, Announce.DiscordPayload(r.Mod.Name, r.Version, r.WorkshopId!, noteOf(r.Mod), _cfg.GameName));
+                Append(error == null ? $"Announced {r.Mod.Name} {r.Version} on Discord." : $"Could not announce {r.Mod.Name} on Discord: {error}", error == null ? LogKind.Ok : LogKind.Warn);
             }
         if (!_s.GitHubReleasesFor(_s.RepoPath)) return;
         if (commit.Length == 0) { Append("No GitHub release: this layout does not upload a git commit.", LogKind.Note); return; }
         foreach (var r in done)
         {
-            var tag = GitOps.TagName(r.Mod.Folder, r.Mod.Version);
-            var title = $"{r.Mod.Name} {r.Mod.Version}";
+            var tag = GitOps.TagName(r.Mod.Folder, r.Version);
+            var title = $"{r.Mod.Name} {r.Version}";
             var note = noteOf(r.Mod) + $"\n\nSteam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id={r.WorkshopId}";
             try
             {

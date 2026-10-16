@@ -5,8 +5,8 @@ public sealed class CliOptions
 {
     public string Command = "help";
     public readonly List<string> Mods = new();
-    public bool All, Changed, Json, DryRun, AllowCreate, AllowExperimental, CheckOnly;
-    public string? Repo, Account, SteamCmd, LogFile, Note;
+    public bool All, Changed, Json, DryRun, AllowCreate, AllowExperimental, CheckOnly, Test, NoBuild;
+    public string? Repo, Account, SteamCmd, LogFile, Note, Ref;
     /// <summary>Set when the arguments could not be understood; the command is then not run.</summary>
     public string? Error;
 }
@@ -45,6 +45,10 @@ public static class Cli
           --dry-run              check and package only, upload nothing
           --allow-create         allow creating new PRIVATE Workshop items for mods not on Steam yet
           --allow-experimental   allow real uploads with an experimental layout
+          --ref <branch|tag>     package this git branch, tag or commit instead of the checked-out one
+                                 (default: Upload from in the window's Options)
+          --test                 upload to each mod's private test item instead of the real one
+          --no-build             skip the mods folder's build step (Options > Uploading)
           --log <file>           also write everything printed to this file
 
         The Steam login must already be saved: log in once from the window (Options > Log in...).
@@ -86,6 +90,9 @@ public static class Cli
                 case "--log": o.LogFile = Value(); break;
                 case "--note": o.Note = Value(); break;
                 case "--check": o.CheckOnly = true; break;
+                case "--ref": o.Ref = Value(); break;
+                case "--test": o.Test = true; break;
+                case "--no-build": o.NoBuild = true; break;
                 default:
                     if (a.StartsWith("--")) o.Error ??= $"Unknown option {a}.";
                     else o.Mods.Add(a);
@@ -96,6 +103,7 @@ public static class Cli
         if (o.Error != null) return o;
         if (o.Changed && o.Command != "upload") { o.Error = "--changed only goes with \"upload\"."; return o; }
         if (o.Json && o.Command != "list") { o.Error = "--json only goes with \"list\"."; return o; }
+        if ((o.Ref != null || o.Test || o.NoBuild) && o.Command != "upload") { o.Error = "--ref, --test and --no-build only go with \"upload\"."; return o; }
         if (o.Command == "version")
         {
             if (o.Mods.Count < 2) o.Error = "Name the mods, then the new version: patch, minor, major or a number such as 1.4.0.";
@@ -226,9 +234,13 @@ public static class Cli
     /// <param name="credit">End change notes with <see cref="Publisher.CreditLine"/> (the app passes its Options setting).</param>
     /// <param name="noteTemplate">The mods folder's change note template; <paramref name="markdown"/> converts .md notes to BBCode.</param>
     /// <param name="syncDescriptions">Send each mod's changed description file with its upload (Options: Always send it).</param>
+    /// <param name="buildCommand">The mods folder's build step, run before packaging unless --no-build.</param>
+    /// <param name="defaultRef">The branch or tag to upload from when --ref is not given; null for the checked-out commit.</param>
+    /// <param name="retryAfter">Wait before trying an update again when Steam was busy; null never retries.</param>
     public static async Task<int> RunAsync(CliOptions o, string repo, string steamCmd, string account, TextWriter output,
         CancellationToken ct, string? recordPath = null, string? tempRoot = null, bool credit = false,
-        string? noteTemplate = null, bool markdown = false, bool syncDescriptions = false)
+        string? noteTemplate = null, bool markdown = false, bool syncDescriptions = false,
+        string? buildCommand = null, string? defaultRef = null, TimeSpan? retryAfter = null)
     {
         void Say(string s) => output.WriteLine(s);
 
@@ -310,11 +322,19 @@ public static class Cli
         if (picked.Count == 0) { Say("Nothing to upload."); return ExitUsage; }
 
         if (!cfg.AppIdValid) { Say("Error: the Steam app ID is not set. Set it in the window or in " + ProjectConfig.FileName + "."); return ExitUsage; }
+        var gitRef = o.Ref ?? (string.IsNullOrWhiteSpace(defaultRef) ? null : defaultRef);
+        if (gitRef != null && cfg.UseGitArchive && ModScanner.IsGitRepo(repo) && !GitOps.RefExists(repo, gitRef))
+        {
+            Say($"Error: \"{gitRef}\" is not a branch, tag or commit in {repo}.");
+            return ExitUsage;
+        }
         if (!o.DryRun && cfg.Experimental && !o.AllowExperimental)
         {
             Say($"Error: the \"{cfg.PresetName()}\" layout is experimental. Try a new private item first; add --allow-experimental to upload anyway.");
             return ExitUsage;
         }
+
+        if (!o.NoBuild && !await BuildStep.RunCheckedAsync(repo, buildCommand, Say, ct)) return ExitFailed;
 
         // ---- one login check for the whole batch
         if (!o.DryRun)
@@ -334,14 +354,14 @@ public static class Cli
         }
 
         var sentDescriptions = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(historyFile))!, "descriptions.json");
-        if (syncDescriptions && !o.DryRun)
+        if (syncDescriptions && !o.DryRun && !o.Test)
         {
             var changed = await DescriptionSync.FindChangedAsync(picked, cfg, recordPath == null ? DescriptionSync.FetchFromSteam : (_, _) => Task.FromResult<string?>(null), sentDescriptions, ct);
             DescriptionSync.Stage(changed);
             foreach (var (m, _) in changed) Say($"{m.Folder}: {cfg.SteamDescriptionFile} changed, so the new description goes out with the upload.");
         }
 
-        Say((o.DryRun ? "Dry run of " : "Uploading ") + $"{picked.Count} mod{(picked.Count == 1 ? "" : "s")}.");
+        Say((o.DryRun ? "Dry run of " : "Uploading ") + $"{picked.Count} mod{(picked.Count == 1 ? "" : "s")}" + (o.Test ? " to their test items." : "."));
         // Workshop page changes saved in the window go out with the next upload, from here too.
         var pub = new Publisher(repo, cfg, steamCmd, account, tempRoot)
         {
@@ -354,16 +374,21 @@ public static class Cli
             Credit = credit,
             NoteTemplate = noteTemplate,
             MarkdownToSteam = markdown,
+            GitRef = gitRef,
+            TestItems = o.Test,
         };
         pub.Log += l => Say("    " + l);
-        var batch = new BatchUpload(pub, recordPath);
+        var batch = new BatchUpload(pub, recordPath) { RetryAfter = retryAfter };
+        batch.Retrying += (m, why, wait) => Say($"    Steam was busy or could not be reached ({why}). Trying {m.Folder} again in {wait.TotalSeconds:0} seconds...");
         batch.Starting += (m, i, n) => Say($"--- {m.Name} v{m.Version} ({i + 1} of {n}) ---");
         var results = await batch.RunAsync(picked, !o.DryRun, ct);
-        if (!o.DryRun) foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created)) WorkshopPage.Clear(r.Mod.Dir);
+        if (!o.DryRun && !o.Test) foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created)) WorkshopPage.Clear(r.Mod.Dir);
 
         Say("");
         Say(BatchUpload.Summary(results));
-        if (results.Any(r => r.Status == BatchStatus.Created))
+        if (o.Test && results.Any(r => r.Status == BatchStatus.Created))
+            Say("New test items are PRIVATE and their ids were saved to " + ModInfo.TestIdFile + " in each mod folder: keep that file out of git.");
+        else if (results.Any(r => r.Status == BatchStatus.Created))
             Say("New items are PRIVATE and their ids were saved to " + cfg.WorkshopIdFile + ": commit them.");
         return results.All(r => r.Ok) ? ExitOk : ExitFailed;
     }

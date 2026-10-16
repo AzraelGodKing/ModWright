@@ -6,7 +6,8 @@ using System.Text.RegularExpressions;
 namespace SteamCmdHelper;
 
 /// <param name="Skipped">Nothing was sent because the user chose not to upload an unchanged package (counts as OK).</param>
-public sealed record PublishResult(bool Ok, string Message, string? NewId = null, bool Skipped = false);
+/// <param name="Version">The version that was sent, when it differs from the mod's (an upload from an older git ref).</param>
+public sealed record PublishResult(bool Ok, string Message, string? NewId = null, bool Skipped = false, string? Version = null);
 
 /// <summary>
 /// Packages one mod, writes the SteamCMD build file and runs the upload. Updates send the content and the change note,
@@ -69,6 +70,16 @@ public sealed class Publisher
     public Func<ModInfo, PackageDiff, bool>? UploadUnchanged { get; set; }
     /// <summary>When set, a description sent with an upload is remembered here (<see cref="DescriptionSync"/>).</summary>
     public string? SentDescriptions { get; init; }
+    /// The git branch, tag or commit to package instead of HEAD (git packaging only); null packages HEAD. The version
+    /// and change note are then read from that commit, not from the working folder.
+    /// </summary>
+    public string? GitRef { get; init; }
+
+    /// <summary>
+    /// Upload to each mod's private test item (<see cref="ModInfo.TestWorkshopId"/>, created when missing) instead of its
+    /// real one. Page changes, the upload history and the other records are left alone.
+    /// </summary>
+    public bool TestItems { get; init; }
 
     /// <summary>When set, each successful upload is added to this <see cref="UploadHistory"/> file.</summary>
     public string? HistoryFile { get; init; }
@@ -98,20 +109,20 @@ public sealed class Publisher
     void Say(string s) => Log?.Invoke(s);
     void At(string s, int pct) => Stage?.Invoke(s, pct);
 
+    /// <summary>True when <see cref="GitRef"/> applies: one is set and the layout packages with git.</summary>
+    bool FromRef => GitRef != null && _cfg.UseGitArchive && ModScanner.IsGitRepo(_repo);
+
     public async Task<PublishResult> RunAsync(ModInfo m, bool upload, CancellationToken ct)
     {
+        if (TestItems) m = m.AsTestItem();
         At("Reading changelog...", 5);
         var typed = NoteOverride?.Invoke(m);
         var notes = typed ?? NotesFor(m, _cfg);
+        var version = m.Version;
         if (!_cfg.AppIdValid) return new PublishResult(false, "The Steam app ID is not set. Enter the game's app ID in the window first.");
-        if (_cfg.ChangelogByVersion && notes.Length == 0 && typed == null)
+        if (GitRef != null && !FromRef) Say($"Note: \"{GitRef}\" is a git ref, but this layout does not package with git, so the working folder is uploaded.");
+        if (_cfg.ChangelogByVersion && notes.Length == 0 && typed == null && !FromRef)
             return new PublishResult(false, $"{_cfg.Changelog} has no entry for version {(m.Version.Length > 0 ? m.Version : "(unknown)")}.");
-        var shaped = Shape(m, notes);
-        var sent = Credit ? shaped + (shaped.Length > 0 ? "\n\n" : "") + CreditLine : shaped;
-        if (sent.Length > 7900)
-            sent = shaped.Substring(0, 7900 - (Credit ? CreditLine.Length + 2 : 0)) + "\n[i]...see the full changelog on the project page.[/i]"
-                + (Credit ? "\n" + CreditLine : "");
-
         SweepStale(_tempRoot, StaleAfter);
         var stageRoot = Path.Combine(_tempRoot, StagePrefix + Guid.NewGuid().ToString("N"));
         var stage = Path.Combine(stageRoot, ProjectConfig.Norm(m.RelPath));
@@ -124,6 +135,23 @@ public sealed class Publisher
         {
             At("Packaging...", 10);
             await PackageAsync(m, stageRoot, stage, ct);
+            File.Delete(Path.Combine(stage, ModInfo.TestIdFile)); // a test item's id is for this PC, not for players
+
+            // From another commit, the version and change note are that commit's, read from the package.
+            if (FromRef)
+            {
+                version = ModScanner.VersionIn(stage, _cfg) ?? m.Version;
+                if (typed == null) notes = NotesFor(new ModInfo { Dir = stage, Version = version }, _cfg);
+                if (_cfg.ChangelogByVersion && notes.Length == 0 && typed == null)
+                    return new PublishResult(false, $"{_cfg.Changelog} at {GitRef} has no entry for version {(version.Length > 0 ? version : "(unknown)")}.");
+                Say($"Packaged {m.Name} from {GitRef} (version {(version.Length > 0 ? version : "unknown")}).");
+            }
+            // The template's {version} is the version sent, which differs from the mod's for an older git ref.
+            var shaped = Shape(version == m.Version ? m : new ModInfo { Name = m.Name, Version = version }, notes);
+            var sent = Credit ? shaped + (shaped.Length > 0 ? "\n\n" : "") + CreditLine : shaped;
+            if (sent.Length > 7900)
+                sent = shaped.Substring(0, 7900 - (Credit ? CreditLine.Length + 2 : 0)) + "\n[i]...see the full changelog on the project page.[/i]"
+                    + (Credit ? "\n" + CreditLine : "");
 
             var report = PackageCheck.Inspect(stage, hash: ManifestDir != null);
             var last = ManifestDir != null && m.OnSteam ? PackageDiffs.Load(ManifestDir, m.WorkshopId!) : null;
@@ -141,7 +169,8 @@ public sealed class Publisher
                 foreach (var w in diff.Warnings()) Say("Warning: the package " + w + ".");
             }
 
-            var page = PageEdits?.Invoke(m);
+            // A test item gets no page changes: they are meant for the real item's next upload.
+            var page = TestItems ? new WorkshopPageEdit { Title = m.Name + " (test)" } : PageEdits?.Invoke(m);
             if (page != null && WorkshopPage.Validate(page) is { } bad) return new PublishResult(false, "Workshop page: " + bad);
             string extra;
             var visibility = page?.Visibility ?? WorkshopPage.Private;
@@ -170,13 +199,14 @@ public sealed class Publisher
             await File.WriteAllTextAsync(vdfPath, vdf, new UTF8Encoding(false), ct);
 
             if (m.OnSteam && page != null) Say("Workshop page changes: " + page.Summary());
-            Say($"{(m.OnSteam ? "Workshop id " + m.WorkshopId : $"New {WorkshopPage.VisibilityName(visibility).ToLowerInvariant()} item")} | version {m.Version} | {report.Files.Count} files, {report.MegaBytes} MB | notes {notes.Length} chars");
+            Say($"{(m.OnSteam ? "Workshop id " + m.WorkshopId : $"New {WorkshopPage.VisibilityName(visibility).ToLowerInvariant()} item")} | version {version} | {report.Files.Count} files, {report.MegaBytes} MB | notes {notes.Length} chars"
+                + (TestItems ? " | TEST item" : ""));
             At("Package ready", 20);
 
             if (!upload)
             {
                 Say("Dry run: nothing uploaded. The package was built and checked, then removed.");
-                return new PublishResult(true, "Dry run OK");
+                return new PublishResult(true, "Dry run OK", null, Version: version != m.Version ? version : null);
             }
 
             if (report.Diff is { Identical: true } same && page == null)
@@ -240,12 +270,13 @@ public sealed class Publisher
                 return new PublishResult(false, msg, newId);
             }
 
-            if (newId != null) Say($"Created {m.Name} {m.Version} as {WorkshopPage.VisibilityName(visibility).ToUpperInvariant()} item {newId}. Saved to {_cfg.WorkshopIdFile} (commit it).");
-            else Say($"Uploaded {m.Name} {m.Version}");
+            if (newId != null && TestItems) Say($"Created a PRIVATE test item {newId} for {m.Name} {version}. Saved to {ModInfo.TestIdFile} in the mod folder (keep it out of git).");
+            else if (newId != null) Say($"Created {m.Name} {version} as {WorkshopPage.VisibilityName(visibility).ToUpperInvariant()} item {newId}. Saved to {_cfg.WorkshopIdFile} (commit it).");
+            else Say($"Uploaded {m.Name} {version}" + (TestItems ? $" to its test item {m.WorkshopId}" : ""));
 
-            if ((m.WorkshopId ?? newId) is { } id)
+            if (!TestItems && (m.WorkshopId ?? newId) is { } id)
             {
-                if (HistoryFile != null) UploadHistory.Add(new UploadEntry(DateTimeOffset.UtcNow, id, m.Name, m.Version, notes, newId != null, _cfg.AppId,
+                if (HistoryFile != null) UploadHistory.Add(new UploadEntry(DateTimeOffset.UtcNow, id, m.Name, version, notes, newId != null, _cfg.AppId,
                     report.TotalBytes, (DateTimeOffset.UtcNow - started).TotalSeconds), HistoryFile);
                 WorkshopStatus.Forget(id);
                 if (ManifestDir != null) PackageDiffs.Save(ManifestDir, id, new PackageManifest(DateTimeOffset.UtcNow, m.Version, report.Files.ToList()));
@@ -253,7 +284,7 @@ public sealed class Publisher
             }
 
             At("Uploaded", 100);
-            return new PublishResult(true, outcome.Reason, newId);
+            return new PublishResult(true, outcome.Reason, newId, Version: version != m.Version ? version : null);
         }
         finally
         {
@@ -288,6 +319,11 @@ public sealed class Publisher
 
     async Task SaveIdAsync(ModInfo m, string id, CancellationToken ct)
     {
+        if (m.IsTest)
+        {
+            await File.WriteAllTextAsync(Path.Combine(m.Dir, ModInfo.TestIdFile), id, new UTF8Encoding(false), ct);
+            return;
+        }
         var idFile = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.WorkshopIdFile));
         Directory.CreateDirectory(Path.GetDirectoryName(idFile)!);
         var text = id;
@@ -315,8 +351,10 @@ public sealed class Publisher
         if (_cfg.UseGitArchive && ModScanner.IsGitRepo(_repo))
         {
             var zip = Path.Combine(stageRoot, "package.zip");
-            var code = await RunProcAsync("git", new[] { "archive", "--format=zip", "-o", zip, "HEAD", m.RelPath }, _repo, Say, ct);
-            if (code != 0 || !File.Exists(zip)) throw new InvalidOperationException("git archive failed. Is this mod committed?");
+            var commit = GitRef ?? "HEAD";
+            var code = await RunProcAsync("git", new[] { "archive", "--format=zip", "-o", zip, commit, "--", m.RelPath }, _repo, Say, ct);
+            if (code != 0 || !File.Exists(zip))
+                throw new InvalidOperationException(GitRef != null ? $"git archive of {GitRef} failed. Does that branch, tag or commit exist, and does it have this mod?" : "git archive failed. Is this mod committed?");
             ZipFile.ExtractToDirectory(zip, stageRoot, true);
             File.Delete(zip);
             if (!Directory.Exists(stage)) throw new InvalidOperationException("git archive produced nothing for " + m.Folder + ". Commit the mod first.");
@@ -326,9 +364,13 @@ public sealed class Publisher
             CopyDir(m.Dir, stage, _cfg.Exclude ?? Array.Empty<string>());
         }
 
-        // Build outputs usually are not tracked by git, so take them from the working tree.
+        // Build outputs usually are not tracked by git, so take them from the working tree. From another commit, ones
+        // that commit has are kept; the working tree's would belong to different code.
         foreach (var glob in _cfg.BuiltFiles ?? Array.Empty<string>())
         {
+            if (FromRef && ModScanner.MatchGlob(stage, glob).Count > 0) continue;
+            if (FromRef && ModScanner.MatchGlob(m.Dir, glob).Count > 0)
+                Say($"Warning: {GitRef} has nothing matching {glob}, so the working folder's build is used. Make sure it matches that version.");
             foreach (var f in ModScanner.MatchGlob(m.Dir, glob))
             {
                 var rel = Path.GetRelativePath(m.Dir, f);

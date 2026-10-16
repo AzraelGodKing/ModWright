@@ -25,6 +25,28 @@ public sealed class ModInfo
     /// <summary>The mod folder has uncommitted changes (git packaging uses HEAD, so they would not be uploaded).</summary>
     public bool Dirty;
 
+    /// <summary>The id of the mod's private test copy on Steam (<see cref="TestIdFile"/>), or null when it has none yet.</summary>
+    public string? TestWorkshopId;
+
+    /// <summary>True for the copy <see cref="AsTestItem"/> makes: uploads go to the test item.</summary>
+    public bool IsTest { get; private set; }
+
+    /// <summary>The file in the mod folder that holds the test item's id; it is never packaged.</summary>
+    public const string TestIdFile = "workshop_id.test.txt";
+
+    /// <summary>This mod aimed at its test item: the test id stands in for the Workshop id (null = create one).</summary>
+    public ModInfo AsTestItem()
+    {
+        var t = new ModInfo
+        {
+            Dir = Dir, Folder = Folder, RelPath = RelPath, Name = Name, Version = Version, WorkshopId = TestWorkshopId,
+            PreviewOk = PreviewOk, PreviewNote = PreviewNote, PreviewPath = PreviewPath, Dirty = Dirty, TestWorkshopId = TestWorkshopId, IsTest = true,
+        };
+        t.Problems.AddRange(Problems);
+        t.Warnings.AddRange(Warnings);
+        return t;
+    }
+
     public bool OnSteam => WorkshopId != null;
     public bool Ready => Problems.Count == 0;
 
@@ -226,6 +248,14 @@ public static class ModScanner
             : $"{cfg.ManifestFile} says {fromManifest} but {cfg.ModMarker} says {fromMarker}; {fromManifest} is uploaded (F2 sets both)";
     }
 
+    /// <summary>The version of the mod in <paramref name="dir"/> (a mod folder or a staged package), or null when it has none.</summary>
+    public static string? VersionIn(string dir, ProjectConfig cfg)
+    {
+        if (string.IsNullOrWhiteSpace(cfg.ModMarker)) return null;
+        try { return ReadVersion(dir, Path.Combine(dir, ProjectConfig.Norm(cfg.ModMarker)), cfg) is { Length: > 0 } v ? v : null; }
+        catch { return null; }
+    }
+
     /// <summary>The version: the manifest's &lt;version&gt; when the layout has one and it is set, else the marker's.</summary>
     static string ReadVersion(string dir, string markerFile, ProjectConfig cfg)
     {
@@ -403,6 +433,9 @@ public static class ModScanner
                 }
                 catch (Exception e) { m.Problems.Add(cfg.WorkshopIdFile + " unreadable (" + e.Message + ")"); }
             }
+
+            var testFile = Path.Combine(dir, ModInfo.TestIdFile);
+            try { if (File.Exists(testFile) && File.ReadAllText(testFile).Trim() is var t && Regex.IsMatch(t, @"^\d+$")) m.TestWorkshopId = t; } catch { }
 
             // Only what would make the upload fail or go wrong blocks it (Problems). Everything else is a warning.
             var clPath = Path.Combine(dir, ProjectConfig.Norm(cfg.Changelog));
