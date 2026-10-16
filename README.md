@@ -159,9 +159,10 @@ The list columns:
 - **Updated**: when the item was last updated, read live from Steam's public item details (one request for
   the whole list, no login). `not public` means Steam hides it from anonymous readers: private, friends only, or removed.
   Hover a row for the title, visibility and subscriber count on Steam.
-- **To upload**: the mod's current version. Double-click it (or press F2) to change it; the new number is written to
-  `<version>` in `About/Manifest.xml` (when it has one) and the version element of an XML marker file such as
-  `About/About.xml`. For RimWorld the app then asks what changed and adds that as the new version's entry in
+- **To upload**: the mod's current version. Double-click it (or press F2) to change it: type the new number, or press
+  **Patch**, **Minor** or **Major** for the next one (1.2.3 becomes 1.2.4, 1.3.0 or 2.0.0). The new number is written
+  to `<version>` in `About/Manifest.xml` (when it has one) and to the version in the marker file: an XML element such as
+  `About/About.xml`'s, a JSON property such as `mod.json`'s, or a `version=` line such as a Paradox `descriptor.mod`'s. For RimWorld the app then asks what changed and adds that as the new version's entry in
   `About/Changelog.txt` (newest first, or at the end if the file lists the oldest version first), so the upload is
   not refused for a missing entry. If you skip it, double-click the row's **Status** to write it later.
 - **Workshop ID**: from the mod's own id file (`About/PublishedFileId.txt` for RimWorld); `0` means the upload creates a new item.
@@ -215,6 +216,7 @@ SteamCmdHelper upload --changed               # only the mods whose version Stea
 SteamCmdHelper upload --all --repo D:\mods --account mysteamname --log upload.log
 SteamCmdHelper list                           # each mod's version, Workshop id and status
 SteamCmdHelper list --json                    # the same as JSON, for scripts
+SteamCmdHelper version MyMod patch --note "- Fixed the thing"   # 1.2.3 -> 1.2.4, with its changelog entry
 SteamCmdHelper update                         # install the newest release of the helper (--check: only report it)
 SteamCmdHelper help                           # every option
 ```

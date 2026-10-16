@@ -210,9 +210,31 @@ public static class ModScanner
         return ReadMeta(markerFile, cfg.VersionKey) ?? "";
     }
 
+    /// <summary>Which part of a version <see cref="NextVersion"/> raises.</summary>
+    public enum Bump { Patch, Minor, Major }
+
+    /// <summary>
+    /// The version after <paramref name="version"/>: Major raises the first number, Minor the second and Patch the last of
+    /// at least three, setting the ones after it to 0 (1.2.3 gives 1.2.4, 1.3.0 or 2.0.0; 1.2 gives 1.2.1). A leading "v"
+    /// is dropped, as <see cref="SetVersion"/> writes plain numbers. Null when <paramref name="version"/> is not a version number.
+    /// </summary>
+    public static string? NextVersion(string version, Bump part)
+    {
+        var m = Regex.Match(version.Trim(), @"^[vV]?(\d+(?:\.\d+){0,3})$");
+        if (!m.Success) return null;
+        var n = m.Groups[1].Value.Split('.').Select(long.Parse).ToList();
+        var at = part switch { Bump.Major => 0, Bump.Minor => 1, _ => Math.Max(2, n.Count - 1) };
+        while (n.Count <= at) n.Add(0);
+        n[at]++;
+        while (n.Count < 2) n.Add(0); // SetVersion needs at least "1.0"
+        for (var i = at + 1; i < n.Count; i++) n[i] = 0;
+        return string.Join(".", n);
+    }
+
     /// <summary>
     /// Writes a new version into the files it is read from: the manifest's &lt;version&gt; (when it has one) and the
-    /// <see cref="ProjectConfig.VersionKey"/> element of an XML marker file. Returns null on success, or why it cannot.
+    /// <see cref="ProjectConfig.VersionKey"/> of the marker file: an XML element, a JSON property (a dotted path), or a
+    /// key=value line such as a Paradox descriptor.mod's <c>version="1.2.3"</c>. Returns null on success, or why it cannot.
     /// </summary>
     public static string? SetVersion(ModInfo m, ProjectConfig cfg, string version)
     {
@@ -222,11 +244,59 @@ public static class ModScanner
         if (!string.IsNullOrWhiteSpace(cfg.ManifestFile)
             && TrySetXml(Path.Combine(m.Dir, ProjectConfig.Norm(cfg.ManifestFile)), "Manifest/version", version, create: false))
             written++;
-        if (!string.IsNullOrWhiteSpace(cfg.ModMarker) && !string.IsNullOrWhiteSpace(cfg.VersionKey)
-            && Path.GetExtension(cfg.ModMarker).Equals(".xml", StringComparison.OrdinalIgnoreCase)
-            && TrySetXml(Path.Combine(m.Dir, ProjectConfig.Norm(cfg.ModMarker)), cfg.VersionKey, version, create: true))
-            written++;
-        return written > 0 ? null : "This layout does not read the version from an XML file the app can edit. Change it in the mod's own files.";
+        if (!string.IsNullOrWhiteSpace(cfg.ModMarker) && !string.IsNullOrWhiteSpace(cfg.VersionKey))
+        {
+            var marker = Path.Combine(m.Dir, ProjectConfig.Norm(cfg.ModMarker));
+            var ok = Path.GetExtension(marker).ToLowerInvariant() switch
+            {
+                ".xml" => TrySetXml(marker, cfg.VersionKey, version, create: true),
+                ".json" => TrySetJson(marker, cfg.VersionKey, version),
+                _ => TrySetKey(marker, cfg.VersionKey, version),
+            };
+            if (ok) written++;
+        }
+        return written > 0 ? null : "This layout does not read the version from a file the app can edit. Change it in the mod's own files.";
+    }
+
+    /// <summary>
+    /// Replaces the value of an existing <paramref name="key"/> line, keeping its spacing, separator and quotes
+    /// (<c>version = "1.2"</c> stays in that style). Null when no line holds the key.
+    /// </summary>
+    public static string? ReplaceKeyValue(string text, string key, string value)
+    {
+        var re = new Regex(@"^([ \t]*" + Regex.Escape(key) + @"[ \t]*[=:][ \t]*)(""?)[^""\r\n]*?(""?)([ \t]*,?[ \t]*\r?)$", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+        if (!re.IsMatch(text)) return null;
+        return re.Replace(text, m => m.Groups[1].Value + m.Groups[2].Value + value + m.Groups[3].Value + m.Groups[4].Value, 1);
+    }
+
+    // A key given as a regex (it has a group) cannot be written back, and a missing line is not added: a key=value file
+    // of unknown format is safer left to its author.
+    static bool TrySetKey(string file, string key, string value)
+    {
+        if (!File.Exists(file) || key.Contains('(')) return false;
+        var text = File.ReadAllText(file);
+        var updated = ReplaceKeyValue(text, key, value);
+        if (updated == null) return false;
+        File.WriteAllText(file, updated, new System.Text.UTF8Encoding(false));
+        return true;
+    }
+
+    // Only an existing string property is changed. A file with comments is left alone, since writing it back would
+    // drop them.
+    static bool TrySetJson(string file, string key, string value)
+    {
+        if (!File.Exists(file)) return false;
+        System.Text.Json.Nodes.JsonNode? root;
+        try { root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(file), documentOptions: new JsonDocumentOptions { AllowTrailingCommas = true }); }
+        catch (JsonException) { return false; }
+        var parts = key.Split('.');
+        var parent = root;
+        foreach (var part in parts[..^1]) parent = parent is System.Text.Json.Nodes.JsonObject o && o.TryGetPropertyValue(part, out var next) ? next : null;
+        if (parent is not System.Text.Json.Nodes.JsonObject obj || !obj.TryGetPropertyValue(parts[^1], out var cur)
+            || cur is not System.Text.Json.Nodes.JsonValue jv || !jv.TryGetValue<string>(out _)) return false;
+        obj[parts[^1]] = value;
+        File.WriteAllText(file, root!.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }) + "\n", new System.Text.UTF8Encoding(false));
+        return true;
     }
 
     static bool TrySetXml(string file, string path, string value, bool create)
