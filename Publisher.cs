@@ -67,6 +67,8 @@ public sealed class Publisher
     /// then gets only the change note), false skips the mod. Null uploads it with a warning.
     /// </summary>
     public Func<ModInfo, PackageDiff, bool>? UploadUnchanged { get; set; }
+    /// <summary>When set, a description sent with an upload is remembered here (<see cref="DescriptionSync"/>).</summary>
+    public string? SentDescriptions { get; init; }
 
     /// <summary>When set, each successful upload is added to this <see cref="UploadHistory"/> file.</summary>
     public string? HistoryFile { get; init; }
@@ -147,14 +149,12 @@ public sealed class Publisher
             {
                 var desc = page?.Description ?? ReadDescription(m);
                 if (desc.Length < 20) return new PublishResult(false, $"No description found. Add {_cfg.SteamDescriptionFile}.");
-                var previewLine = string.IsNullOrWhiteSpace(_cfg.Preview)
-                    ? ""
-                    : $"\n    \"previewfile\"     \"{Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Preview))}\"";
-                extra = WorkshopPage.VdfLines(page?.Title ?? m.Name, desc, null) + previewLine + WorkshopPage.VdfLines(null, null, visibility);
+                var preview = page?.Preview ?? (string.IsNullOrWhiteSpace(_cfg.Preview) ? null : Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Preview)));
+                extra = WorkshopPage.VdfLines(page?.Title ?? m.Name, desc, null, preview) + WorkshopPage.VdfLines(null, null, visibility);
             }
             else
             {
-                extra = page == null ? "" : WorkshopPage.VdfLines(page.Title, page.Description, page.Visibility);
+                extra = page == null ? "" : WorkshopPage.VdfLines(page.Title, page.Description, page.Visibility, page.Preview);
             }
 
             var vdf = $$"""
@@ -249,6 +249,7 @@ public sealed class Publisher
                     report.TotalBytes, (DateTimeOffset.UtcNow - started).TotalSeconds), HistoryFile);
                 WorkshopStatus.Forget(id);
                 if (ManifestDir != null) PackageDiffs.Save(ManifestDir, id, new PackageManifest(DateTimeOffset.UtcNow, m.Version, report.Files.ToList()));
+                if (SentDescriptions != null && page?.Description != null) DescriptionSync.Remember(id, page.Description, SentDescriptions);
             }
 
             At("Uploaded", 100);

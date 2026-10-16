@@ -43,6 +43,7 @@ public sealed class MainForm : Form
         Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, Width = 520, Height = 64, Font = new Font("Consolas", 9f),
         PlaceholderText = "{note}", AccessibleName = "Change note template for this mods folder",
     };
+    readonly ComboBox _descSync = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, AccessibleName = "When a description file differs from Steam" };
     readonly CheckBox _commitIds = new() { AutoSize = true, Text = "Commit a new item's Workshop ID file without asking" };
     readonly System.Windows.Forms.Timer _clock = new() { Interval = 1000 };
     string _currentBase = "";
@@ -625,6 +626,19 @@ public sealed class MainForm : Form
             Hint("For the current mods folder. After a successful update, its name, version, change note and Workshop link are posted to the Discord channel. " +
                  "New items are created private, so they are not announced. The webhook link is kept in your settings, never in the repo. " +
                  "GitHub releases are made on the uploaded commit, which must be pushed first.")));
+
+        _descSync.Items.AddRange(new object[] { "Ask before sending it", "Always send it", "Never send it" });
+        _descSync.SelectedIndex = _s.DescriptionSync switch { DescriptionSync.Always => 1, DescriptionSync.Never => 2, _ => 0 };
+        _descSync.SelectedIndexChanged += (_, _) =>
+        {
+            _s.DescriptionSync = _descSync.SelectedIndex switch { 1 => DescriptionSync.Always, 2 => DescriptionSync.Never, _ => DescriptionSync.Ask };
+            _s.Save();
+        };
+        page.Controls.Add(Card("Workshop page", null,
+            Row(Lbl("When a mod's &description file differs from Steam"), _descSync),
+            Hint("Checked when you upload a mod that is on Steam and has a description file (steam_description.txt for Generic). " +
+                 "Public and unlisted items are compared with their page on Steam; other items with what this PC last sent. " +
+                 "The new description goes out with the upload, like a change made in Workshop page...")));
 
         var openData = Btn("Open &data folder", (_, _) => OpenPath(AppSettings.Folder));
         var forget = Btn("Forget recent folders", (_, _) =>
@@ -2258,6 +2272,8 @@ public sealed class MainForm : Form
         if (!_cfg.AppIdValid) { Nudge(_appId, _projectNote, "Enter the game's Steam app ID first (the number in its store page URL)."); return; }
         if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { Nudge(_install, _accountNote, "SteamCMD is not installed yet. Press Install SteamCMD below."); return; }
 
+        if (_s.DescriptionSync != DescriptionSync.Never && Directory.Exists(_s.RepoPath)) await OfferDescriptionsAsync(picked);
+
         var dry = _dry.Checked;
         var actions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var notes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -2305,6 +2321,7 @@ public sealed class MainForm : Form
             HistoryFile = UploadHistory.DefaultFile,
             ManifestDir = PackageDiffs.DefaultDir,
             UploadUnchanged = AskUploadUnchanged,
+            SentDescriptions = DescriptionSync.DefaultFile,
             SteamCheck = Publisher.LiveSteamCheck,
             Credit = _s.UploadCredit,
             NoteTemplate = _s.TemplateFor(_s.RepoPath),
@@ -2418,6 +2435,40 @@ public sealed class MainForm : Form
             DefaultButton = skip,
         };
         return TaskDialog.ShowDialog(this, page) == upload;
+    }
+
+    /// <summary>
+    /// Finds the picked mods whose description file differs from their Workshop page and, when the user agrees (or
+    /// always, per Options), puts the file's text into their page changes so it goes out with this upload.
+    /// </summary>
+    async Task OfferDescriptionsAsync(List<ModInfo> picked)
+    {
+        List<(ModInfo Mod, string Text)> changed;
+        UseWaitCursor = true;
+        try { changed = await DescriptionSync.FindChangedAsync(picked, _cfg, DescriptionSync.FetchFromSteam, null, CancellationToken.None); }
+        catch (Exception e) { Append("Could not compare the descriptions with Steam: " + e.Message, LogKind.Warn); return; }
+        finally { UseWaitCursor = false; }
+        if (changed.Count == 0) return;
+        var names = string.Join(", ", changed.Select(c => c.Mod.Name));
+        if (_s.DescriptionSync != DescriptionSync.Always)
+        {
+            var send = new TaskDialogButton("Send it");
+            var page = new TaskDialogPage
+            {
+                Caption = Text,
+                Heading = changed.Count == 1 ? $"{names}'s description changed" : $"{changed.Count} descriptions changed",
+                Text = $"{_cfg.SteamDescriptionFile} of {names} differs from the Workshop page. Send the file's text as the new description with this upload?",
+                Icon = TaskDialogIcon.Information,
+                Buttons = { send, new TaskDialogButton("Not this time") },
+                DefaultButton = send,
+                Verification = new TaskDialogVerificationCheckBox("Always send changed descriptions without asking"),
+            };
+            if (TaskDialog.ShowDialog(this, page) != send) return;
+            if (page.Verification.Checked) { _s.DescriptionSync = DescriptionSync.Always; _descSync.SelectedIndex = 1; _s.Save(); }
+        }
+        try { DescriptionSync.Stage(changed); }
+        catch (Exception e) { Append("Could not save the new descriptions: " + e.Message, LogKind.Error); return; }
+        Append($"The description of {names} goes out with this upload ({_cfg.SteamDescriptionFile} changed).", LogKind.Note);
     }
 
     /// <summary>The current mod, its package size, how long it has run and, from past uploads, about how long is left.</summary>

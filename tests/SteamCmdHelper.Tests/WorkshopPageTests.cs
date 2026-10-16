@@ -188,4 +188,78 @@ public sealed class WorkshopPageTests : IDisposable
         Assert.False(res.Ok);
         Assert.Contains("title", res.Message);
     }
+
+    // ------------------------------------------------------------ preview image and description sync
+
+    [Fact]
+    public async Task Update_sends_a_new_preview_image()
+    {
+        if (!CanFakeSteamCmd) return;
+        _repo.AddMod("Alpha");
+        var image = _repo.Write("art/new.png", "png");
+        var mod = Assert.Single(ModScanner.Scan(_repo.Root, _cfg));
+
+        var vdf = await CapturedVdf(mod, new WorkshopPageEdit { Preview = image });
+
+        Assert.Equal(image, VdfValue(vdf, "previewfile"));
+        Assert.Null(VdfValue(vdf, "title"));
+        Assert.Equal("preview image", new WorkshopPageEdit { Preview = image }.Summary());
+    }
+
+    [Fact]
+    public void Preview_images_are_checked()
+    {
+        var ok = _repo.Write("a.jpg", "x");
+        Assert.Null(WorkshopPage.CheckPreview(ok));
+        Assert.Contains("PNG, JPG or GIF", WorkshopPage.CheckPreview(_repo.Write("a.bmp", "x")));
+        Assert.Contains("no longer exists", WorkshopPage.CheckPreview(Path.Combine(_repo.Root, "gone.png")));
+        var big = Path.Combine(_repo.Root, "big.png");
+        File.WriteAllBytes(big, new byte[ModScanner.MaxPreviewBytes + 1]);
+        Assert.Contains("Shrink it first", WorkshopPage.CheckPreview(big));
+        Assert.NotNull(WorkshopPage.Validate(new WorkshopPageEdit { Preview = big }));
+    }
+
+    [Theory]
+    [InlineData("Same text\r\n", "Same text", null, false)]
+    [InlineData("New text", "Old text", null, true)]
+    [InlineData("", "Old text", null, false)]
+    [InlineData("Any", null, null, false)]
+    public void Description_differs_from_Steam(string file, string? onSteam, string? hash, bool expected) =>
+        Assert.Equal(expected, DescriptionSync.Differs(file.Replace("\\r\\n", "\r\n"), onSteam, hash));
+
+    [Fact]
+    public void Private_items_compare_with_what_was_last_sent()
+    {
+        var sent = DescriptionSync.Hash("Sent before\n");
+        Assert.False(DescriptionSync.Differs("Sent before", null, sent));
+        Assert.True(DescriptionSync.Differs("Edited since", null, sent));
+    }
+
+    [Fact]
+    public async Task Changed_descriptions_are_found_and_staged()
+    {
+        var a = _repo.AddMod("Alpha", workshopId: "111");
+        var b = _repo.AddMod("Beta", workshopId: "222");
+        _repo.AddMod("Gamma", workshopId: null);
+        _repo.Write("Alpha/About/steam_description.txt", "Alpha's new description");
+        _repo.Write("Beta/About/steam_description.txt", "Beta as on Steam");
+        _repo.Write("Gamma/About/steam_description.txt", "Not on Steam yet");
+        var mods = ModScanner.Scan(_repo.Root, _cfg);
+        var record = Path.Combine(_repo.Root, "_store", "descriptions.json");
+
+        var changed = await DescriptionSync.FindChangedAsync(mods, _cfg,
+            (id, _) => Task.FromResult<string?>(id == "111" ? "Alpha's old description" : "Beta as on Steam"), record, CancellationToken.None, Store);
+
+        var (mod, text) = Assert.Single(changed);
+        Assert.Equal("Alpha", mod.Folder);
+        DescriptionSync.Stage(changed, Store);
+        Assert.Equal("Alpha's new description", WorkshopPage.Get(a, Store)!.Description);
+        Assert.Null(WorkshopPage.Get(b, Store));
+
+        // A description already waiting to be sent is left alone.
+        Assert.Empty(await DescriptionSync.FindChangedAsync(mods.Where(m => m.Folder == "Alpha"), _cfg, (_, _) => Task.FromResult<string?>("other"), record, CancellationToken.None, Store));
+
+        DescriptionSync.Remember("111", text, record);
+        Assert.False(DescriptionSync.Differs(text, null, DescriptionSync.Load(record)["111"]));
+    }
 }

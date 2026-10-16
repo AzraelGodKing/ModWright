@@ -13,8 +13,10 @@ public sealed class WorkshopPageEdit
     public string? Description { get; set; }
     /// <summary>Steam's visibility number: 0 public, 1 friends only, 2 private (hidden), 3 unlisted.</summary>
     public int? Visibility { get; set; }
+    /// <summary>A new preview image (full path) to replace the one on Steam; null keeps it.</summary>
+    public string? Preview { get; set; }
 
-    public bool IsEmpty => Title == null && Description == null && Visibility == null;
+    public bool IsEmpty => Title == null && Description == null && Visibility == null && Preview == null;
 
     /// <summary>What will change, e.g. "title, visibility (Public)".</summary>
     public string Summary()
@@ -23,6 +25,7 @@ public sealed class WorkshopPageEdit
         if (Title != null) parts.Add("title");
         if (Description != null) parts.Add("description");
         if (Visibility is { } v) parts.Add($"visibility ({WorkshopPage.VisibilityName(v)})");
+        if (Preview != null) parts.Add("preview image");
         return string.Join(", ", parts);
     }
 }
@@ -49,13 +52,29 @@ public static class WorkshopPage
         if (e.Title != null && e.Title.Length > MaxTitle) return $"The title is {e.Title.Length} characters; Steam allows {MaxTitle}.";
         if (e.Description != null && e.Description.Length > MaxDescription) return $"The description is {e.Description.Length} characters; Steam allows {MaxDescription}.";
         if (e.Visibility is { } v && (v < 0 || v >= VisibilityNames.Length)) return "Unknown visibility.";
+        if (e.Preview != null) return CheckPreview(e.Preview);
+        return null;
+    }
+
+    /// <summary>The image types Steam takes as a Workshop preview.</summary>
+    public static readonly string[] PreviewTypes = { ".png", ".jpg", ".jpeg", ".gif" };
+
+    /// <summary>Null when <paramref name="path"/> can be sent as the preview image, else why not.</summary>
+    public static string? CheckPreview(string path)
+    {
+        if (!PreviewTypes.Contains(Path.GetExtension(path).ToLowerInvariant())) return "The preview image must be a PNG, JPG or GIF.";
+        var f = new FileInfo(path);
+        if (!f.Exists) return $"The preview image {path} no longer exists.";
+        if (f.Length > ModScanner.MaxPreviewBytes)
+            return $"The preview image is {f.Length / 1024} KB; Steam allows {ModScanner.MaxPreviewBytes / 1024} KB. Shrink it first (right-click the mod > Shrink preview image).";
         return null;
     }
 
     /// <summary>The build-file lines for the fields that are set, each starting on a new line.</summary>
-    public static string VdfLines(string? title, string? description, int? visibility)
+    public static string VdfLines(string? title, string? description, int? visibility, string? preview = null)
     {
         var sb = new StringBuilder();
+        if (preview != null) sb.Append($"\n    \"previewfile\"     \"{preview}\"");
         if (title != null) sb.Append($"\n    \"title\"           \"{Publisher.Esc(title.Trim())}\"");
         if (description != null) sb.Append($"\n    \"description\"     \"{Publisher.Esc(description)}\"");
         if (visibility != null) sb.Append($"\n    \"visibility\"      \"{visibility}\"");
