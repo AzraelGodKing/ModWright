@@ -225,9 +225,10 @@ public static class Cli
     /// <param name="tempRoot">Where packages are staged; null for the system temp folder.</param>
     /// <param name="credit">End change notes with <see cref="Publisher.CreditLine"/> (the app passes its Options setting).</param>
     /// <param name="noteTemplate">The mods folder's change note template; <paramref name="markdown"/> converts .md notes to BBCode.</param>
+    /// <param name="syncDescriptions">Send each mod's changed description file with its upload (Options: Always send it).</param>
     public static async Task<int> RunAsync(CliOptions o, string repo, string steamCmd, string account, TextWriter output,
         CancellationToken ct, string? recordPath = null, string? tempRoot = null, bool credit = false,
-        string? noteTemplate = null, bool markdown = false)
+        string? noteTemplate = null, bool markdown = false, bool syncDescriptions = false)
     {
         void Say(string s) => output.WriteLine(s);
 
@@ -332,6 +333,14 @@ public static class Cli
             Say("Logged in.");
         }
 
+        var sentDescriptions = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(historyFile))!, "descriptions.json");
+        if (syncDescriptions && !o.DryRun)
+        {
+            var changed = await DescriptionSync.FindChangedAsync(picked, cfg, recordPath == null ? DescriptionSync.FetchFromSteam : (_, _) => Task.FromResult<string?>(null), sentDescriptions, ct);
+            DescriptionSync.Stage(changed);
+            foreach (var (m, _) in changed) Say($"{m.Folder}: {cfg.SteamDescriptionFile} changed, so the new description goes out with the upload.");
+        }
+
         Say((o.DryRun ? "Dry run of " : "Uploading ") + $"{picked.Count} mod{(picked.Count == 1 ? "" : "s")}.");
         // Workshop page changes saved in the window go out with the next upload, from here too.
         var pub = new Publisher(repo, cfg, steamCmd, account, tempRoot)
@@ -339,6 +348,7 @@ public static class Cli
             PageEdits = m => WorkshopPage.Get(m.Dir),
             HistoryFile = historyFile,
             ManifestDir = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(historyFile))!, "manifests"),
+            SentDescriptions = sentDescriptions,
             // Asks Steam whether each update landed; runs with their own record (tests) stay offline.
             SteamCheck = recordPath == null ? Publisher.LiveSteamCheck : null,
             Credit = credit,

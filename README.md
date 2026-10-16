@@ -200,6 +200,16 @@ mod's next upload (the confirmation lists them), then cleared (an upload from th
 on Steam yet, ticked fields replace the name, description file and private visibility it would be created with.
 SteamCMD cannot change tags, so they are only shown (the game's own uploader sets them).
 
+**Preview image** in the same editor replaces the item's preview on Steam with its next upload: **Use the mod's preview**
+takes the layout's preview file (after you changed it), or **Choose...** any PNG, JPG or GIF up to 1 MB. Without it,
+the preview on Steam is left alone; it is otherwise only sent when an item is created.
+
+When you upload a mod that is on Steam and has a description file (`steam_description.txt` for Generic,
+`About/steam_description.txt` for RimWorld), the app checks whether the file differs from the Workshop page and offers
+to send it with the upload. Public and unlisted items are compared with their page on Steam; other items with what this
+PC last sent. **Options > Workshop page** can send it every time without asking, or never. The command line sends it
+only when that is set to **Always send it**.
+
 The same right-click menu has **Upload history...** (every upload of the mod made from this PC: when, which
 version, and the change note sent) and **Open on Steam** (the item's page in your browser).
 

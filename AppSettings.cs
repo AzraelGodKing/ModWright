@@ -40,6 +40,8 @@ public sealed class AppSettings
     public bool MarkdownNotes { get; set; } = true;
     /// <summary>A template around each change note sent to Steam (see ChangeNotes.Apply), per mods folder.</summary>
     public Dictionary<string, string> NoteTemplates { get; set; } = new();
+    /// <summary>When a mod's description file differs from its Workshop page: "Ask", "Always" (send it) or "Never".</summary>
+    public string DescriptionSync { get; set; } = SteamCmdHelper.DescriptionSync.Ask;
     /// <summary>Commit a newly created item's Workshop id file without asking.</summary>
     public bool CommitNewIds { get; set; }
     /// <summary>Saved profiles (mods folder, account, SteamCMD), by name.</summary>

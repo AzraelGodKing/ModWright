@@ -122,7 +122,8 @@ static class Program
         using var log = o.LogFile != null ? new StreamWriter(o.LogFile, false) { AutoFlush = true } : null;
         using var output = new TeeWriter(console, log);
         return Cli.RunAsync(o, settings.RepoPath, settings.EffectiveSteamCmd, settings.Account, TextWriter.Synchronized(output), cts.Token, credit: settings.UploadCredit,
-            noteTemplate: settings.TemplateFor(settings.RepoPath), markdown: settings.MarkdownNotes)
+            noteTemplate: settings.TemplateFor(settings.RepoPath), markdown: settings.MarkdownNotes,
+            syncDescriptions: settings.DescriptionSync == DescriptionSync.Always)
             .GetAwaiter().GetResult();
     }
 

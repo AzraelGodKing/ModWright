@@ -25,6 +25,12 @@
   upload, which usually means the version was not raised.
 - **Version mismatches** are warned about in the list: a changelog with an entry newer than the version to upload,
   and an `About/Manifest.xml` whose version differs from `About.xml`'s.
+- **Replace the preview image** of an item already on Steam: **Workshop page...** has a **Preview image** row (the
+  mod's own preview file, or any PNG, JPG or GIF up to 1 MB), sent with the next upload. Before, the preview was only
+  sent when an item was created.
+- **Keep the description in sync.** When a mod's description file differs from its Workshop page (or, for items Steam
+  won't show, from what this PC last sent), the upload offers to send it too. **Options > Workshop page** can do it
+  every time without asking (the command line follows that) or never.
 
 - **Change notes keep their line breaks on Steam.** Uploads used to show a literal `\n` wherever the changelog had a
   new line, because SteamCMD reads the build file without escape sequences. Line breaks are now written as real line
