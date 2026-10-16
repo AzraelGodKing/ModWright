@@ -62,13 +62,14 @@ jobs:
           LABELIDS: ${{ secrets.LABELIDS }}
           LABELMAP: ${{ secrets.LABELMAP }}
         run: |
-          # Self-contained single exe: runs without .NET installed. Compressed, which takes it from about 160 MB to
-          # well under half that for a moment's unpacking at start-up.
+          # Self-contained single exe: runs without .NET installed. Not compressed: a compressed exe is under half the
+          # size, but unpacks the whole .NET runtime into memory on every start, which made opening the app slow.
+          # ReadyToRun compiles the app ahead of time so its windows are not compiled at start-up either.
           dotnet publish SteamCmdHelper.csproj -c Release -r win-x64 --self-contained \
-            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out/standalone
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishReadyToRun=true -o out/standalone
           # Framework-dependent folder: small, for machines with the .NET 8 Desktop Runtime
           # or where antivirus refuses large unsigned single-file exes.
-          dotnet publish SteamCmdHelper.csproj -c Release -r win-x64 --no-self-contained -o out/portable
+          dotnet publish SteamCmdHelper.csproj -c Release -r win-x64 --no-self-contained -p:PublishReadyToRun=true -o out/portable
 
       # Code signing through SignPath (free for open source; see "Code signing" in the README). Until the
       # SIGNPATH_API_TOKEN secret exists these steps are skipped and the release is unsigned, as before. Signing

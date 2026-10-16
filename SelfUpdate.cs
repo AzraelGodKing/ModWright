@@ -19,8 +19,12 @@ public sealed record PreparedUpdate(string Version, InstallKind Kind, string Sta
 /// <summary>
 /// Updates the program in place from a GitHub release. The download is accepted only when its SHA-256 matches the
 /// release's SHA256SUMS.txt and it carries the expected version. Installing renames each file being replaced to
-/// "<name>.update-old" (Windows allows renaming a running exe and its loaded DLLs), copies the new file in, and puts
-/// everything back if any step fails. The next start deletes the leftovers.
+/// "<name>.update-old", copies the new file in, and puts everything back if any step fails. The next start deletes the
+/// leftovers.
+/// <para>The running program never swaps its own files: .NET reads parts of the program from its exe (or DLLs) on
+/// demand for as long as it runs, so once the file is replaced the next part it needs is missing and the app crashes
+/// as it closes. Instead the downloaded program is started from the staging folder (<see cref="HandOff"/>); it waits
+/// for this one to exit, installs itself (<see cref="Finish"/>) and, when asked, starts the installed copy.</para>
 /// </summary>
 public static class SelfUpdate
 {
@@ -180,7 +184,7 @@ public static class SelfUpdate
     /// <paramref name="exeName"/> is the running exe's file name: a downloaded standalone exe usually keeps its release
     /// name ("SteamCmdHelper-1.0.0-win-x64.exe"), and replacing that file keeps the user's shortcuts working.
     /// </summary>
-    public static void Apply(PreparedUpdate u, string appDir, string exeName = ExeName)
+    public static void Apply(PreparedUpdate u, string appDir, string exeName = ExeName, bool deleteStaging = true)
     {
         var src = Path.Combine(u.StagingDir, "files");
         var done = new List<(string target, bool hadOld)>();
@@ -212,7 +216,7 @@ public static class SelfUpdate
             }
             throw;
         }
-        try { Directory.Delete(u.StagingDir, true); } catch { }
+        if (deleteStaging) try { Directory.Delete(u.StagingDir, true); } catch { }
     }
 
     /// <summary>
@@ -246,4 +250,91 @@ public static class SelfUpdate
 
     /// <summary>Passed to the new program after an update, followed by the version it replaced.</summary>
     public const string UpdatedFromArg = "--updated-from";
+
+    /// <summary>
+    /// Starts the downloaded program as an installer: "--finish-update &lt;process id&gt; &lt;app folder&gt; &lt;exe name&gt;
+    /// &lt;version replaced&gt; restart|quiet".
+    /// </summary>
+    public const string FinishArg = "--finish-update";
+
+    /// <summary>The downloaded program's exe in its staging folder.</summary>
+    public static string StagedExe(PreparedUpdate u) => Path.Combine(u.StagingDir, "files", ExeName);
+
+    /// <summary>
+    /// Starts the downloaded program to install itself over <paramref name="appDir"/> as soon as this process exits, and
+    /// then to start the installed copy when <paramref name="restart"/> is true. Nothing is changed until this process
+    /// is gone. Throws when the downloaded program cannot be started.
+    /// </summary>
+    public static void HandOff(PreparedUpdate u, string appDir, string exeName, string fromVersion, bool restart)
+    {
+        var exe = StagedExe(u);
+        if (!File.Exists(exe)) throw new FileNotFoundException("The downloaded update is no longer in " + u.StagingDir + ".", exe);
+        var psi = new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe)! };
+        foreach (var a in new[] { FinishArg, Environment.ProcessId.ToString(), appDir, exeName, fromVersion, restart ? "restart" : "quiet" })
+            psi.ArgumentList.Add(a);
+        Process.Start(psi);
+    }
+
+    /// <summary>
+    /// The installer side of <see cref="HandOff"/>, run by the downloaded program from its staging folder: waits for the
+    /// old program to exit, installs this program's files over it and, when asked, starts it. <paramref name="args"/>
+    /// are the ones after <see cref="FinishArg"/>. Returns the exit code; <paramref name="fail"/> gets the reason when
+    /// nothing could be installed.
+    /// </summary>
+    public static int Finish(IReadOnlyList<string> args, Action<string> fail)
+    {
+        if (args.Count < 5 || !int.TryParse(args[0], out var pid)) { fail("The update was started without its details."); return 2; }
+        var (appDir, exeName, fromVersion, restart) = (args[1], args[2], args[3], args[4] == "restart");
+        try
+        {
+            WaitForExit(pid, TimeSpan.FromMinutes(1));
+            var files = AppDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var update = new PreparedUpdate(UpdateCheck.CurrentVersion, KindOf(files), Path.GetDirectoryName(files)!);
+            Install(update, appDir, exeName);
+            if (restart) Restart(Path.Combine(appDir, exeName), fromVersion);
+            return 0;
+        }
+        catch (Exception e)
+        {
+            fail($"Could not install SteamCMD Helper {UpdateCheck.CurrentVersion}: {e.Message}\n\nNothing was changed.");
+            return 1;
+        }
+    }
+
+    /// <summary>Waits for the program being replaced to close; returns at once when it already has.</summary>
+    static void WaitForExit(int pid, TimeSpan timeout)
+    {
+        try
+        {
+            using var p = Process.GetProcessById(pid);
+            if (!p.WaitForExit(timeout)) throw new TimeoutException("The old copy of SteamCMD Helper did not close.");
+        }
+        catch (ArgumentException) { /* already gone */ }
+    }
+
+    /// <summary>
+    /// <see cref="Apply"/> from the installer, retried for a few seconds while Windows still holds the old program's files right after it
+    /// exited (or a virus scanner is reading the new ones).
+    /// </summary>
+    public static void Install(PreparedUpdate u, string appDir, string exeName = ExeName, int attempts = 20)
+    {
+        for (var i = 1; ; i++)
+        {
+            try { Apply(u, appDir, exeName, deleteStaging: false); return; } // the installer runs from the staging folder
+            catch (Exception e) when (i < attempts && e is IOException or UnauthorizedAccessException) { Thread.Sleep(500); }
+        }
+    }
+
+    /// <summary>
+    /// Deletes downloaded updates that are installed or out of date (an installer removes its own folder only once it
+    /// has exited, so the next start does it). A download newer than <paramref name="current"/> is kept.
+    /// </summary>
+    public static void CleanStaging(string current, string? tempRoot = null)
+    {
+        var root = Path.GetDirectoryName(StagingFor("x", tempRoot))!;
+        if (!Directory.Exists(root)) return;
+        foreach (var dir in Directory.GetDirectories(root))
+            if (!UpdateCheck.IsNewer(Path.GetFileName(dir), current))
+                try { Directory.Delete(dir, true); } catch { }
+    }
 }

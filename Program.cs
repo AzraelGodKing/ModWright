@@ -138,6 +138,14 @@ static class Program
     [STAThread]
     static int Main(string[] args)
     {
+        // The downloaded program installing itself once the old one has closed (see SelfUpdate.HandOff).
+        if (args.Length > 0 && args[0] == SelfUpdate.FinishArg)
+            return SelfUpdate.Finish(args[1..], message =>
+            {
+                ApplicationConfiguration.Initialize();
+                MessageBox.Show(message, "SteamCMD Helper", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            });
+
         if (Cli.IsCommand(args)) return RunCommandLine(args);
 
         // Headless checks used for testing (the real command line is "SteamCmdHelper upload ...", see Cli):

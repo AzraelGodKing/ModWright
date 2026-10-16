@@ -110,8 +110,8 @@ public static class Cli
     }
 
     /// <summary>
-    /// "update": installs the newest release over this program, checked against the release's SHA-256 checksums. The
-    /// new version is used from the next start. Exit code 0 when up to date or updated, 1 when it could not update.
+    /// "update": downloads the newest release, checked against the release's SHA-256 checksums, and installs it over
+    /// this program once this command has ended. The new version is used from the next start. Exit code 0 when up to date or updated, 1 when it could not update.
     /// </summary>
     static async Task<int> UpdateAsync(bool checkOnly, Action<string> say, CancellationToken ct)
     {
@@ -130,8 +130,8 @@ public static class Cli
             var progress = new Progress<int>(p => { if (p >= last + 10) { last = p - p % 10; say($"  downloading... {last}%"); } });
             var u = await SelfUpdate.PrepareAsync(r, SelfUpdate.KindOf(dir), progress, ct);
             var exe = Environment.ProcessPath ?? Path.Combine(dir, SelfUpdate.ExeName);
-            SelfUpdate.Apply(u, dir, Path.GetFileName(exe));
-            say($"Updated to {r.Version}. It is used from the next start.");
+            SelfUpdate.HandOff(u, dir, Path.GetFileName(exe), current, restart: false);
+            say($"Downloaded {r.Version}. It is installed as soon as this command ends, and used from the next start.");
             return ExitOk;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { say("Update cancelled; nothing was changed."); return ExitFailed; }
