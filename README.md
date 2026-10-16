@@ -64,8 +64,8 @@ The program is `bin\Release\net8.0-windows\SteamCmdHelper.exe`. Make a shortcut 
 Branches: `main` is the released version and `test` is where new work comes together; pull requests go to `test`, and `test` is merged into `main` for each release. CI builds and tests every push to `main` or `test` and every pull request. For pull requests it also builds the base branch,
 takes the same `--shot` screenshots, and lists in the job summary which windows changed (the changed pixels are in red
 in the `screenshot-diffs` artifact). That step is informational and never fails the build. To release, bump `<Version>` in
-`SteamCmdHelper.csproj`, add a matching `## <version>` section to `CHANGELOG.md`, then push a tag such as `v1.2.0`;
-the release workflow checks both, runs the tests and publishes the release with those notes.
+`SteamCmdHelper.csproj` and add a matching `## <version>` section to `CHANGELOG.md` on `test`, then run
+**Promote test and release** (see [Releasing](#releasing-maintainer)).
 
 ## Using it
 
@@ -352,8 +352,20 @@ The tests compile the non-UI source files directly, so they run on Windows, Linu
 
 ## Releasing (maintainer)
 
-Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which tests, builds, signs (when set up), and publishes
-the release. After a non-prerelease it also:
+Run **Actions > Promote test and release > Run workflow** when `test` is ready to ship. It rebases `test` onto `main`,
+checks that `<Version>` in `SteamCmdHelper.csproj` has a `## <version>` section in `CHANGELOG.md` and no tag yet, runs
+the tests, then in one push fast-forwards `main`, tags it `v<version>` and resets `test` to the new `main`. The tag
+starts the release below. It never changes the version: bump it on `test` first. Optional inputs: **version** stops the
+run if `test` declares a different one, and **dry run** does every check and the tests but pushes nothing. If `test`
+does not rebase cleanly, or someone pushes to `test` during the run, nothing is pushed.
+
+It needs a `RELEASE_TOKEN` secret: a fine-grained personal access token for this repository with **Contents** and
+**Workflows** set to read and write. The built-in Actions token cannot push commits that change workflow files, and a
+tag it pushes does not start other workflows. If `main` has branch protection or a ruleset, the token's owner must be
+allowed to push to it directly.
+
+Pushing a `vX.Y.Z` tag by hand also works. Either way, the tag runs `.github/workflows/release.yml`, which tests,
+builds, signs (when set up), and publishes the release. After a non-prerelease it also:
 
 - opens a pull request pointing `bucket/steamcmdhelper.json` (the Scoop manifest) at the new exe and its SHA-256.
   This needs **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests**.
