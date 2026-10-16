@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Change notes keep their line breaks on Steam.** Uploads used to show a literal `\n` wherever the changelog had a
+  new line, because SteamCMD reads the build file without escape sequences. Line breaks are now written as real line
+  breaks, backslashes are left as typed, and straight double quotes become curly ones (a straight quote would end the
+  value). The same applies to a Workshop page's title and description.
+- **"Uploaded via SteamCMD Helper"** is added to the end of each change note on Steam, linking to the newest release.
+  Turn it off under Options > Change notes. The upload history and Discord announcements keep the entry as written.
+
 ## 1.2.1
 
 - **Updating the app no longer crashes it.** The running app used to replace its own exe and then crash with "Something

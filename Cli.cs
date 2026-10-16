@@ -223,8 +223,9 @@ public static class Cli
     /// <summary>Runs a parsed command. <paramref name="repo"/>, <paramref name="steamCmd"/> and <paramref name="account"/> already have the options applied.</summary>
     /// <param name="recordPath">Where uploaded versions are remembered; null for the per-user file.</param>
     /// <param name="tempRoot">Where packages are staged; null for the system temp folder.</param>
+    /// <param name="credit">End change notes with <see cref="Publisher.CreditLine"/> (the app passes its Options setting).</param>
     public static async Task<int> RunAsync(CliOptions o, string repo, string steamCmd, string account, TextWriter output,
-        CancellationToken ct, string? recordPath = null, string? tempRoot = null)
+        CancellationToken ct, string? recordPath = null, string? tempRoot = null, bool credit = false)
     {
         void Say(string s) => output.WriteLine(s);
 
@@ -337,6 +338,7 @@ public static class Cli
             HistoryFile = historyFile,
             // Asks Steam whether each update landed; runs with their own record (tests) stay offline.
             SteamCheck = recordPath == null ? Publisher.LiveSteamCheck : null,
+            Credit = credit,
         };
         pub.Log += l => Say("    " + l);
         var batch = new BatchUpload(pub, recordPath);
