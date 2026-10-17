@@ -291,6 +291,9 @@ static class Program
         }
 
         ApplicationConfiguration.Initialize();
+        // The log box needs the code-page encodings when its window is destroyed. Load them now rather than as the app
+        // closes, when .NET would have to read them from an exe that an update may be about to replace.
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
         var u = Array.IndexOf(args, SelfUpdate.UpdatedFromArg);
         var updatedFrom = u >= 0 && u + 1 < args.Length ? args[u + 1] : null;
         // Right after an update the old version may still be closing; give it a moment instead of activating it.

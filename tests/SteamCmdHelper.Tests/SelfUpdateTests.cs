@@ -184,6 +184,48 @@ public class SelfUpdateTests : IDisposable
     }
 
     [Fact]
+    public async Task Installer_waits_until_no_copy_has_the_exe_open()
+    {
+        var exe = Path.Combine(App, "SteamCmdHelper.exe");
+        File.WriteAllText(exe, "old exe");
+        var held = new FileStream(exe, FileMode.Open, FileAccess.Read, FileShare.None); // stands in for the running old copy
+        var release = Task.Run(async () => { await Task.Delay(600); held.Dispose(); });
+
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        SelfUpdate.WaitUntilFree(exe, TimeSpan.FromSeconds(10));
+        await release;
+
+        Assert.True(waited.ElapsedMilliseconds >= 500, $"returned after {waited.ElapsedMilliseconds} ms, while the file was still open");
+    }
+
+    [Fact]
+    public void Installer_gives_up_on_an_exe_that_stays_open()
+    {
+        var exe = Path.Combine(App, "SteamCmdHelper.exe");
+        File.WriteAllText(exe, "old exe");
+        using var held = new FileStream(exe, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        Assert.Throws<TimeoutException>(() => SelfUpdate.WaitUntilFree(exe, TimeSpan.FromMilliseconds(600)));
+    }
+
+    [Fact]
+    public void A_rejected_install_puts_the_old_exe_back()
+    {
+        File.WriteAllText(Path.Combine(App, "SteamCmdHelper-1.2.1-win-x64.exe"), "old exe");
+        var staging = Path.Combine(Temp, "stage");
+        Directory.CreateDirectory(Path.Combine(staging, "files"));
+        File.WriteAllText(Path.Combine(staging, "files", "SteamCmdHelper.exe"), "new exe");
+        var u = new PreparedUpdate("1.3.0", InstallKind.SingleFile, staging);
+        SelfUpdate.Install(u, App, "SteamCmdHelper-1.2.1-win-x64.exe");
+        File.Delete(Path.Combine(App, "SteamCmdHelper-1.2.1-win-x64.exe")); // antivirus removed the new copy
+
+        Assert.True(SelfUpdate.PutBack(u, App, "SteamCmdHelper-1.2.1-win-x64.exe"));
+
+        Assert.Equal("old exe", File.ReadAllText(Path.Combine(App, "SteamCmdHelper-1.2.1-win-x64.exe")));
+        Assert.Empty(Directory.GetFiles(App, "*" + SelfUpdate.OldSuffix));
+    }
+
+    [Fact]
     public void Installer_needs_its_details()
     {
         string? said = null;
