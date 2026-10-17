@@ -285,20 +285,101 @@ public static class SelfUpdate
     {
         if (args.Count < 5 || !int.TryParse(args[0], out var pid)) { fail("The update was started without its details."); return 2; }
         var (appDir, exeName, fromVersion, restart) = (args[1], args[2], args[3], args[4] == "restart");
+        var version = UpdateCheck.CurrentVersion;
+        var target = Path.Combine(appDir, exeName);
+        Log($"Installing {version} over {target} (replacing {fromVersion}, process {pid}).");
+        var files = AppDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var update = new PreparedUpdate(version, KindOf(files), Path.GetDirectoryName(files)!);
         try
         {
-            WaitForExit(pid, TimeSpan.FromMinutes(1));
-            var files = AppDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var update = new PreparedUpdate(UpdateCheck.CurrentVersion, KindOf(files), Path.GetDirectoryName(files)!);
+            WaitForExit(pid, TimeSpan.FromMinutes(2));
+            // The process id alone is not proof: wait until no copy of the program has its files open. Renaming a running
+            // exe works on Windows, but that copy then crashes the next time .NET reads part of the program from it.
+            WaitUntilFree(target, TimeSpan.FromMinutes(2));
+            if (update.Kind == InstallKind.Folder) WaitUntilFree(Path.Combine(appDir, DllName), TimeSpan.FromSeconds(30));
             Install(update, appDir, exeName);
-            if (restart) Restart(Path.Combine(appDir, exeName), fromVersion);
+        }
+        catch (Exception e)
+        {
+            Log("Failed before anything was replaced: " + e);
+            fail($"Could not install SteamCMD Helper {version}: {e.Message}\n\nNothing was changed.");
+            return 1;
+        }
+        try
+        {
+            // Antivirus sometimes removes a freshly copied, unsigned exe, or refuses to start it.
+            if (!File.Exists(target) || Sha256Of(target) != Sha256Of(Path.Combine(files, ExeName)))
+                throw new IOException($"{exeName} disappeared or changed right after it was copied, which usually means antivirus removed it.");
+            if (restart) Restart(target, fromVersion);
+            Log("Installed.");
             return 0;
         }
         catch (Exception e)
         {
-            fail($"Could not install SteamCMD Helper {UpdateCheck.CurrentVersion}: {e.Message}\n\nNothing was changed.");
+            Log("Installed but could not be used, putting the old version back: " + e);
+            var back = PutBack(update, appDir, exeName);
+            if (back && restart) try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = false, WorkingDirectory = appDir }); } catch { }
+            fail($"SteamCMD Helper {version} was installed, but Windows would not use it: {e.Message}\n\n" +
+                (back ? $"Version {fromVersion} was put back." : $"Version {fromVersion} is kept as {exeName}{OldSuffix} in {appDir}; rename it to {exeName} to use it again.") +
+                " If your antivirus quarantined the new version, allow it there, or download it from " + UpdateCheck.ReleasesPage);
             return 1;
         }
+    }
+
+    /// <summary>Undoes <see cref="Apply"/>: each file it replaced gets its "<name>.update-old" copy back. False when that failed.</summary>
+    public static bool PutBack(PreparedUpdate u, string appDir, string exeName = ExeName)
+    {
+        var src = Path.Combine(u.StagingDir, "files");
+        var ok = true;
+        foreach (var file in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(src, file);
+            if (u.Kind == InstallKind.SingleFile && rel == ExeName) rel = exeName;
+            var target = Path.Combine(appDir, rel);
+            try
+            {
+                if (File.Exists(target + OldSuffix)) File.Move(target + OldSuffix, target, overwrite: true);
+                else if (File.Exists(target)) File.Delete(target);
+            }
+            catch { ok = false; }
+        }
+        return ok;
+    }
+
+    /// <summary>
+    /// Waits until no program has <paramref name="file"/> open: Windows refuses an exclusive open of an exe that is
+    /// running, even though it allows renaming it. Returns at once when the file does not exist.
+    /// </summary>
+    public static void WaitUntilFree(string file, TimeSpan timeout)
+    {
+        var until = DateTime.UtcNow + timeout;
+        while (true)
+        {
+            try
+            {
+                if (!File.Exists(file)) return;
+                using (new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None)) return;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                if (DateTime.UtcNow >= until)
+                    throw new TimeoutException($"{Path.GetFileName(file)} is still in use. Close every copy of SteamCMD Helper and try again.", e);
+                Thread.Sleep(250);
+            }
+        }
+    }
+
+    /// <summary>Where the installer notes what it did, so a failed update can be looked into afterwards.</summary>
+    public static string LogFile => Path.Combine(AppSettings.Folder, "update.log");
+
+    static void Log(string line)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(LogFile)!);
+            File.AppendAllText(LogFile, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {line}{Environment.NewLine}");
+        }
+        catch { /* the log is a nicety; never let it stop an update */ }
     }
 
     /// <summary>Waits for the program being replaced to close; returns at once when it already has.</summary>
