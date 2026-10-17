@@ -48,8 +48,11 @@ jobs:
             echo "::error::CHANGELOG.md has no '## $version' section"
             exit 1
           fi
-          # SignPath Foundation asks for the code signing policy to be linked from every download page.
-          printf '\n---\n[Code signing policy](https://github.com/%s#code-signing-policy)\n' "$GITHUB_REPOSITORY" >> notes.md
+          # SignPath Foundation asks for the code signing policy to be linked from every download page, so the link is
+          # only added once signing is set up (the README needs its "Code signing policy" section back then).
+          if [ -n "$SIGNPATH_API_TOKEN" ]; then
+            printf '\n---\n[Code signing policy](https://github.com/%s#code-signing-policy)\n' "$GITHUB_REPOSITORY" >> notes.md
+          fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Test
