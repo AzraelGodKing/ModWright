@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0
 
 - **What changed since the last upload.** Each upload remembers which files it sent, so the next upload of that item
   lists in the log what was added, changed and removed since then, and **Preview package...** marks each file (removed
