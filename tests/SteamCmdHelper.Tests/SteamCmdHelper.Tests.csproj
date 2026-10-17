@@ -11,7 +11,7 @@
     <RootNamespace>SteamCmdHelper.Tests</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../../ModScanner.cs;../../ProjectConfig.cs;../../RequestSender.cs;../../BakedRequestKey.cs;../../Publisher.cs;../../SteamCmdIntegrity.cs;../../SteamCmdOutput.cs;../../SteamLogin.cs;../../UploadedVersions.cs;../../BatchUpload.cs;../../Cli.cs;../../UpdateCheck.cs;../../WorkshopPage.cs;../../UploadHistory.cs;../../WorkshopStatus.cs;../../ModRows.cs;../../AppSettings.cs;../../SelfUpdate.cs;../../CrashReport.cs;../../PackageCheck.cs;../../GitOps.cs;../../Announce.cs;../../Dependencies.cs;../../SubscriberStats.cs;../../Display.cs;../../PreviewImage.cs;../../PackageManifest.cs;../../ChangeNotes.cs;../../DescriptionSync.cs;../../BuildStep.cs;../../RunLogs.cs" Link="App/%(Filename)%(Extension)" />
+    <Compile Include="../../ModScanner.cs;../../ProjectConfig.cs;../../RequestSender.cs;../../BakedRequestKey.cs;../../Publisher.cs;../../SteamCmdIntegrity.cs;../../SteamCmdOutput.cs;../../SteamLogin.cs;../../UploadedVersions.cs;../../BatchUpload.cs;../../Cli.cs;../../UpdateCheck.cs;../../WorkshopPage.cs;../../UploadHistory.cs;../../WorkshopStatus.cs;../../ModRows.cs;../../AppSettings.cs;../../SelfUpdate.cs;../../AppUpdates.cs;../../CrashReport.cs;../../PackageCheck.cs;../../GitOps.cs;../../Announce.cs;../../Dependencies.cs;../../SubscriberStats.cs;../../Display.cs;../../PreviewImage.cs;../../PackageManifest.cs;../../ChangeNotes.cs;../../DescriptionSync.cs;../../BuildStep.cs;../../RunLogs.cs" Link="App/%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
@@ -19,5 +19,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <!-- PreviewImage uses GDI+, so its tests run on Windows only (the Windows CI job). -->
     <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
+    <!-- AppUpdates (compiled in above) uses it. -->
+    <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Setup.exe that updates like other desktop apps.** Each release now also has `SteamCmdHelper-<version>-Setup.exe`
+  (built with [Velopack](https://velopack.io)). It installs the app for your Windows user with Start menu and desktop
+  shortcuts, no administrator rights needed, and updates it with a separate updater that swaps versions after the app
+  has closed and only downloads what changed. The standalone exe and the framework-dependent zip still update
+  themselves as before.
+
 ## 1.3.0
 
 - **What changed since the last upload.** Each upload remembers which files it sent, so the next upload of that item

@@ -72,6 +72,9 @@ jobs:
           # Framework-dependent folder: small, for machines with the .NET 8 Desktop Runtime
           # or where antivirus refuses large unsigned single-file exes.
           dotnet publish SteamCmdHelper.csproj -c Release -r win-x64 --no-self-contained -p:PublishReadyToRun=true -o out/portable
+          # Self-contained folder for the Setup.exe (Velopack, see AppUpdates.cs). A folder rather than one file: Velopack's
+          # Update.exe swaps whole folders, and updates between versions only download the files that changed.
+          dotnet publish SteamCmdHelper.csproj -c Release -r win-x64 --self-contained -p:PublishReadyToRun=true -o out/velopack
 
       # Code signing through SignPath (free for open source; see "Code signing (maintainer)" in the README). Until the
       # SIGNPATH_API_TOKEN secret exists these steps are skipped and the release is unsigned, as before. Signing
@@ -109,9 +112,26 @@ jobs:
           cp -r signed/. out/
           ls -l out/standalone
 
+      # Builds the Setup.exe and the update packages that installed copies download. The previous release's package is
+      # fetched first so this one can include a delta (only what changed). Not signed yet: SignPath covers the files above.
+      - name: Setup.exe and update packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dotnet tool install -g vpk --version 1.2.161
+          vpk download github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --token "$GH_TOKEN" -o out/vpk \
+            || echo "No earlier Velopack release to make a delta from."
+          vpk pack --packId AzraelGodKing.SteamCMDHelper --packVersion "$VERSION" --packDir out/velopack \
+            --mainExe SteamCmdHelper.exe --packTitle "SteamCMD Helper" --packAuthors AzraelGodKing --icon Assets/app.ico \
+            --noPortable -o out/vpk
+          ls -l out/vpk
+
       - name: Package
         run: |
           mkdir dist
+          # Velopack finds its packages by these exact names, so only the Setup.exe is renamed.
+          cp out/vpk/AzraelGodKing.SteamCMDHelper-win-Setup.exe "dist/SteamCmdHelper-$VERSION-Setup.exe"
+          cp out/vpk/AzraelGodKing.SteamCMDHelper-"$VERSION"-*.nupkg out/vpk/releases.win.json out/vpk/assets.win.json out/vpk/RELEASES dist/
           cp out/standalone/SteamCmdHelper.exe "dist/SteamCmdHelper-$VERSION-win-x64.exe"
           (cd out/portable && 7z a -tzip "../../dist/SteamCmdHelper-$VERSION-win-x64-framework-dependent.zip" . > /dev/null)
           (cd dist && sha256sum * > SHA256SUMS.txt)

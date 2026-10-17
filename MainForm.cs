@@ -127,7 +127,7 @@ public sealed class MainForm : Form
     public string? UpdatedFrom { get; init; }
 
     /// <summary>A downloaded update that is installed when the window closes (or on "Restart now").</summary>
-    PreparedUpdate? _pendingUpdate;
+    PendingUpdate? _pendingUpdate;
 
     public const string Disclaimer = "Not affiliated with or endorsed by Valve Corporation or Steam.";
 
@@ -2189,12 +2189,12 @@ public sealed class MainForm : Form
         if (!manual && r.Version == _s.SkippedUpdate) return;
         Append($"SteamCMD Helper {r.Version} is available (you have {UpdateCheck.CurrentVersion}): {r.PageUrl}", LogKind.Note);
 
-        var cannot = SelfUpdate.CannotUpdateReason(r, SelfUpdate.AppDir);
+        var cannot = AppUpdates.CannotUpdateReason(r);
         if (!manual && _s.AutoUpdate && cannot == null)
         {
             try
             {
-                _pendingUpdate = await SelfUpdate.PrepareAsync(r, SelfUpdate.KindOf(SelfUpdate.AppDir), null, CancellationToken.None);
+                _pendingUpdate = await AppUpdates.DownloadAsync(r, null, CancellationToken.None);
                 ShowUpdateReady();
             }
             catch (Exception e) { Append($"Could not download {r.Version} automatically: {e.Message}", LogKind.Warn); }
@@ -2264,7 +2264,7 @@ public sealed class MainForm : Form
             try
             {
                 var p = new Progress<int>(v => { if (progress.BoundDialog != null) progress.ProgressBar!.Value = v; });
-                var prepared = await SelfUpdate.PrepareAsync(r, SelfUpdate.KindOf(SelfUpdate.AppDir), p, cts.Token);
+                var prepared = await AppUpdates.DownloadAsync(r, p, cts.Token);
                 if (cts.IsCancellationRequested || progress.BoundDialog == null) return; // closed while finishing
                 _pendingUpdate = prepared;
                 progress.Navigate(ready);
@@ -2306,7 +2306,7 @@ public sealed class MainForm : Form
     }
 
     /// <summary>
-    /// Hands <see cref="_pendingUpdate"/> to the downloaded program, which installs it over this one's files once this
+    /// Hands <see cref="_pendingUpdate"/> to the program that installs it over this one's files once this
     /// window has closed (and starts it when <paramref name="restart"/> is true). Returns false (and says why) when it
     /// could not.
     /// </summary>
@@ -2314,10 +2314,9 @@ public sealed class MainForm : Form
     {
         var u = _pendingUpdate;
         if (u == null) return false;
-        var exe = Environment.ProcessPath ?? Path.Combine(SelfUpdate.AppDir, SelfUpdate.ExeName);
         try
         {
-            SelfUpdate.HandOff(u, SelfUpdate.AppDir, Path.GetFileName(exe), UpdateCheck.CurrentVersion, restart);
+            u.Install(UpdateCheck.CurrentVersion, restart);
             _pendingUpdate = null;
             return true;
         }

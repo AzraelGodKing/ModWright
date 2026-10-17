@@ -155,6 +155,10 @@ static class Program
     [STAThread]
     static int Main(string[] args)
     {
+        // Lets the Setup.exe install, update and uninstall this copy: Velopack runs the app with its own arguments at
+        // those moments, and this handles them and exits. Does nothing otherwise. See AppUpdates.
+        Velopack.VelopackApp.Build().Run();
+
         // The downloaded program installing itself once the old one has closed (see SelfUpdate.HandOff).
         if (args.Length > 0 && args[0] == SelfUpdate.FinishArg)
             return SelfUpdate.Finish(args[1..], message =>
