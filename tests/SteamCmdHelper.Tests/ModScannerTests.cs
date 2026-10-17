@@ -254,7 +254,7 @@ public class ModScannerTests : IDisposable
 
         var m = ScanOne();
         Assert.True(m.Ready);
-        Assert.Contains("not built (nothing matches Assemblies/*.dll)", m.Warnings);
+        Assert.Contains("not built (nothing matches Assemblies/*.dll or */Assemblies/*.dll)", m.Warnings);
     }
 
     [Fact]
@@ -275,7 +275,7 @@ public class ModScannerTests : IDisposable
         Assert.Equal("Fix: no About/changelog.txt", ScanOne().StatusText);
 
         _repo.AddMod("Alpha", built: false);
-        Assert.Equal("Ready (not built (nothing matches Assemblies/*.dll))", ScanOne().StatusText);
+        Assert.Equal("Ready (not built (nothing matches Assemblies/*.dll or */Assemblies/*.dll))", ScanOne().StatusText);
     }
 
     [Fact]
@@ -375,5 +375,29 @@ public class ModScannerTests : IDisposable
 
         Assert.Equal(new[] { "Alpha.dll", "Other.dll" }, hits);
         Assert.Empty(ModScanner.MatchGlob(dir, "Missing/*.dll"));
+    }
+
+    [Fact]
+    public void MatchGlob_matches_wildcard_folders()
+    {
+        var dir = _repo.AddMod("Alpha", built: false);
+        _repo.Write("Alpha/1.5/Assemblies/Alpha.dll", "dll");
+        _repo.Write("Alpha/1.6/Assemblies/Alpha.dll", "dll");
+        _repo.Write("Alpha/1.6/Defs/Things.xml", "xml");
+
+        var hits = ModScanner.MatchGlob(dir, "*/Assemblies/*.dll").Select(f => Path.GetRelativePath(dir, f).Replace('\\', '/')).OrderBy(n => n);
+
+        Assert.Equal(new[] { "1.5/Assemblies/Alpha.dll", "1.6/Assemblies/Alpha.dll" }, hits);
+        Assert.Empty(ModScanner.MatchGlob(dir, "*/Missing/*.dll"));
+    }
+
+    [Fact]
+    public void Build_in_a_version_folder_counts_as_built()
+    {
+        _repo.AddMod("Alpha", built: false);
+        _repo.Write("Alpha/Assemblies/.gitkeep", "");
+        _repo.Write("Alpha/1.6/Assemblies/Alpha.dll", "dll");
+
+        Assert.DoesNotContain(ScanOne().Warnings, w => w.StartsWith("not built"));
     }
 }

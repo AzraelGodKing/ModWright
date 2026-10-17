@@ -156,12 +156,23 @@ public sealed class Publisher
             var report = PackageCheck.Inspect(stage, hash: ManifestDir != null);
             var last = ManifestDir != null && m.OnSteam ? PackageDiffs.Load(ManifestDir, m.WorkshopId!) : null;
             if (last != null) report = report with { Diff = PackageDiffs.Compare(last, report.Files) };
+            // git archive only has what git tracks, so anything ignored (a built .dll above all) would silently stay behind.
+            // From another commit the working folder is a different version, so there is nothing to compare with.
+            var gitPackaging = _cfg.UseGitArchive && ModScanner.IsGitRepo(_repo);
+            if (gitPackaging && !FromRef) report = report with { LeftOut = PackageCheck.LeftOut(m.Dir, report.Files, _cfg.Exclude ?? Array.Empty<string>()) };
             Packaged?.Invoke(m, report);
             if (report.Files.Count == 0) return new PublishResult(false, "The package is empty, so the upload would remove every file from the item on Steam.");
             var missing = PackageCheck.MissingRequired(report.Files, _cfg.RequiredInPackage());
             if (missing.Count > 0)
                 return new PublishResult(false, $"The package has no {string.Join(", ", missing)}, so the mod would break for everyone who updates. " +
-                    (_cfg.UseGitArchive && ModScanner.IsGitRepo(_repo) ? "Check it is committed and not left out by an export-ignore rule in .gitattributes." : "Check it exists and is not in the layout's Exclude list."));
+                    (gitPackaging ? "Check it is committed and not left out by an export-ignore rule in .gitattributes." : "Check it exists and is not in the layout's Exclude list."));
+            var code = report.LeftOut.Where(PackageCheck.IsCode).ToList();
+            if (code.Count > 0)
+                return new PublishResult(false, $"The package leaves out {PackageCheck.Examples(code)}, which {(code.Count == 1 ? "is" : "are")} in the mod folder but not in git " +
+                    "(ignored by .gitignore or not committed), so players would get the mod without its code. Commit it, or add where the build lands to the " +
+                    "layout's BuiltFiles (for example \"1.6/Assemblies/*.dll\"), or delete it if it is left over.");
+            if (report.LeftOut.Count > 0)
+                Say($"Warning: the package leaves out {report.LeftOut.Count} file{(report.LeftOut.Count == 1 ? "" : "s")} in the mod folder that git does not have (ignored or not committed): {PackageCheck.Examples(report.LeftOut)}.");
             foreach (var w in report.Warnings) Say("Warning: the package " + w + ".");
             if (report.Diff is { } diff)
             {
@@ -384,9 +395,7 @@ public sealed class Publisher
     static void CopyDir(string src, string dst, string[] exclude)
     {
         Directory.CreateDirectory(dst);
-        bool Skip(string name) => exclude.Any(p => p.Contains('*')
-            ? Regex.IsMatch(name, "^" + Regex.Escape(p).Replace("\\*", ".*") + "$", RegexOptions.IgnoreCase)
-            : name.Equals(p, StringComparison.OrdinalIgnoreCase));
+        bool Skip(string name) => PackageCheck.Excluded(name, exclude);
         foreach (var f in Directory.GetFiles(src))
             if (!Skip(Path.GetFileName(f))) File.Copy(f, Path.Combine(dst, Path.GetFileName(f)), true);
         foreach (var d in Directory.GetDirectories(src))

@@ -126,6 +126,10 @@ installed, names that differ only in capital letters (they overwrite each other 
 Windows refuses (`CON`, `NUL`, `aux.ogg`, `<>:"|?*`, a trailing dot or space). A package that is missing the layout's
 marker file (such as RimWorld's `About/About.xml`) or one of its `RequiredFiles` is refused, because the mod would break
 for everyone who updates; that usually means a `.gitattributes` export-ignore rule or the `Exclude` list dropped it.
+When packaging with git, files in the mod folder that git does not have (ignored by `.gitignore` or not committed) are
+compared against the package: a `.dll` left out that way stops the upload, since players would get the mod without its
+code, and anything else left out is a warning. The RimWorld layout picks up builds in `Assemblies` and in version
+folders such as `1.6/Assemblies` even when `*.dll` is ignored.
 Right-click a mod and choose **Preview package...** to see every file and its size before uploading.
 
 Each upload remembers which files it sent (`%LocalAppData%\SteamCmdHelper\manifests`), so the next one of the same item
@@ -356,7 +360,7 @@ The **Generic** layout expects, inside each mod folder: `CHANGELOG.md` (the Work
 | `WorkshopIdFile` | `workshop_id.txt` | Stores the Workshop id |
 | `WorkshopIdKey` | empty | When set, the id is that key inside `WorkshopIdFile` (read like `NameKey`, e.g. `remote_file_id`), and a new id is written back to it |
 | `Preview`, `SteamDescriptionFile` | `preview.png`, `steam_description.txt` | Used when creating (empty `Preview` = none) |
-| `BuiltFiles` | `[]` | Build outputs copied from the working tree, e.g. `["Assemblies/*.dll"]` (a warning when missing) |
+| `BuiltFiles` | `[]` | Build outputs copied from the working tree, e.g. `["Assemblies/*.dll", "*/Assemblies/*.dll"]` (any folder may use `*`; a warning when none match) |
 | `RequiredFiles` | `[]` | Files every package must contain, as paths or globs (e.g. `["Assemblies/*.dll"]`). The marker file always counts. A package without one is refused |
 | `UseGitArchive` | true | Package with `git archive HEAD` (honours `export-ignore`); false copies the folder using `Exclude` |
 | `Exclude` | `.git`, `bin`, `obj`, ... | Skipped when `UseGitArchive` is false |

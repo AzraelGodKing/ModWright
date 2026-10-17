@@ -173,7 +173,7 @@ public sealed class ProjectConfig
             WorkshopIdFile = "About/PublishedFileId.txt",
             Preview = "About/Preview.png",
             SteamDescriptionFile = "About/steam_description.txt",
-            BuiltFiles = new[] { "Assemblies/*.dll" },
+            BuiltFiles = new[] { "Assemblies/*.dll", "*/Assemblies/*.dll" },
             Exclude = new[] { ".git", ".vs", "obj", "bin", "Source", "Tools", "*.md", "*.pdb" },
             Source = "built-in RimWorld layout"
         },
