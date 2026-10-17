@@ -25,6 +25,10 @@ Steam and SteamCMD are trademarks of Valve Corporation.
 
 Each [GitHub Release](../../releases) has:
 
+- `SteamCmdHelper-<version>-Setup.exe`: installs the app for your Windows user (no administrator rights) with Start
+  menu and desktop shortcuts, and keeps it up to date the way most desktop apps do: a separate updater
+  ([Velopack](https://velopack.io)) swaps in the new version after the app has closed, downloading only what changed.
+  Recommended. Uninstall it from Windows' **Installed apps**; your settings stay in `%LocalAppData%\SteamCmdHelper`.
 - `SteamCmdHelper-<version>-win-x64.exe`: a single self-contained exe; no .NET install needed.
 - `SteamCmdHelper-<version>-win-x64-framework-dependent.zip`: a small folder build that needs the
   [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0). Use it if Windows or your antivirus
@@ -34,8 +38,9 @@ Both are built from this repository by GitHub Actions; see the [Code signing pol
 
 At start-up the app asks GitHub for the latest release and, when it is newer, offers **Update now**, **Release notes**,
 or **Later**, with a box to stop reminding you about that version. **Update now** downloads the release file that matches
-how you run the app (the standalone exe, or the framework-dependent zip for the folder build), checks it against the
-release's `SHA256SUMS.txt` and restarts: the new version installs itself once the old one has closed, then opens. If
+how you run the app (the update package for a Setup.exe install, the standalone exe, or the framework-dependent zip for
+the folder build), checks it against the
+release's checksums and restarts: the new version installs itself once the old one has closed, then opens. If
 anything fails, the old files are put back. When the app's folder
 cannot be written to (for example under Program Files), it offers **Download** through your browser instead.
 

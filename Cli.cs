@@ -152,16 +152,14 @@ public static class Cli
         say($"SteamCMD Helper {r.Version} is available (you have {current}): {r.PageUrl}");
         if (checkOnly) return ExitOk;
 
-        var dir = SelfUpdate.AppDir;
-        var cannot = SelfUpdate.CannotUpdateReason(r, dir);
+        var cannot = AppUpdates.CannotUpdateReason(r);
         if (cannot != null) { say("Cannot update in place: " + cannot + " Download it from the release page."); return ExitFailed; }
         try
         {
             var last = -10;
             var progress = new Progress<int>(p => { if (p >= last + 10) { last = p - p % 10; say($"  downloading... {last}%"); } });
-            var u = await SelfUpdate.PrepareAsync(r, SelfUpdate.KindOf(dir), progress, ct);
-            var exe = Environment.ProcessPath ?? Path.Combine(dir, SelfUpdate.ExeName);
-            SelfUpdate.HandOff(u, dir, Path.GetFileName(exe), current, restart: false);
+            var u = await AppUpdates.DownloadAsync(r, progress, ct);
+            u.Install(current, false);
             say($"Downloaded {r.Version}. It is installed as soon as this command ends, and used from the next start.");
             return ExitOk;
         }

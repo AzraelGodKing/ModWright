@@ -279,6 +279,14 @@ public class SelfUpdateTests : IDisposable
         Assert.False(File.Exists(Path.Combine(folder, "crash-20260101-000000-000.txt")));
     }
 
+    [Fact]
+    public void A_copy_not_installed_with_Setup_keeps_its_own_updater()
+    {
+        Assert.False(AppUpdates.IsInstalled);
+        var r = new ReleaseInfo("9.9.9", UpdateCheck.ReleasesPage, null);
+        Assert.Equal(SelfUpdate.CannotUpdateReason(r, SelfUpdate.AppDir), AppUpdates.CannotUpdateReason(r));
+    }
+
     /// <summary>Progress&lt;T&gt; posts to the thread pool; this reports on the spot so the test can read it.</summary>
     sealed class SyncProgress(List<int> into) : IProgress<int> { public void Report(int v) => into.Add(v); }
 }
