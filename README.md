@@ -7,8 +7,6 @@ sending anything, handles the Steam login, and shows progress bars and a live lo
 It works for **any game with a Steam Workshop**: you give it the game's Steam app ID and tell it how your
 mods are laid out. The upload logic is built in; the only outside tool it needs is SteamCMD.
 
-Releases are signed for free through SignPath; see the [Code signing policy](#code-signing-policy).
-
 SteamCMD Helper is an independent tool. It is not affiliated with or endorsed by Valve Corporation or Steam.
 Steam and SteamCMD are trademarks of Valve Corporation.
 
@@ -34,7 +32,7 @@ Each [GitHub Release](../../releases) has:
   [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0). Use it if Windows or your antivirus
   refuses to launch the large single-file exe.
 
-Both are built from this repository by GitHub Actions; see the [Code signing policy](#code-signing-policy).
+All of them are built from this repository by GitHub Actions.
 
 At start-up the app asks GitHub for the latest release and, when it is newer, offers **Update now**, **Release notes**,
 or **Later**, with a box to stop reminding you about that version. **Update now** downloads the release file that matches
@@ -440,23 +438,7 @@ The key is stored masked, but anyone with the exe could still extract it. Keep i
 - Headless checks: `SteamCmdHelper.exe [--repo <folder>] --selftest out.txt`, `... --package <ModFolder> out.txt`.
   `--shot <folder>` saves screenshots of the main window, the Options tab and the request form in both themes.
 
-## Code signing policy
-
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
-[SignPath Foundation](https://signpath.org).
-
-Only files built from this repository by its release workflow (`.github/workflows/release.yml`, on GitHub-hosted
-runners) are signed: the standalone exe and the app's own exe and dll in the framework-dependent zip. The .NET runtime
-files inside them come from Microsoft and are not built by this project.
-
-**Team roles**
-
-- Committers and reviewers: [Azrael (AzraelGodKing)](https://github.com/AzraelGodKing). Changes from anyone else come
-  in as pull requests and are reviewed before they are merged.
-- Approvers: [Azrael (AzraelGodKing)](https://github.com/AzraelGodKing). Every release is approved by hand before it
-  is signed.
-
-**Privacy**
+## Privacy
 
 This program will not transfer any information to other networked systems unless specifically requested by the user
 or the person installing or operating it. What it does connect to, and why:
@@ -528,6 +510,10 @@ it signs only files whose product name is `SteamCMD Helper` and whose product ve
 the workflow passes in. The project needs the GitHub trusted build system linked to it. Each release waits up to an
 hour for the signing request to be approved in SignPath; if nobody approves it, the release run fails and nothing is
 published. Without the secret, releases are built unsigned as before.
+
+Releases are not signed yet. SignPath Foundation requires a "Code signing policy" section in this README (who
+commits, who approves releases, and the privacy notes above), so add one back when applying; the release notes link to
+it once `SIGNPATH_API_TOKEN` exists.
 
 ## License
 
