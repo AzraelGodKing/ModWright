@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.2
+
+- **RimWorld version-folder builds are uploaded.** Mods that build into version folders (`1.6/Assemblies`,
+  `1.7/Assemblies`) went up without their `.dll` files when packaging from git, because most mod repos ignore `*.dll`.
+  The RimWorld layout now picks up `*/Assemblies/*.dll` as well as the root `Assemblies/` folder.
+- **Left-out files are caught before upload.** Git packaging now compares the package with the mod folder. A `.dll`
+  that is in the folder but not in the package stops the upload with a message naming it, and any other left-out file
+  is a warning in the log. **Preview package...** lists left-out files at the end.
+
 ## 1.3.1
 
 - **Setup.exe that updates like other desktop apps.** Each release now also has `SteamCmdHelper-<version>-Setup.exe`
