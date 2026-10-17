@@ -481,8 +481,10 @@ public static class ModScanner
                 else if (!m.OnSteam && preview.Length > MaxPreviewBytes) m.Problems.Add($"{cfg.Preview} is over 1 MB (Steam's limit)");
             }
 
-            foreach (var glob in cfg.BuiltFiles ?? Array.Empty<string>())
-                if (MatchGlob(dir, glob).Count == 0) m.Warnings.Add($"not built (nothing matches {glob})");
+            // A layout may list several places a build can land (RimWorld: Assemblies or a version folder's Assemblies).
+            var built = cfg.BuiltFiles ?? Array.Empty<string>();
+            if (built.Length > 0 && built.All(glob => MatchGlob(dir, glob).Count == 0))
+                m.Warnings.Add($"not built (nothing matches {string.Join(" or ", built)})");
 
             if (dirtyLines.Any(p => p.StartsWith(rel + "/", StringComparison.OrdinalIgnoreCase)))
             {
@@ -499,14 +501,20 @@ public static class ModScanner
         new[] { "bin", "obj", "node_modules", "_tools", "scripts", "docs", "site", "tools", "tests", "test" }
             .Contains(name, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Files inside <paramref name="dir"/> matching a simple glob such as "Assemblies/*.dll" (wildcards in the last segment only).</summary>
+    /// <summary>
+    /// Files inside <paramref name="dir"/> matching a simple glob such as "Assemblies/*.dll". Any segment may hold * or ?,
+    /// so "*/Assemblies/*.dll" finds RimWorld's per-version folders (1.5/Assemblies, 1.6/Assemblies, ...).
+    /// </summary>
     public static List<string> MatchGlob(string dir, string glob)
     {
-        var g = ProjectConfig.Norm(glob);
-        var sub = Path.GetDirectoryName(g) ?? "";
-        var pattern = Path.GetFileName(g);
-        var folder = Path.Combine(dir, sub);
-        return Directory.Exists(folder) ? Directory.GetFiles(folder, pattern).ToList() : new List<string>();
+        var parts = glob.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return new List<string>();
+        IEnumerable<string> folders = Directory.Exists(dir) ? new[] { dir } : Array.Empty<string>();
+        foreach (var part in parts.SkipLast(1))
+            folders = folders.SelectMany(f => part.IndexOfAny(new[] { '*', '?' }) >= 0
+                ? Directory.GetDirectories(f, part)
+                : Directory.Exists(Path.Combine(f, part)) ? new[] { Path.Combine(f, part) } : Array.Empty<string>()).ToList();
+        return folders.SelectMany(f => Directory.GetFiles(f, parts[^1])).ToList();
     }
 
     public static string Git(string repo, string args)

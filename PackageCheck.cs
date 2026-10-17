@@ -12,6 +12,9 @@ public sealed record PackageReport(IReadOnlyList<PackageFile> Files, long TotalB
 
     /// <summary>How the package differs from the last upload of the same item from this PC; null when there is none to compare with.</summary>
     public PackageDiff? Diff { get; init; }
+
+    /// <summary>Files in the mod folder that the package does not have (paths inside the mod, forward slashes). Only worked out for git packaging.</summary>
+    public IReadOnlyList<string> LeftOut { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>
@@ -109,6 +112,44 @@ public static class PackageCheck
         }
         return missing;
     }
+
+    /// <summary>True when <paramref name="name"/> (a file or folder name) matches one of the layout's Exclude entries: a name, or a pattern with *.</summary>
+    public static bool Excluded(string name, IEnumerable<string> exclude) => exclude.Any(p => p.Contains('*')
+        ? Regex.IsMatch(name, "^" + Regex.Escape(p).Replace("\\*", ".*") + "$", RegexOptions.IgnoreCase)
+        : name.Equals(p, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Files in <paramref name="modDir"/> that the package does not have, skipping what the layout excludes, git's own
+    /// folder, the test item id and leftovers such as Thumbs.db. With git packaging these are files git does not have
+    /// (ignored by .gitignore, not committed, or left out by export-ignore), which is how a built .dll goes missing.
+    /// </summary>
+    public static List<string> LeftOut(string modDir, IReadOnlyList<PackageFile> files, IEnumerable<string> exclude)
+    {
+        var skip = exclude.Append(".git").Append(ModInfo.TestIdFile).ToList();
+        var have = files.Select(f => f.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var left = new List<string>();
+        void Walk(string dir)
+        {
+            foreach (var f in Directory.GetFiles(dir))
+            {
+                var name = Path.GetFileName(f);
+                if (Excluded(name, skip) || JunkNames.Contains(name, StringComparer.OrdinalIgnoreCase) || JunkFiles.Contains(Path.GetExtension(name).ToLowerInvariant())) continue;
+                var rel = Path.GetRelativePath(modDir, f).Replace('\\', '/');
+                if (!have.Contains(rel)) left.Add(rel);
+            }
+            foreach (var d in Directory.GetDirectories(dir))
+                if (!Excluded(Path.GetFileName(d), skip)) Walk(d);
+        }
+        if (Directory.Exists(modDir)) Walk(modDir);
+        return left.OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>True for a file that holds a mod's code (a .dll): leaving one out breaks the mod for everyone who updates.</summary>
+    public static bool IsCode(string path) => Path.GetExtension(path).Equals(".dll", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Up to three of <paramref name="paths"/>, then how many more there are.</summary>
+    public static string Examples(IReadOnlyCollection<string> paths) =>
+        string.Join(", ", paths.Take(3)) + (paths.Count > 3 ? $" and {paths.Count - 3} more" : "");
 
     static string HashOf(string file)
     {

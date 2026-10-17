@@ -35,16 +35,27 @@ public sealed class PackagePreviewForm : Form
             }
         }
 
+        if (report.LeftOut.Count > 0)
+        {
+            var code = report.LeftOut.Count(PackageCheck.IsCode);
+            warnings.Visible = true;
+            warnings.Text += (warnings.Text.Length > 0 ? "\n" : "") + $"• {report.LeftOut.Count} file{(report.LeftOut.Count == 1 ? " is" : "s are")} in the mod folder but not in git, so " +
+                (report.LeftOut.Count == 1 ? "it is" : "they are") + " left out (listed at the end)" + (code > 0 ? ". A .dll among them means players would get the mod without its code, so the upload stops until it is fixed." : ".");
+        }
+
         var list = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HeaderStyle = ColumnHeaderStyle.Nonclickable };
         list.Columns.Add("File", 440);
         list.Columns.Add("Size", 90, HorizontalAlignment.Right);
-        list.Columns.Add(diff != null ? "Since last upload" : "", diff != null ? 110 : 0);
+        var third = diff != null || report.LeftOut.Count > 0;
+        list.Columns.Add(diff != null ? "Since last upload" : third ? "Note" : "", third ? 110 : 0);
         string Change(string path) => diff == null ? "" : diff.Added.Contains(path) ? "added" : diff.Changed.Contains(path) ? "changed" : "";
         list.BeginUpdate();
         foreach (var f in report.Files) list.Items.Add(new ListViewItem(new[] { f.Path, PackageCheck.Size(f.Bytes), Change(f.Path) }));
         // Files the last upload had and this one does not, at the end so they read as gone.
         foreach (var gone in diff?.Removed ?? Array.Empty<string>())
             list.Items.Add(new ListViewItem(new[] { gone, "", "removed" }) { ForeColor = Theme.Current.Warn });
+        foreach (var left in report.LeftOut)
+            list.Items.Add(new ListViewItem(new[] { left, "", "left out" }) { ForeColor = Theme.Current.Warn });
         list.EndUpdate();
 
         var open = new Button { Text = "Open mod folder", AutoSize = true, Padding = new Padding(8, 2, 8, 2) };

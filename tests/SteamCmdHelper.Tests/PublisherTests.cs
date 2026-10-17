@@ -277,6 +277,84 @@ public sealed class PublisherTests : IDisposable
         Assert.True(Directory.Exists(unrelated));
     }
 
+    // ------------------------------------------------------------ files git does not have
+
+    /// <summary>Makes the repo a git repo that ignores *.dll (as most mod repos do) and commits the mod.</summary>
+    void CommitModIgnoringDlls()
+    {
+        File.WriteAllText(Path.Combine(_repo, ".gitignore"), "*.dll\n");
+        Directory.CreateDirectory(Path.Combine(_modDir, "Assemblies"));
+        File.WriteAllText(Path.Combine(_modDir, "Assemblies", ".gitkeep"), "");
+        Git("init", "-q");
+        Git("add", "-A");
+        Git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init");
+    }
+
+    ModInfo GitMod() => new() { Dir = _modDir, Folder = "MyMod", RelPath = "MyMod", Name = "My Mod", Version = "1.0.0", WorkshopId = "2001112223" };
+
+    void WriteBuild(string rel)
+    {
+        var path = Path.Combine(_modDir, rel);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "dll");
+    }
+
+    [Fact]
+    public async Task Ignored_build_in_a_version_folder_is_packaged()
+    {
+        CommitModIgnoringDlls();
+        WriteBuild("1.6/Assemblies/MyMod.dll");
+        WriteBuild("1.7/Assemblies/MyMod.dll");
+
+        PackageReport? report = null;
+        var pub = new Publisher(_repo, TestConfig.RimWorld(), "steamcmd", "modder", _temp);
+        pub.Packaged += (_, r) => report = r;
+        var r = await pub.RunAsync(GitMod(), upload: false, CancellationToken.None);
+
+        Assert.True(r.Ok, r.Message);
+        Assert.Contains(report!.Files, f => f.Path == "1.6/Assemblies/MyMod.dll");
+        Assert.Contains(report.Files, f => f.Path == "1.7/Assemblies/MyMod.dll");
+        Assert.Empty(report.LeftOut);
+    }
+
+    [Fact]
+    public async Task Ignored_dll_the_layout_does_not_build_stops_the_upload()
+    {
+        CommitModIgnoringDlls();
+        WriteBuild("Plugins/MyMod.dll");
+
+        PackageReport? report = null;
+        var pub = new Publisher(_repo, TestConfig.RimWorld(), "steamcmd", "modder", _temp);
+        pub.Packaged += (_, r) => report = r;
+        var r = await pub.RunAsync(GitMod(), upload: false, CancellationToken.None);
+
+        Assert.False(r.Ok);
+        Assert.Contains("Plugins/MyMod.dll", r.Message);
+        Assert.Equal(new[] { "Plugins/MyMod.dll" }, report!.LeftOut);
+        Assert.Empty(StageDirs());
+    }
+
+    [Fact]
+    public async Task Other_ignored_files_are_a_warning()
+    {
+        CommitModIgnoringDlls();
+        File.AppendAllText(Path.Combine(_repo, ".gitignore"), "*.local\n");
+        File.WriteAllText(Path.Combine(_modDir, "About", "notes.local"), "x");
+        File.WriteAllText(Path.Combine(_modDir, "About", "Thumbs.db"), "x");
+        File.WriteAllText(Path.Combine(_modDir, "Readme.md"), "excluded by the layout");
+
+        var log = new List<string>();
+        var pub = new Publisher(_repo, TestConfig.RimWorld(), "steamcmd", "modder", _temp);
+        pub.Log += log.Add;
+        var r = await pub.RunAsync(GitMod(), upload: false, CancellationToken.None);
+
+        Assert.True(r.Ok, r.Message);
+        var warning = Assert.Single(log, l => l.Contains("leaves out"));
+        Assert.Contains("About/notes.local", warning);
+        Assert.DoesNotContain("Thumbs.db", warning);
+        Assert.DoesNotContain("Readme.md", warning);
+    }
+
     void Git(params string[] args)
     {
         var psi = new ProcessStartInfo("git") { WorkingDirectory = _repo, UseShellExecute = false };
