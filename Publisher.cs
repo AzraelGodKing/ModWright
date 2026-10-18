@@ -90,6 +90,12 @@ public sealed class Publisher
     /// </summary>
     public Func<string, CancellationToken, Task<WorkshopItem?>>? SteamCheck { get; init; }
 
+    /// <summary>
+    /// Sets an item's Workshop tags after a successful upload (app id, item id, the tags the layout gives the mod), since
+    /// SteamCMD cannot. Null leaves tags alone (tests, offline use); see <see cref="WorkshopTags.UpdateOnSteamAsync"/>.
+    /// </summary>
+    public Func<string, string, string[], CancellationToken, Task<TagResult>>? TagUpdater { get; init; }
+
     /// <summary>How far Steam's clock and this PC's may disagree when matching Steam's "updated" time to the upload.</summary>
     public static readonly TimeSpan ClockSlack = TimeSpan.FromMinutes(2);
 
@@ -180,6 +186,9 @@ public sealed class Publisher
                 foreach (var w in diff.Warnings()) Say("Warning: the package " + w + ".");
             }
 
+            // Read from the package, so an upload from another git ref gets that commit's supported versions.
+            var tags = WorkshopTags.LayoutHasTags(_cfg) ? WorkshopTags.For(stage, _cfg) : Array.Empty<string>();
+
             // A test item gets no page changes: they are meant for the real item's next upload.
             var page = TestItems ? new WorkshopPageEdit { Title = m.Name + " (test)" } : PageEdits?.Invoke(m);
             if (page != null && WorkshopPage.Validate(page) is { } bad) return new PublishResult(false, "Workshop page: " + bad);
@@ -216,6 +225,7 @@ public sealed class Publisher
 
             if (!upload)
             {
+                if (tags.Length > 0) Say("Workshop tags to set after the upload: " + WorkshopTags.Describe(tags) + ".");
                 Say("Dry run: nothing uploaded. The package was built and checked, then removed.");
                 return new PublishResult(true, "Dry run OK", null, Version: version != m.Version ? version : null);
             }
@@ -284,6 +294,14 @@ public sealed class Publisher
             if (newId != null && TestItems) Say($"Created a PRIVATE test item {newId} for {m.Name} {version}. Saved to {ModInfo.TestIdFile} in the mod folder (keep it out of git).");
             else if (newId != null) Say($"Created {m.Name} {version} as {WorkshopPage.VisibilityName(visibility).ToUpperInvariant()} item {newId}. Saved to {_cfg.WorkshopIdFile} (commit it).");
             else Say($"Uploaded {m.Name} {version}" + (TestItems ? $" to its test item {m.WorkshopId}" : ""));
+
+            if (TagUpdater != null && tags.Length > 0 && (m.WorkshopId ?? newId) is { } tagged)
+            {
+                At("Setting Workshop tags...", 98);
+                var t = await TagUpdater(_cfg.AppId, tagged, tags, ct);
+                Say(t.Ok ? t.Message : $"Warning: the upload went through, but the Workshop tags were not set: {t.Message} " +
+                    "(\"Update Workshop tags\" on the mod's right-click menu tries again without uploading.)");
+            }
 
             if (!TestItems && (m.WorkshopId ?? newId) is { } id)
             {

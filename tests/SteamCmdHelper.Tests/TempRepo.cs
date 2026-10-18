@@ -23,11 +23,13 @@ sealed class TempRepo : IDisposable
         string? changelog = "1.2.3\n- Fixed the thing that was broken.",
         string? workshopId = "123456789",
         bool preview = true,
-        bool built = true)
+        bool built = true,
+        string[]? supportedVersions = null)
     {
         var versionEl = version == null ? "" : $"<modVersion>{version}</modVersion>";
+        var supported = string.Concat((supportedVersions ?? new[] { "1.6" }).Select(v => $"<li>{v}</li>"));
         Write($"{folder}/About/About.xml",
-            $"<?xml version=\"1.0\"?><ModMetaData><name>{folder} Display</name>{versionEl}<description>A test mod.</description></ModMetaData>");
+            $"<?xml version=\"1.0\"?><ModMetaData><name>{folder} Display</name>{versionEl}<supportedVersions>{supported}</supportedVersions><description>A test mod.</description></ModMetaData>");
         if (changelog != null) Write($"{folder}/About/changelog.txt", changelog);
         if (workshopId != null) Write($"{folder}/About/PublishedFileId.txt", workshopId);
         if (preview) Write($"{folder}/About/Preview.png", "png");

@@ -212,7 +212,22 @@ Select a mod and press **Workshop page...** (or right-click it, or double-click 
 current title, description and visibility from Steam. Tick what to change; the changes are kept and sent with that
 mod's next upload (the confirmation lists them), then cleared (an upload from the command line sends them too). Unticked fields stay as they are on Steam. For a mod not
 on Steam yet, ticked fields replace the name, description file and private visibility it would be created with.
-SteamCMD cannot change tags, so they are only shown (the game's own uploader sets them).
+SteamCMD cannot change tags, so the editor only shows them; see **Workshop tags** below.
+
+### Workshop tags
+
+Players filter the Workshop by tags, such as RimWorld's `Mod` and the game versions (`1.6`, `1.7`). SteamCMD's build
+file has no way to send tags, so after each upload the app sets them through the Steam client instead, the same way
+RimWorld's own uploader does. For RimWorld a mod gets `Mod` plus one tag per `<li>` under `supportedVersions` in
+`About/About.xml` (`1.6.4104` counts as `1.6`). Version tags the mod no longer lists are taken off, and any other tag
+on the item is kept. To fix mods uploaded before this, right-click one and choose **Update Workshop tags**: that sends
+only the tags, not the files.
+
+The Steam client has to be running and signed in as the account that owns the mod (and the game), because Steam only
+takes tag changes from the game's side. While the tags are sent, Steam briefly shows you as playing the game. If it
+fails, the upload still counts and the log says why. Turn it off with **Set Workshop tags after each upload** under
+**Options > Uploading**. A Custom layout can give its mods tags with `Tags` (always added, for example `["Mod"]`) and
+`VersionTagsKey` (an XPath in an .xml marker file, or a dotted path to an array in a .json one).
 
 **Preview image** in the same editor replaces the item's preview on Steam with its next upload: **Use the mod's preview**
 takes the layout's preview file (after you changed it), or **Choose...** any PNG, JPG or GIF up to 1 MB. Without it,

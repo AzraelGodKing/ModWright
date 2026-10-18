@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Workshop tags are set.** SteamCMD cannot send tags, so uploads never changed them and RimWorld mods did not show
+  up under a new version's filter (such as 1.7). After each upload the app now sets the tags through the Steam client,
+  the way RimWorld's own uploader does: `Mod` plus one tag per `supportedVersions` entry in `About/About.xml`. Version
+  tags the mod no longer lists are taken off; any other tag is kept. Steam has to be running and signed in as the
+  account that owns the mod. A failed tag update is a warning, not a failed upload.
+- **Update Workshop tags** on a mod's right-click menu fixes the tags of mods already on Steam without uploading them.
+- Turn it off under **Options > Uploading**. Custom layouts can set tags too, with `Tags` and `VersionTagsKey` in
+  `.steamhelper.json`.
+
 ## 1.3.2
 
 - **RimWorld version-folder builds are uploaded.** Mods that build into version folders (`1.6/Assemblies`,

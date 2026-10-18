@@ -22,10 +22,15 @@
   <ItemGroup>
     <!-- Installs and updates the app the way most desktop apps do (a separate Update.exe swaps versions); see AppUpdates.cs. -->
     <PackageReference Include="Velopack" Version="1.2.161" />
+    <!-- Sets Workshop tags, which SteamCMD cannot (see SteamworksTags.cs). Its steam_api64.dll is embedded below. -->
+    <PackageReference Include="Facepunch.Steamworks" Version="2.3.3" GeneratePathProperty="true" />
   </ItemGroup>
   <ItemGroup>
     <!-- The same icon for every window (Theme.AppIcon); ApplicationIcon above is the exe's own icon. -->
     <EmbeddedResource Include="Assets\app.ico" LogicalName="SteamCmdHelper.app.ico" />
+    <!-- Valve's Steamworks library, written out next to the settings when tags are set, so every build (single file,
+         portable, installer) has it without a loose file to ship. -->
+    <EmbeddedResource Include="$(PkgFacepunch_Steamworks)\content\steam_api64.dll" LogicalName="SteamCmdHelper.steam_api64.dll" />
   </ItemGroup>
   <!-- Bakes the Linear request key in when one is available at build time; see RequestKey.targets. -->
   <Import Project="RequestKey.targets" />
