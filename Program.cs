@@ -51,7 +51,7 @@ static class Program
         {
             var about = Path.Combine(root, folder, "About");
             Directory.CreateDirectory(about);
-            File.WriteAllText(Path.Combine(about, "About.xml"), $"<?xml version=\"1.0\"?><ModMetaData><name>{name}</name><modVersion>{version}</modVersion><description>Demo.</description></ModMetaData>");
+            File.WriteAllText(Path.Combine(about, "About.xml"), $"<?xml version=\"1.0\"?><ModMetaData><name>{name}</name><modVersion>{version}</modVersion><supportedVersions><li>1.6</li></supportedVersions><description>Demo.</description></ModMetaData>");
             if (changelogVersion != null) File.WriteAllText(Path.Combine(about, "changelog.txt"), $"{changelogVersion}\n- Demo change.");
             if (id != null) File.WriteAllText(Path.Combine(about, "PublishedFileId.txt"), id);
             if (preview is { } c)
@@ -137,7 +137,8 @@ static class Program
                 buildCommand: settings.BuildFor(settings.RepoPath), defaultRef: settings.RefFor(settings.RepoPath),
                 retryAfter: settings.AutoRetry ? TimeSpan.FromSeconds(30) : null,
                 webhook: settings.WebhookFor(settings.RepoPath), gitHubReleases: settings.GitHubReleasesFor(settings.RepoPath),
-                json: jsonOut ? Console.Out : null).GetAwaiter().GetResult();
+                json: jsonOut ? Console.Out : null,
+                tagUpdater: settings.UpdateTags ? WorkshopTags.UpdateOnSteamAsync : null).GetAwaiter().GetResult();
         }
         finally { runLog?.Dispose(); }
     }
@@ -166,6 +167,9 @@ static class Program
                 ApplicationConfiguration.Initialize();
                 MessageBox.Show(message, "SteamCMD Helper", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             });
+
+        // Setting one Workshop item's tags through the Steam client, for a window or command line run (see WorkshopTags).
+        if (args.Length > 0 && args[0] == WorkshopTags.ChildArg) return SteamworksTags.RunChild(args[1..]);
 
         if (Cli.IsCommand(args)) return RunCommandLine(args);
 

@@ -123,6 +123,19 @@ public sealed class ProjectConfig
     public IEnumerable<string> RequiredInPackage() =>
         (string.IsNullOrWhiteSpace(ModMarker) ? Array.Empty<string>() : new[] { ModMarker }).Concat(RequiredFiles ?? Array.Empty<string>());
 
+    /// <summary>
+    /// Workshop tags every mod gets (RimWorld: "Mod"). SteamCMD cannot set tags, so they are set through the Steam client
+    /// after an upload (<see cref="WorkshopTags"/>). Empty, with no <see cref="VersionTagsKey"/>, leaves tags alone.
+    /// </summary>
+    public string[] Tags { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Where the marker file lists the game versions a mod supports, one Workshop tag each as "major.minor": an XPath to
+    /// the elements in .xml (RimWorld: "ModMetaData/supportedVersions/li"), a dotted path to an array in .json. Version
+    /// tags the mod no longer lists are taken off. Empty = no version tags.
+    /// </summary>
+    public string VersionTagsKey { get; set; } = "";
+
     /// <summary>Names or *.ext patterns left out of the package in copy mode.</summary>
     public string[] Exclude { get; set; } = { ".git", ".vs", "obj", "bin", "*.pdb" };
 
@@ -175,6 +188,9 @@ public sealed class ProjectConfig
             SteamDescriptionFile = "About/steam_description.txt",
             BuiltFiles = new[] { "Assemblies/*.dll", "*/Assemblies/*.dll" },
             Exclude = new[] { ".git", ".vs", "obj", "bin", "Source", "Tools", "*.md", "*.pdb" },
+            // The tags RimWorld's own uploader sets: "Mod" and each supported version, which the Workshop filters by.
+            Tags = new[] { "Mod" },
+            VersionTagsKey = "ModMetaData/supportedVersions/li",
             Source = "built-in RimWorld layout"
         },
         // Modelled on a downloaded Workshop item: a folder holding "Map" (JSON course file), Preview.jpg and optional Additional0.jpg...
@@ -221,6 +237,7 @@ public sealed class ProjectConfig
         ChangelogFirstLineIsVersion = p.ChangelogFirstLineIsVersion; ChangelogByVersion = p.ChangelogByVersion;
         WorkshopIdFile = p.WorkshopIdFile; WorkshopIdKey = p.WorkshopIdKey; Preview = p.Preview; SteamDescriptionFile = p.SteamDescriptionFile;
         BuiltFiles = p.BuiltFiles; RequiredFiles = p.RequiredFiles; UseGitArchive = p.UseGitArchive; Exclude = p.Exclude;
+        Tags = p.Tags; VersionTagsKey = p.VersionTagsKey;
         Source = p.Source;
     }
 

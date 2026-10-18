@@ -265,7 +265,8 @@ public static class Cli
         CancellationToken ct, string? recordPath = null, string? tempRoot = null, bool credit = false,
         string? noteTemplate = null, bool markdown = false, bool syncDescriptions = false,
         string? buildCommand = null, string? defaultRef = null, TimeSpan? retryAfter = null,
-        string webhook = "", bool gitHubReleases = false, TextWriter? json = null)
+        string webhook = "", bool gitHubReleases = false, TextWriter? json = null,
+        Func<string, string, string[], CancellationToken, Task<TagResult>>? tagUpdater = null)
     {
         void Say(string s) => output.WriteLine(s);
         var tags = new Dictionary<ModInfo, string>();
@@ -433,6 +434,7 @@ public static class Cli
             SentDescriptions = sentDescriptions,
             // Asks Steam whether each update landed; runs with their own record (tests) stay offline.
             SteamCheck = recordPath == null ? Publisher.LiveSteamCheck : null,
+            TagUpdater = tagUpdater,
             Credit = credit,
             NoteTemplate = noteTemplate,
             MarkdownToSteam = markdown,

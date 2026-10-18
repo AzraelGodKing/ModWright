@@ -47,6 +47,7 @@ public sealed class MainForm : Form
     readonly CheckBox _testItems = new() { AutoSize = true, Text = "Upload to t&est items" };
     readonly TextBox _buildCmd = new() { Width = 420, PlaceholderText = "e.g. dotnet build -c Release", AccessibleName = "Build step for this mods folder" };
     readonly TextBox _packageRef = new() { Width = 200, PlaceholderText = "the checked-out commit", AccessibleName = "Branch or tag to upload from" };
+    readonly CheckBox _updateTags = new() { AutoSize = true, Text = "Set Workshop tags after each upload (RimWorld: Mod and each supported version from About.xml)" };
     readonly CheckBox _autoRetry = new() { AutoSize = true, Text = "Try an update once more when Steam is busy or can't be reached (after 30 seconds)" };
     readonly CheckBox _commitIds = new() { AutoSize = true, Text = "Commit a new item's Workshop ID file without asking" };
     readonly System.Windows.Forms.Timer _clock = new() { Interval = 1000 };
@@ -544,16 +545,40 @@ public sealed class MainForm : Form
         var onSteam = menu.Items.Add("Open on &Steam", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) OpenUrl(WorkshopUrl(m)); });
         var copyId = menu.Items.Add("Copy Workshop &ID", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(m.WorkshopId!, "Workshop ID"); });
         var copyLink = menu.Items.Add("Copy Workshop lin&k", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(WorkshopUrl(m), "Workshop link"); });
+        var tags = menu.Items.Add("Update Workshop &tags", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await UpdateTagsAsync(m); });
         menu.Opening += (_, e) =>
         {
             e.Cancel = _busy || SelectedMod() == null;
             onSteam.Enabled = copyId.Enabled = copyLink.Enabled = SelectedMod()?.OnSteam == true;
+            tags.Visible = WorkshopTags.LayoutHasTags(_cfg);
+            tags.Enabled = SelectedMod()?.OnSteam == true;
             changelog.Enabled = ChangelogOf(SelectedMod()) != null;
             entry.Visible = SelectedMod() is { } m && ModScanner.NeedsChangelogEntry(m, _cfg);
             shrink.Visible = SelectedMod() is { PreviewOk: false, PreviewPath.Length: > 0 };
         };
         Theme.StyleMenu(menu);
         return menu;
+    }
+
+    /// <summary>
+    /// Sets the mod's Workshop tags on Steam without uploading it, for items uploaded before tags were set (or by
+    /// SteamCMD, which leaves them alone).
+    /// </summary>
+    async Task UpdateTagsAsync(ModInfo m)
+    {
+        if (_busy || m.WorkshopId == null) return;
+        var tags = WorkshopTags.For(m.Dir, _cfg);
+        if (tags.Length == 0) { Append($"{m.Name}: the layout gives this mod no Workshop tags.", LogKind.Warn); return; }
+        Append($"{m.Name}: setting Workshop tags {WorkshopTags.Describe(tags)} through the Steam client...", LogKind.Note);
+        _cts = new CancellationTokenSource();
+        SetBusy(true);
+        try
+        {
+            var r = await WorkshopTags.UpdateOnSteamAsync(_cfg.AppId, m.WorkshopId, tags, _cts.Token);
+            Append($"{m.Name}: " + (r.Ok ? r.Message : "the Workshop tags were not set: " + r.Message), r.Ok ? LogKind.Ok : LogKind.Error);
+        }
+        catch (OperationCanceledException) { Append("Cancelled.", LogKind.Warn); }
+        finally { SetBusy(false); _cts.Dispose(); _cts = null; }
     }
 
     /// <summary>Re-saves the mod's preview image under Steam's 1 MB limit; the original is backed up first.</summary>
@@ -642,6 +667,8 @@ public sealed class MainForm : Form
 
         _autoRetry.Checked = _s.AutoRetry;
         _autoRetry.CheckedChanged += (_, _) => { _s.AutoRetry = _autoRetry.Checked; _s.Save(); };
+        _updateTags.Checked = _s.UpdateTags;
+        _updateTags.CheckedChanged += (_, _) => { _s.UpdateTags = _updateTags.Checked; _s.Save(); };
         page.Controls.Add(Card("Uploading", null,
             Row(Lbl("&Build step"), _buildCmd),
             Hint("Run in the mods folder before anything is packaged, also for a dry run. If it fails, nothing is uploaded and its output is in the log. " +
@@ -650,6 +677,9 @@ public sealed class MainForm : Form
             Hint("A git branch or tag to package instead of the checked-out commit (git packaging only), so a release branch can be uploaded while you work elsewhere. " +
                  "The version and change note are then read from that branch."),
             _autoRetry,
+            _updateTags,
+            Hint("SteamCMD cannot set tags, so they go through the Steam client: it has to be running and signed in as the account that owns the mod. " +
+                 "Version tags the mod no longer lists are taken off; other tags are kept."),
             Hint("Upload to test items (next to Dry run) sends each ticked mod to its own private copy on Steam, created on first use and kept in " +
                  ModInfo.TestIdFile + " in the mod folder (keep it out of git). Subscribers get nothing; page changes and records wait for the real upload.")));
 
@@ -1942,7 +1972,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _filter, _hideUpToDate, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _testItems, _changed, _buildCmd, _packageRef, _autoRetry })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _filter, _hideUpToDate, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _testItems, _changed, _buildCmd, _packageRef, _autoRetry, _updateTags })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -2437,6 +2467,7 @@ public sealed class MainForm : Form
             UploadUnchanged = AskUploadUnchanged,
             SentDescriptions = DescriptionSync.DefaultFile,
             SteamCheck = Publisher.LiveSteamCheck,
+            TagUpdater = _s.UpdateTags ? WorkshopTags.UpdateOnSteamAsync : null,
             Credit = _s.UploadCredit,
             NoteTemplate = _s.TemplateFor(_s.RepoPath),
             MarkdownToSteam = _s.MarkdownNotes,

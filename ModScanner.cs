@@ -416,6 +416,8 @@ public static class ModScanner
                     m.Name = ReadMeta(markerFile, cfg.NameKey) ?? folder;
                     m.Version = ReadVersion(dir, markerFile, cfg);
                     if (VersionMismatch(dir, markerFile, cfg) is { } mismatch) m.Warnings.Add(mismatch);
+                    if (!string.IsNullOrWhiteSpace(cfg.VersionTagsKey) && WorkshopTags.SupportedVersions(markerFile, cfg.VersionTagsKey).Count == 0)
+                        m.Warnings.Add($"{cfg.ModMarker} lists no supported game versions, so the Workshop gets no version tags");
                 }
                 catch (Exception e) { m.Problems.Add(cfg.ModMarker + " unreadable (" + e.Message + ")"); }
             }

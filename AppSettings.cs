@@ -46,6 +46,8 @@ public sealed class AppSettings
     public Dictionary<string, string> BuildCommands { get; set; } = new();
     /// <summary>The git branch or tag to upload from instead of the checked-out commit, per mods folder.</summary>
     public Dictionary<string, string> PackageRefs { get; set; } = new();
+    /// <summary>After an upload, set the Workshop tags the layout gives the mod (RimWorld: "Mod" and each supported version) through the Steam client.</summary>
+    public bool UpdateTags { get; set; } = true;
     /// <summary>Try an update once more after a short wait when Steam was busy or could not be reached.</summary>
     public bool AutoRetry { get; set; } = true;
     /// <summary>Commit a newly created item's Workshop id file without asking.</summary>
