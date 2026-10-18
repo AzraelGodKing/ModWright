@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.3
 
 - **Workshop tags are set.** SteamCMD cannot send tags, so uploads never changed them and RimWorld mods did not show
   up under a new version's filter (such as 1.7). After each upload the app now sets the tags through the Steam client,
