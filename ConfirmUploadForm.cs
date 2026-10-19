@@ -98,7 +98,7 @@ public sealed class ConfirmUploadForm : Form
         root.Controls.Add(_commitFirst, 0, 6);
         root.Controls.Add(foot, 0, 7);
 
-        var go = new Button { Text = dry ? "Dry run" : "Upload", AutoSize = true, Padding = new Padding(12, 2, 12, 2), DialogResult = DialogResult.OK }.Role(ThemeRole.Accent);
+        var go = new Button { Text = dry ? "Dry run" : "Upload", AutoSize = true, Padding = new Padding(12, 2, 12, 2), DialogResult = DialogResult.OK }.Role(dry ? ThemeRole.Accent : ThemeRole.Primary);
         var cancel = new Button { Text = "Cancel", AutoSize = true, Padding = new Padding(8, 2, 8, 2), DialogResult = DialogResult.Cancel };
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
         buttons.Controls.Add(cancel);

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **A new, more polished look.** The app now follows the style of Steam's own desktop client: deep slate-blue
+  surfaces, a dark brand bar across the top (in the light theme too) with the name, a new icon and capital-letter tabs,
+  card headings in capitals over a fading blue line, softly rounded buttons in light blue on slate, blue for the
+  suggested next step and a green **Upload** button. A strip along the bottom shows the version next to the "not
+  affiliated" line. The light theme gets the same treatment in light colours, and Windows High Contrast is unchanged.
+
 ## 1.3.4
 
 - **One SteamCMD login per batch.** A new option (off by default, `--one-session` on the command line) packages and

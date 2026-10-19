@@ -211,9 +211,9 @@ public sealed class MainForm : Form
         _none = Btn("Tick &none", (_, _) => TickAll(false));
         _changed = Btn("Tick c&hanged", (_, _) => TickChanged());
         _editPage = Btn("&Workshop page...", (_, _) => EditWorkshopPage(SelectedMod()));
-        _go = Btn("Upload selected", async (_, _) => await GoAsync()).Role(ThemeRole.Accent);
+        _go = Btn("Upload selected", async (_, _) => await GoAsync()).Role(ThemeRole.Primary);
         _go.Font = new Font(Font, FontStyle.Bold);
-        _go.Padding = new Padding(14, 4, 14, 4);
+        _go.Padding = new Padding(18, 6, 18, 6);
         _cancel = Btn("Cancel", (_, _) => Cancel());
         _cancel.Visible = false;
         _retry = Btn("Retr&y failed", async (_, _) => await RetryFailedAsync());
@@ -232,8 +232,7 @@ public sealed class MainForm : Form
 
         // Fill first, then the top bar, so docking puts the bar above the pages.
         Controls.Add(pages);
-        Controls.Add(new Label { Text = Disclaimer, Dock = DockStyle.Bottom, Height = 22, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0, 0, 16, 2), Font = Theme.SmallFont }.Role(ThemeRole.Muted));
-        Controls.Add(new Panel { Dock = DockStyle.Top, Height = 1 }.Role(ThemeRole.Divider));
+        Controls.Add(BuildFooter());
         var header = BuildHeader();
         Controls.Add(header);
         // Tab starts at the top bar (tabs and ?), then the page, top to bottom.
@@ -300,25 +299,44 @@ public sealed class MainForm : Form
         _hideUpToDate.CheckedChanged += (_, _) => { if (_populating) return; _s.HideUpToDate = _hideUpToDate.Checked; _s.Save(); ApplyFilter(); };
     }
 
-    /// <summary>The top bar: app name on the left, the Upload / Options tabs and the "?" button on the right.</summary>
+    /// <summary>The strip along the bottom: the app's name and version on the left, the "not affiliated" line on the right.</summary>
+    static Control BuildFooter()
+    {
+        var bar = new TableLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, ColumnCount = 2, RowCount = 1, Padding = new Padding(16, 3, 16, 4) };
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        bar.Controls.Add(new Label { Text = "SteamCMD Helper " + UpdateCheck.CurrentVersion, AutoSize = true, Font = Theme.SmallFont, Anchor = AnchorStyles.Left, Margin = Padding.Empty }.Role(ThemeRole.Muted), 0, 0);
+        bar.Controls.Add(new Label { Text = Disclaimer, AutoSize = true, Font = Theme.SmallFont, Anchor = AnchorStyles.Right, Margin = Padding.Empty }.Role(ThemeRole.Muted), 1, 0);
+        var footer = new Panel { Dock = DockStyle.Bottom, AutoSize = true };
+        footer.Controls.Add(bar);
+        footer.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 1 }.Role(ThemeRole.Divider));
+        return footer;
+    }
+
+    /// <summary>
+    /// The brand bar along the top, dark in both themes: the icon and app name on the left, the Upload / Options tabs
+    /// and the "?" button on the right, over a Steam-blue line.
+    /// </summary>
     Control BuildHeader()
     {
-        var bar = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 5, RowCount = 1, Padding = new Padding(16, 8, 12, 0) }.Role(ThemeRole.Header);
+        var bar = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 5, RowCount = 1, Padding = new Padding(16, 10, 12, 2) }.Role(ThemeRole.Header);
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        var title = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 0, 0, 6), Anchor = AnchorStyles.Left };
+        var title = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 0, 0, 8), Anchor = AnchorStyles.Left };
         if (Theme.AppIcon != null)
-            title.Controls.Add(new PictureBox { Image = new Icon(Theme.AppIcon, 32, 32).ToBitmap(), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(26, 26), Margin = new Padding(0, 1, 8, 0) });
-        title.Controls.Add(new Label { Text = "SteamCMD Helper", AutoSize = true, Font = Theme.TitleFont, Margin = new Padding(0, 0, 8, 0) });
-        title.Controls.Add(new Label { Text = "Steam Workshop uploads", AutoSize = true, Margin = new Padding(0, 7, 0, 0) }.Role(ThemeRole.Muted));
+            title.Controls.Add(new PictureBox { Image = new Icon(Theme.AppIcon, 64, 64).ToBitmap(), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(32, 32), Margin = new Padding(0, 0, 10, 0) });
+        // The name in two weights, "SteamCMD" bold and "Helper" light in Steam blue, then what the app is for.
+        title.Controls.Add(new Label { Text = "SteamCMD", AutoSize = true, Font = Theme.TitleFont, Margin = new Padding(0, 2, 0, 0), UseMnemonic = false }.Role(ThemeRole.Title));
+        title.Controls.Add(new Label { Text = "Helper", AutoSize = true, Font = Theme.BrandFont, Margin = new Padding(0, 2, 14, 0) }.Role(ThemeRole.Brand));
+        title.Controls.Add(new Label { Text = "WORKSHOP UPLOADER", AutoSize = true, Font = Theme.SmallFont, Margin = new Padding(0, 10, 0, 0) }.Role(ThemeRole.Muted));
         bar.Controls.Add(title, 0, 0);
 
-        _navUpload = new NavButton { Text = "&Upload" };
-        _navOptions = new NavButton { Text = "&Options" };
+        _navUpload = new NavButton { Text = "&UPLOAD", AccessibleName = "Upload" };
+        _navOptions = new NavButton { Text = "&OPTIONS", AccessibleName = "Options" };
         _navUpload.Click += (_, _) => ShowPage(_uploadPage);
         _navOptions.Click += (_, _) => ShowPage(_optionsPage);
         _navUpload.Anchor = _navOptions.Anchor = AnchorStyles.Bottom;
@@ -334,7 +352,7 @@ public sealed class MainForm : Form
         _help.AccessibleName = "Help: keyboard shortcuts, or send a request (bug, feature, another game)";
         _help.AutoSize = false; _help.Size = new Size(30, 28); _help.Padding = Padding.Empty;
         _help.Font = new Font(Font, FontStyle.Bold);
-        _help.Margin = new Padding(12, 0, 0, 6);
+        _help.Margin = new Padding(12, 0, 0, 8);
         _help.Anchor = AnchorStyles.None;
         _tip.SetToolTip(_help, "Keyboard shortcuts (F1), or send a request: support another game, report a bug or suggest a feature");
         bar.Controls.Add(_help, 4, 0);
@@ -357,7 +375,7 @@ public sealed class MainForm : Form
             l.LinkClicked += (_, _) => (l.Tag as Action)?.Invoke();
             steps.Controls.Add(l);
         }
-        var setupTitle = new Label { Text = "Get set up", AutoSize = true, Font = Theme.HeadingFont }.Role(ThemeRole.Title);
+        var setupTitle = new Label { Text = "GET SET UP", AutoSize = true, Font = Theme.SectionFont, AccessibleName = "Get set up" }.Role(ThemeRole.Title);
         _tip.SetToolTip(setupTitle, "Uploads need all four steps. This box goes away once they are done.");
         var setupRow = Row(setupTitle, steps, _setupCount, _setupNext);
         setupTitle.Margin = new Padding(0, 3, 20, 3);
@@ -1044,11 +1062,14 @@ public sealed class MainForm : Form
         {
             // The title takes the spare width, unless something next to it should (the Project card's summary).
             var extrasFill = titleExtras?.Any(c => (c.Tag as string) == "fill") == true;
-            var head = new Label { Text = title, AutoSize = true, Font = Theme.HeadingFont, Tag = extrasFill ? null : "fill", Margin = new Padding(0, 3, 16, 3) }.Role(ThemeRole.Title);
+            // In capitals with a fading accent line under it, like the section headings on Steam's own pages.
+            var head = new Label { Text = title.ToUpperInvariant(), AccessibleName = Display.StripMnemonic(title), AutoSize = true, Font = Theme.SectionFont, Tag = extrasFill ? null : "fill", Margin = new Padding(0, 3, 16, 3) }.Role(ThemeRole.Title);
             var r = Row(new Control[] { head }.Concat(titleExtras ?? Array.Empty<Control>()).ToArray());
-            r.Margin = new Padding(0, 0, 0, 4);
+            r.Margin = new Padding(0, 0, 0, 2);
             card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             card.Controls.Add(r);
+            card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            card.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 1, Margin = new Padding(0, 0, 0, 8) }.Role(ThemeRole.Rule));
         }
         foreach (var c in rows)
         {

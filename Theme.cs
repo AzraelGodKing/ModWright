@@ -3,8 +3,12 @@ using System.Runtime.InteropServices;
 
 namespace SteamCmdHelper;
 
-/// <summary>What a control is for, which decides how the theme colours it. Unmarked controls get the default look.</summary>
-public enum ThemeRole { None, Surface, Header, Divider, Muted, Title, Accent, Log, Keep }
+/// <summary>
+/// What a control is for, which decides how the theme colours it. Unmarked controls get the default look. Header is the
+/// brand bar at the top of the main window; Primary is the one button that does the main job (Upload); Rule is the thin
+/// line under a card's title; Brand is the coloured half of the app name.
+/// </summary>
+public enum ThemeRole { None, Surface, Header, Divider, Muted, Title, Accent, Log, Keep, Primary, Rule, Brand }
 
 /// <summary>Meaning of a status text; the theme picks a colour that reads well on its background.</summary>
 public enum Tone { Normal, Muted, Ok, Warn, Error, Info }
@@ -12,9 +16,10 @@ public enum Tone { Normal, Muted, Ok, Warn, Error, Info }
 public sealed record Palette(
     string Name, bool Dark,
     Color Back, Color Surface, Color Header, Color Input, Color Border,
-    Color Text, Color Muted,
-    Color Button, Color ButtonHover, Color ButtonDown,
+    Color Text, Color Muted, Color Title,
+    Color Button, Color ButtonText, Color ButtonHover, Color ButtonDown,
     Color Accent, Color AccentHover, Color AccentText,
+    Color Primary, Color PrimaryHover,
     Color Track, Color ListHeader,
     Color Ok, Color Warn, Color Error, Color Info);
 
@@ -26,25 +31,33 @@ public static class Theme
 {
     public const string DarkName = Display.Dark, LightName = Display.Light, SystemName = Display.System, HighContrastName = "HighContrast";
 
+    // The look follows Steam's own desktop client: deep slate-blue surfaces, a near-black brand bar, Steam blue for
+    // links, ticks and selection, light-blue secondary buttons and a green button for the main job. Neither theme uses
+    // Valve's logos or names as branding; the "not affiliated" line stays at the bottom of the window.
+
     public static readonly Palette DarkPalette = new(
         DarkName, true,
-        Back: Color.FromArgb(30, 31, 36), Surface: Color.FromArgb(40, 42, 48), Header: Color.FromArgb(24, 25, 29),
-        Input: Color.FromArgb(50, 52, 59), Border: Color.FromArgb(66, 69, 78),
-        Text: Color.FromArgb(232, 233, 237), Muted: Color.FromArgb(152, 156, 168),
-        Button: Color.FromArgb(55, 58, 66), ButtonHover: Color.FromArgb(68, 72, 82), ButtonDown: Color.FromArgb(80, 84, 96),
-        Accent: Color.FromArgb(48, 132, 230), AccentHover: Color.FromArgb(70, 150, 240), AccentText: Color.White,
-        Track: Color.FromArgb(56, 59, 67), ListHeader: Color.FromArgb(46, 48, 55),
-        Ok: Color.FromArgb(98, 204, 132), Warn: Color.FromArgb(240, 178, 82), Error: Color.FromArgb(244, 112, 104), Info: Color.FromArgb(110, 180, 250));
+        Back: Color.FromArgb(27, 40, 56), Surface: Color.FromArgb(35, 52, 72), Header: Color.FromArgb(23, 26, 33),
+        Input: Color.FromArgb(22, 32, 45), Border: Color.FromArgb(58, 80, 104),
+        Text: Color.FromArgb(214, 224, 233), Muted: Color.FromArgb(139, 152, 166), Title: Color.White,
+        Button: Color.FromArgb(42, 71, 94), ButtonText: Color.FromArgb(103, 193, 245),
+        ButtonHover: Color.FromArgb(65, 122, 155), ButtonDown: Color.FromArgb(54, 103, 132),
+        Accent: Color.FromArgb(26, 159, 255), AccentHover: Color.FromArgb(71, 191, 255), AccentText: Color.White,
+        Primary: Color.FromArgb(100, 156, 30), PrimaryHover: Color.FromArgb(124, 186, 40),
+        Track: Color.FromArgb(42, 63, 86), ListHeader: Color.FromArgb(28, 42, 58),
+        Ok: Color.FromArgb(164, 208, 7), Warn: Color.FromArgb(232, 176, 74), Error: Color.FromArgb(240, 110, 100), Info: Color.FromArgb(102, 192, 244));
 
     public static readonly Palette LightPalette = new(
         LightName, false,
-        Back: Color.FromArgb(242, 243, 246), Surface: Color.White, Header: Color.White,
-        Input: Color.White, Border: Color.FromArgb(206, 209, 216),
-        Text: Color.FromArgb(28, 30, 34), Muted: Color.FromArgb(102, 107, 118),
-        Button: Color.FromArgb(248, 249, 251), ButtonHover: Color.FromArgb(232, 235, 240), ButtonDown: Color.FromArgb(218, 222, 230),
-        Accent: Color.FromArgb(0, 103, 192), AccentHover: Color.FromArgb(18, 120, 210), AccentText: Color.White,
-        Track: Color.FromArgb(222, 225, 231), ListHeader: Color.FromArgb(246, 247, 249),
-        Ok: Color.FromArgb(22, 128, 60), Warn: Color.FromArgb(178, 98, 0), Error: Color.FromArgb(196, 43, 28), Info: Color.FromArgb(0, 103, 192));
+        Back: Color.FromArgb(234, 238, 243), Surface: Color.White, Header: Color.White,
+        Input: Color.FromArgb(251, 252, 253), Border: Color.FromArgb(200, 208, 218),
+        Text: Color.FromArgb(27, 40, 56), Muted: Color.FromArgb(88, 102, 118), Title: Color.FromArgb(23, 26, 33),
+        Button: Color.FromArgb(228, 235, 243), ButtonText: Color.FromArgb(20, 72, 120),
+        ButtonHover: Color.FromArgb(210, 223, 237), ButtonDown: Color.FromArgb(194, 211, 229),
+        Accent: Color.FromArgb(16, 112, 204), AccentHover: Color.FromArgb(36, 132, 224), AccentText: Color.White,
+        Primary: Color.FromArgb(84, 138, 24), PrimaryHover: Color.FromArgb(104, 160, 34),
+        Track: Color.FromArgb(214, 221, 230), ListHeader: Color.FromArgb(243, 245, 248),
+        Ok: Color.FromArgb(52, 122, 26), Warn: Color.FromArgb(168, 92, 0), Error: Color.FromArgb(192, 40, 30), Info: Color.FromArgb(16, 112, 204));
 
     /// <summary>
     /// Windows High Contrast: every colour comes from the user's contrast theme, so the app reads exactly like the rest
@@ -54,15 +67,30 @@ public static class Theme
         HighContrastName, SystemColors.Window.GetBrightness() < 0.5f,
         Back: SystemColors.Window, Surface: SystemColors.Window, Header: SystemColors.Window,
         Input: SystemColors.Window, Border: SystemColors.WindowText,
-        Text: SystemColors.WindowText, Muted: SystemColors.WindowText,
-        Button: SystemColors.ButtonFace, ButtonHover: SystemColors.ButtonFace, ButtonDown: SystemColors.ButtonFace,
+        Text: SystemColors.WindowText, Muted: SystemColors.WindowText, Title: SystemColors.WindowText,
+        Button: SystemColors.ButtonFace, ButtonText: SystemColors.ControlText, ButtonHover: SystemColors.ButtonFace, ButtonDown: SystemColors.ButtonFace,
         Accent: SystemColors.Highlight, AccentHover: SystemColors.Highlight, AccentText: SystemColors.HighlightText,
+        Primary: SystemColors.Highlight, PrimaryHover: SystemColors.Highlight,
         Track: SystemColors.GrayText, ListHeader: SystemColors.ButtonFace,
         Ok: SystemColors.WindowText, Warn: SystemColors.WindowText, Error: SystemColors.WindowText, Info: SystemColors.HotTrack);
 
     /// <summary>Console colours for the log, the same in dark and light (High Contrast uses its own).</summary>
-    public static Color LogBack => HighContrast ? SystemColors.Window : Color.FromArgb(20, 21, 25);
-    public static Color LogText => HighContrast ? SystemColors.WindowText : Color.Gainsboro;
+    public static Color LogBack => HighContrast ? SystemColors.Window : Color.FromArgb(15, 22, 31);
+    public static Color LogText => HighContrast ? SystemColors.WindowText : Color.FromArgb(198, 212, 223);
+
+    /// <summary>
+    /// The brand bar keeps the dark colours in the light theme too, the way Steam's own tools keep their dark top bar,
+    /// so the window looks like the same product in either theme. High Contrast uses the contrast colours throughout.
+    /// </summary>
+    public static Palette Banner => HighContrast ? Current : DarkPalette;
+
+    /// <summary>The palette a control is drawn with: the banner's inside the brand bar, the theme's everywhere else.</summary>
+    public static Palette PaletteFor(Control? c)
+    {
+        for (; c != null; c = c.Parent)
+            if (RoleOf(c) == ThemeRole.Header) return Banner;
+        return Current;
+    }
 
     public static Palette Current { get; private set; } = DarkPalette;
 
@@ -102,10 +130,19 @@ public static class Theme
     public static float TextScale { get; set; } = 1f;
 
     /// <summary>The app's type scale; every window uses these four sizes, so headings and body text match everywhere.</summary>
-    public static readonly Font TitleFont = new("Segoe UI Semibold", 13f),
+    public static readonly Font TitleFont = new("Segoe UI Semibold", 14f),
         HeadingFont = new("Segoe UI Semibold", 10.5f),
         BodyFont = new("Segoe UI", 9.5f),
         SmallFont = new("Segoe UI", 8.5f);
+
+    /// <summary>The second half of the app name in the brand bar, lighter than the first.</summary>
+    public static readonly Font BrandFont = new("Segoe UI Semilight", 14f);
+
+    /// <summary>Card titles, shown in capitals like Steam's section headings.</summary>
+    public static readonly Font SectionFont = new("Segoe UI Semibold", 9.5f);
+
+    /// <summary>The Upload / Options tabs in the brand bar.</summary>
+    public static readonly Font NavFont = new("Segoe UI Semibold", 9.75f);
 
     /// <summary>Mixes <paramref name="amount"/> (0..1) of <paramref name="over"/> into <paramref name="under"/>.</summary>
     public static Color Blend(Color under, Color over, double amount) => Color.FromArgb(
@@ -147,7 +184,7 @@ public static class Theme
 
     static ThemeRole RoleOf(Control c) => Roles.TryGetValue(c, out var r) ? (ThemeRole)r : ThemeRole.None;
 
-    public static void Apply(Control root) => Apply(root, root.Parent?.BackColor ?? Current.Back);
+    public static void Apply(Control root) => Apply(root, root.Parent?.BackColor ?? Current.Back, PaletteFor(root));
 
     /// <summary>
     /// Every window is laid out in 96-DPI pixels. The first time it is themed, it is scaled to the screen's DPI (150%,
@@ -195,15 +232,16 @@ public static class Theme
         return big;
     }
 
-    static void Apply(Control c, Color parentBack)
+    static void Apply(Control c, Color parentBack, Palette p)
     {
-        var p = Current;
         var role = RoleOf(c);
+        if (role == ThemeRole.Header) p = Banner;
         var back = role switch
         {
             ThemeRole.Surface => p.Surface,
             ThemeRole.Header => p.Header,
             ThemeRole.Divider => p.Border,
+            ThemeRole.Rule => parentBack,
             _ => parentBack,
         };
 
@@ -220,19 +258,19 @@ public static class Theme
             case NavButton nb:
                 nb.FlatStyle = FlatStyle.Flat;
                 nb.FlatAppearance.BorderSize = 0;
-                nb.FlatAppearance.MouseOverBackColor = p.ButtonHover;
-                nb.FlatAppearance.MouseDownBackColor = p.ButtonDown;
+                nb.FlatAppearance.MouseOverBackColor = Blend(back, p.Text, 0.07);
+                nb.FlatAppearance.MouseDownBackColor = Blend(back, p.Text, 0.12);
                 nb.BackColor = back;
-                nb.ForeColor = nb.Selected ? p.Text : p.Muted;
+                nb.ForeColor = nb.Selected ? p.Title : p.Muted;
                 nb.UseVisualStyleBackColor = false;
                 nb.Invalidate();
                 Hook(nb, PaintFocus);
                 break;
             case Button b:
-                StyleButton(b, role == ThemeRole.Accent);
+                StyleButton(b);
                 b.EnabledChanged -= OnButtonEnabled;
                 b.EnabledChanged += OnButtonEnabled;
-                Hook(b, PaintDisabled);
+                Hook(b, PaintButton);
                 Hook(b, PaintFocus);
                 break;
             case RichTextBox r:
@@ -266,13 +304,14 @@ public static class Theme
                 break;
             case LinkLabel ll:
                 ll.BackColor = back;
-                if (role != ThemeRole.Keep) ll.LinkColor = p.Accent;
+                if (role != ThemeRole.Keep) ll.LinkColor = p.Dark ? p.Info : p.Accent;
                 ll.ActiveLinkColor = p.AccentHover;
                 ll.VisitedLinkColor = ll.LinkColor;
                 break;
             case Label l:
                 l.BackColor = back;
-                if (role != ThemeRole.Keep) l.ForeColor = role == ThemeRole.Muted ? p.Muted : p.Text;
+                if (role != ThemeRole.Keep)
+                    l.ForeColor = role switch { ThemeRole.Muted => p.Muted, ThemeRole.Title => p.Title, ThemeRole.Brand => p.Info, _ => p.Text };
                 break;
             case CheckBox or RadioButton:
                 c.BackColor = back; c.ForeColor = p.Text;
@@ -284,10 +323,13 @@ public static class Theme
             default:
                 c.BackColor = back; c.ForeColor = p.Text;
                 if (role == ThemeRole.Surface) Hook(c, PaintCardEdge);
+                if (role == ThemeRole.Rule) Hook(c, PaintRule);
+                if (role == ThemeRole.Header) Hook(c, PaintBanner);
+                c.Invalidate();
                 break;
         }
 
-        foreach (Control child in c.Controls) Apply(child, back);
+        foreach (Control child in c.Controls) Apply(child, back, p);
     }
 
     /// <summary>Adds a paint step once, however often the theme is applied.</summary>
@@ -306,6 +348,29 @@ public static class Theme
         e.Graphics.DrawRectangle(pen, 0, 0, c.Width - 1, c.Height - 1);
     }
 
+    /// <summary>The line under a card's title: the accent fading out to the right, like Steam's section headings.</summary>
+    static void PaintRule(object? s, PaintEventArgs e)
+    {
+        if (s is not Control c || c.Width <= 0) return;
+        var p = PaletteFor(c);
+        var back = c.BackColor;
+        if (HighContrast) { using var solid = new SolidBrush(p.Border); e.Graphics.FillRectangle(solid, c.ClientRectangle); return; }
+        using var b = new System.Drawing.Drawing2D.LinearGradientBrush(new Rectangle(0, 0, c.Width, 1),
+            Blend(back, p.Accent, p.Dark ? 0.55 : 0.45), back, 0f);
+        e.Graphics.FillRectangle(b, c.ClientRectangle);
+    }
+
+    /// <summary>The brand bar's bottom edge: a Steam-blue line that fades towards the right.</summary>
+    static void PaintBanner(object? s, PaintEventArgs e)
+    {
+        if (s is not Control c || c.Width <= 0 || c.Height <= 0 || HighContrast) return;
+        var p = Banner;
+        var g = e.Graphics;
+        var h = Math.Max(2, c.LogicalToDeviceUnits(2));
+        using var line = new System.Drawing.Drawing2D.LinearGradientBrush(new Rectangle(0, 0, c.Width, h), p.Accent, Blend(p.Header, p.Accent, 0.25), 0f);
+        g.FillRectangle(line, 0, c.Height - h, c.Width, h);
+    }
+
     /// <summary>
     /// A clear ring around the focused button or tick box while the keyboard is in use (Tab, arrows, Alt), so it is
     /// always visible where Tab is. Clicking with the mouse hides it again, as Windows does.
@@ -313,8 +378,8 @@ public static class Theme
     static void PaintFocus(object? s, PaintEventArgs e)
     {
         if (s is not Control c || !c.Focused || !FocusCues.Keyboard || !c.Enabled) return;
-        var p = Current;
-        var accent = c is Button && RoleOf(c) == ThemeRole.Accent;
+        var p = PaletteFor(c);
+        var accent = c is Button and not NavButton && RoleOf(c) is ThemeRole.Accent or ThemeRole.Primary;
         var w = Math.Max(2, c.LogicalToDeviceUnits(2));
         using var pen = new Pen(accent ? p.AccentText : p.Accent, w) { Alignment = System.Drawing.Drawing2D.PenAlignment.Inset };
         var inset = accent ? w : 0;
@@ -324,10 +389,10 @@ public static class Theme
     /// <summary>The colour to outline the keyboard-focused item of a list with.</summary>
     public static Color FocusColor => Current.Accent;
 
-    static void StyleButton(Button b, bool accent)
+    static void StyleButton(Button b)
     {
-        var p = Current;
-        accent &= b.Enabled; // a disabled main button should not look pressable
+        var p = PaletteFor(b);
+        var accent = b.Enabled && RoleOf(b) is ThemeRole.Accent or ThemeRole.Primary; // a disabled main button should not look pressable
         b.FlatStyle = FlatStyle.Flat;
         b.UseVisualStyleBackColor = false;
         b.FlatAppearance.BorderSize = 1;
@@ -335,26 +400,100 @@ public static class Theme
         b.FlatAppearance.MouseOverBackColor = accent ? p.AccentHover : p.ButtonHover;
         b.FlatAppearance.MouseDownBackColor = accent ? p.Accent : p.ButtonDown;
         b.BackColor = accent ? p.Accent : p.Button;
-        b.ForeColor = accent ? p.AccentText : p.Text;
+        b.ForeColor = accent ? p.AccentText : p.ButtonText;
+        b.Invalidate();
     }
 
     static void OnButtonEnabled(object? s, EventArgs e)
     {
-        if (s is Button b) StyleButton(b, RoleOf(b) == ThemeRole.Accent);
+        if (s is Button b) StyleButton(b);
     }
 
     /// <summary>
-    /// Windows draws a disabled flat button's text in a fixed grey that almost vanishes on the dark theme. Paint it
-    /// again in the theme's muted colour on a slightly sunken face, so it reads as "not now" but stays legible.
+    /// Draws every button the way Steam's client does: a softly rounded face, light-blue text on slate for ordinary
+    /// buttons, a blue gradient for the suggested next step (Accent) and a green one for the main job (Primary).
+    /// Disabled buttons sit back on a flat face in the muted colour, so they read as "not now" but stay legible.
+    /// In High Contrast the flat system look is kept and only the disabled text is redrawn.
     /// </summary>
-    static void PaintDisabled(object? s, PaintEventArgs e)
+    static void PaintButton(object? s, PaintEventArgs e)
     {
-        if (s is not Button b || b.Enabled) return;
+        if (s is not Button b) return;
+        if (HighContrast) { PaintDisabled(b, e); return; }
+        var p = PaletteFor(b);
+        var g = e.Graphics;
+        var r = b.ClientRectangle;
+        if (r.Width <= 2 || r.Height <= 2) return;
+        var role = RoleOf(b);
+        var hot = b.Enabled && r.Contains(b.PointToClient(Cursor.Position));
+        var down = hot && b.Capture && (Control.MouseButtons & MouseButtons.Left) != 0;
+
+        g.Clear(b.Parent?.BackColor ?? p.Back);
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        using var path = RoundedRect(new Rectangle(0, 0, r.Width - 1, r.Height - 1), Math.Max(2, b.LogicalToDeviceUnits(3)));
+        Color text;
+        if (!b.Enabled)
+        {
+            using var bg = new SolidBrush(Blend(p.Button, b.Parent?.BackColor ?? p.Back, 0.55));
+            g.FillPath(bg, path);
+            text = p.Muted;
+        }
+        else if (role is ThemeRole.Accent or ThemeRole.Primary)
+        {
+            var baseColor = role == ThemeRole.Primary ? (hot ? p.PrimaryHover : p.Primary) : (hot ? p.AccentHover : p.Accent);
+            var deep = role == ThemeRole.Primary ? Color.FromArgb(52, 92, 14) : Color.FromArgb(18, 58, 168);
+            var top = down ? Blend(baseColor, deep, 0.35) : Blend(baseColor, Color.White, 0.08);
+            var bottom = Blend(baseColor, deep, down ? 0.55 : 0.45);
+            using var bg = new System.Drawing.Drawing2D.LinearGradientBrush(r, top, bottom, 90f);
+            g.FillPath(bg, path);
+            text = p.AccentText;
+        }
+        else
+        {
+            using var bg = new SolidBrush(down ? p.ButtonDown : hot ? p.ButtonHover : p.Button);
+            g.FillPath(bg, path);
+            if (!p.Dark)
+            {
+                using var pen = new Pen(hot ? Blend(p.Border, p.Accent, 0.5) : p.Border);
+                g.DrawPath(pen, path);
+            }
+            text = hot && p.Dark ? Color.White : p.ButtonText;
+        }
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.Default;
+
+        var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis
+            | (FocusCues.Keyboard ? 0 : TextFormatFlags.HidePrefix)
+            | (b.TextAlign is ContentAlignment.MiddleLeft or ContentAlignment.TopLeft or ContentAlignment.BottomLeft ? TextFormatFlags.Left : TextFormatFlags.HorizontalCenter);
+        var inner = Rectangle.FromLTRB(r.Left + b.Padding.Left + 2, r.Top, r.Right - b.Padding.Right - 2, r.Bottom);
+        if (inner.Width < 8) inner = r;
+        TextRenderer.DrawText(g, b.Text, b.Font, inner, text, flags);
+    }
+
+    /// <summary>A rectangle with rounded corners of <paramref name="radius"/> pixels.</summary>
+    public static System.Drawing.Drawing2D.GraphicsPath RoundedRect(Rectangle r, int radius)
+    {
+        var path = new System.Drawing.Drawing2D.GraphicsPath();
+        var d = Math.Min(radius * 2, Math.Min(r.Width, r.Height));
+        if (d <= 1) { path.AddRectangle(r); return path; }
+        path.AddArc(r.Left, r.Top, d, d, 180, 90);
+        path.AddArc(r.Right - d, r.Top, d, d, 270, 90);
+        path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+        path.AddArc(r.Left, r.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
+
+    /// <summary>
+    /// Windows draws a disabled flat button's text in a fixed grey that almost vanishes on dark colours. Paint it
+    /// again in the muted colour on a slightly sunken face, so it reads as "not now" but stays legible.
+    /// </summary>
+    static void PaintDisabled(Button b, PaintEventArgs e)
+    {
+        if (b.Enabled) return;
         var p = Current;
         var r = b.ClientRectangle;
         using (var bg = new SolidBrush(Blend(p.Button, p.Surface, 0.5))) e.Graphics.FillRectangle(bg, r);
         using (var pen = new Pen(p.Border)) e.Graphics.DrawRectangle(pen, 0, 0, r.Width - 1, r.Height - 1);
-        TextRenderer.DrawText(e.Graphics, b.Text, b.Font, r, HighContrast ? SystemColors.GrayText : p.Muted,
+        TextRenderer.DrawText(e.Graphics, b.Text, b.Font, r, SystemColors.GrayText,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.HidePrefix);
     }
 
@@ -400,7 +539,7 @@ public static class Theme
     static void DrawComboItem(object? s, DrawItemEventArgs e)
     {
         if (s is not ComboBox cb) return;
-        var p = Current;
+        var p = PaletteFor(cb);
         var highlighted = (e.State & DrawItemState.Selected) != 0 && (e.State & DrawItemState.ComboBoxEdit) == 0;
         using (var bg = new SolidBrush(highlighted ? p.Accent : p.Input)) e.Graphics.FillRectangle(bg, e.Bounds);
         var text = e.Index >= 0 ? cb.GetItemText(cb.Items[e.Index]) : "";
@@ -455,14 +594,16 @@ public static class Theme
     static void OnFormHandle(object? s, EventArgs e)
     {
         if (s is not Form f || !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763)) return;
-        int on = Current.Dark ? 1 : 0;
+        // A window with the brand bar gets a caption in the bar's colours, so the two read as one piece.
+        var p = HasBanner(f) ? Banner : Current;
+        int on = p.Dark ? 1 : 0;
         // 20 = DWMWA_USE_IMMERSIVE_DARK_MODE; Windows 10 before 20H1 used 19.
         if (DwmSetWindowAttribute(f.Handle, 20, ref on, sizeof(int)) != 0)
             DwmSetWindowAttribute(f.Handle, 19, ref on, sizeof(int));
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
         {
             // Windows 11 can colour the caption itself: match the app's header bar so the window reads as one piece.
-            int caption = ColorRef(Current.Header), text = ColorRef(Current.Text), border = ColorRef(Current.Border);
+            int caption = ColorRef(p.Header), text = ColorRef(p.Text), border = ColorRef(p.Border);
             DwmSetWindowAttribute(f.Handle, 35, ref caption, sizeof(int)); // DWMWA_CAPTION_COLOR
             DwmSetWindowAttribute(f.Handle, 36, ref text, sizeof(int));    // DWMWA_TEXT_COLOR
             DwmSetWindowAttribute(f.Handle, 34, ref border, sizeof(int));  // DWMWA_BORDER_COLOR
@@ -470,6 +611,13 @@ public static class Theme
         // A window that is already on screen keeps its old caption until the frame is redrawn (a live theme switch).
         const uint NoSize = 0x1, NoMove = 0x2, NoZOrder = 0x4, NoActivate = 0x10, FrameChanged = 0x20;
         SetWindowPos(f.Handle, IntPtr.Zero, 0, 0, 0, 0, NoSize | NoMove | NoZOrder | NoActivate | FrameChanged);
+    }
+
+    static bool HasBanner(Control c)
+    {
+        foreach (Control child in c.Controls)
+            if (RoleOf(child) == ThemeRole.Header || HasBanner(child)) return true;
+        return false;
     }
 
     static int ColorRef(Color c) => c.R | (c.G << 8) | (c.B << 16);
@@ -503,7 +651,8 @@ public sealed class NavButton : Button
     {
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        Padding = new Padding(14, 6, 14, 8);
+        Padding = new Padding(16, 8, 16, 10);
+        Font = Theme.NavFont;
         Margin = new Padding(0);
         TabStop = true;
         Cursor = Cursors.Hand;
@@ -515,7 +664,7 @@ public sealed class NavButton : Button
         set
         {
             _selected = value;
-            ForeColor = value ? Theme.Current.Text : Theme.Current.Muted;
+            ForeColor = value ? Theme.PaletteFor(this).Title : Theme.PaletteFor(this).Muted;
             Invalidate();
         }
     }
@@ -524,8 +673,9 @@ public sealed class NavButton : Button
     {
         base.OnPaint(e);
         if (!_selected) return;
-        using var b = new SolidBrush(Theme.Current.Accent);
-        e.Graphics.FillRectangle(b, 8, Height - 3, Width - 16, 3);
+        using var b = new SolidBrush(Theme.PaletteFor(this).Accent);
+        var h = Math.Max(3, LogicalToDeviceUnits(3));
+        e.Graphics.FillRectangle(b, LogicalToDeviceUnits(10), Height - h, Width - LogicalToDeviceUnits(20), h);
     }
 }
 
