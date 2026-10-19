@@ -35,7 +35,7 @@ public sealed class Publisher
     /// <summary>A change note typed in the upload confirmation, used instead of the changelog entry; null keeps the entry.</summary>
     public Func<ModInfo, string?>? NoteOverride { get; set; }
 
-    /// <summary>Ends each change note sent to Steam with <see cref="CreditLine"/> (Options > Change notes; on by default in the app).</summary>
+    /// <summary>Ends each change note sent to Steam with <see cref="CreditLine"/> (Options > Workshop page > Change notes; on by default in the app).</summary>
     public bool Credit { get; init; }
 
     /// <summary>Wraps each change note sent to Steam (see <see cref="ChangeNotes.Apply"/>); null or empty sends the note as it is.</summary>

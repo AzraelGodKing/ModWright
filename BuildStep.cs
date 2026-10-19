@@ -5,7 +5,7 @@ namespace SteamCmdHelper;
 
 /// <summary>
 /// A command run in the mods folder before anything is packaged (for example "dotnet build -c Release"), set per mods
-/// folder under Options > Upload. Nothing is uploaded when it fails, so a broken build never reaches subscribers.
+/// folder under Options > Uploading. Nothing is uploaded when it fails, so a broken build never reaches subscribers.
 /// It comes from this PC's settings, never from the repo, so opening someone else's folder runs nothing.
 /// </summary>
 public static class BuildStep

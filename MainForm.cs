@@ -261,7 +261,7 @@ public sealed class MainForm : Form
         _logFilter.SelectedIndexChanged += (_, _) => RenderLog();
         _autoScroll.CheckedChanged += (_, _) => { if (_autoScroll.Checked) _log.ScrollToCaret(); };
         _projectSummary.Click += (_, _) => { _projectOpen = true; UpdateProjectCard(); _repo.Focus(); };
-        _loginLink.LinkClicked += (_, _) => ShowPage(_optionsPage);
+        _loginLink.LinkClicked += (_, _) => ShowOptions(_account);
         _profile.SelectedIndexChanged += (_, _) => { if (!_populating) SwitchProfile(); };
         _webhook.Leave += (_, _) => SaveAnnounce();
         _buildCmd.Leave += (_, _) => { if (!_populating && Directory.Exists(_s.RepoPath)) { _s.SetBuild(_s.RepoPath, _buildCmd.Text); _s.Save(); } };
@@ -632,83 +632,30 @@ public sealed class MainForm : Form
         return File.Exists(p) ? p : null;
     }
 
+    /// <summary>The Options sections, in sidebar order: each one's button and the page of cards it shows.</summary>
+    readonly List<(SideNavButton Tab, Control Page)> _sections = new();
+    int _section;
+
+    /// <summary>
+    /// The Options tab, laid out like Steam's settings window: a list of sections down the left, and the selected
+    /// section's cards on the right. Every setting keeps its control, so what is saved and how is unchanged.
+    /// </summary>
     Control BuildOptionsPage()
     {
-        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 9, Padding = new Padding(14, 12, 14, 12), AutoScroll = true };
-        for (var i = 0; i < 8; i++) page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        page.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        // Settings read best as one column; on a wide window keep it from stretching across the screen. The notes
-        // wrap to the width the cards get.
-        page.Resize += (_, _) =>
-        {
-            var right = Math.Max(14, page.ClientSize.Width - 14 - U(900));
-            if (page.Padding.Right != right) page.Padding = new Padding(14, 12, right, 12);
-            var text = Math.Max(U(240), page.ClientSize.Width - page.Padding.Horizontal - U(30) - (page.VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0));
-            foreach (var h in _hints) if (h.MaximumSize.Width != text) h.MaximumSize = new Size(text, 0);
-        };
-
-        _contrastNote = Hint("Windows High Contrast is on, so its colours are used. The theme picked here applies when it is off.");
-        foreach (var size in Display.TextSizes) _textSize.Items.Add(size + "%");
-        _tip.SetToolTip(_textSize, "Makes all text, and the layout with it, larger than Windows' own scaling");
-        ShowThemeChoice();
-        page.Controls.Add(Card("Appearance", null,
-            Row(Lbl("Theme"), _themeDark, _themeLight, _themeSystem),
-            _contrastNote,
-            Row(Lbl("Te&xt size"), _textSize),
-            Hint("Saved for your Windows user. The theme changes straight away; Match Windows follows Windows' light or dark app mode. " +
-                 "A new text size is used the next time SteamCMD Helper starts.")));
-
+        // ---- Account
         _profileSave = Btn("Sa&ve as...", (_, _) => SaveProfile());
         _profileDelete = Btn("Delete", (_, _) => DeleteProfile());
-        page.Controls.Add(Card("Profiles", null,
-            Row(Lbl("&Profile"), _profile, _profileSave, _profileDelete),
-            Hint("A profile remembers a mods folder, Steam account and SteamCMD together, for switching between projects or accounts in one click.")));
+        AddSection("Account", "The Steam account uploads go out under, and profiles for switching between projects.",
+            Card("Steam account", null,
+                Row(Lbl("Account &name"), _account, _checkLogin, _doLogin),
+                Row(Lbl("Status"), _login),
+                Row(_accountNote),
+                Hint("You log in once in SteamCMD's own window and Steam keeps the login. This program never sees your password.")),
+            Card("Profiles", null,
+                Row(Lbl("&Profile"), _profile, _profileSave, _profileDelete),
+                Hint("A profile remembers a mods folder, Steam account and SteamCMD together, for switching between projects or accounts in one click.")));
 
-        page.Controls.Add(Card("Steam account", null,
-            Row(Lbl("Account &name"), _account, _checkLogin, _doLogin),
-            Row(Lbl("Status"), _login),
-            Row(_accountNote),
-            Hint("You log in once in SteamCMD's own window and Steam keeps the login. This program never sees your password.")));
-
-        var openSteam = Btn("Open &folder", (_, _) => OpenPath(Path.GetDirectoryName(_s.EffectiveSteamCmd)!));
-        var openLogs = Btn("Open &logs", (_, _) => OpenSteamCmdLogs());
-        var branches = Btn("Game &branches", async (_, _) => await CheckGameBuildsAsync(true));
-        var testInstall = Btn("Try in a game b&eta...", async (_, _) => await TryInGameBetaAsync(SelectedMod()));
-        _watchBuilds.Checked = _s.WatchGameBuilds;
-        _watchBuilds.CheckedChanged += (_, _) => { _s.WatchGameBuilds = _watchBuilds.Checked; _s.Save(); };
-        page.Controls.Add(Card("SteamCMD", null,
-            Row(Lbl("Location"), _steamCmdPath, _install, openSteam, openLogs),
-            Hint("SteamCMD is Valve's command-line Steam client; every upload goes through it. Its own logs (workshop_log.txt and others) help when Steam turns an upload down."),
-            Row(branches, testInstall),
-            _watchBuilds,
-            Hint("Game branches lists the game's public build and betas. Try in a game beta installs a separate copy of the game on a branch, with the selected mod " +
-                 "and the Workshop items it needs, so you can test before the update reaches players."),
-            Hint("Which login is used: game branches use Steam's anonymous login, so they work without an account. Uploading, downloading items and test installs " +
-                 "use your saved login, and that account must own the game.")));
-
-        _tagUploads.Checked = _s.TagUploads;
-        _commitIds.Checked = _s.CommitNewIds;
-        var ghActions = Btn("Set up &GitHub Actions upload...", (_, _) => SetUpGitHubActions());
-        var copySecret = Btn("Copy login &secret...", (_, _) => CopyLoginSecret());
-        page.Controls.Add(Card("Git", null,
-            _tagUploads,
-            _commitIds,
-            Hint("Used when the mods folder is a git repository. Tags are made on the commit that was uploaded and stay on this PC until you push them (git push --tags)."),
-            Row(ghActions, copySecret),
-            Hint($"GitHub Actions upload writes {GitHubActions.WorkflowPath} into the mods folder: pushing a tag such as v1.2.0 then uploads every mod whose version " +
-                 $"Steam does not have yet. It needs two repository secrets on GitHub: {GitHubActions.AccountSecret} (your login name) and {GitHubActions.LoginSecretName} " +
-                 "(SteamCMD's saved login, which Copy login secret puts on the clipboard).")));
-
-        _uploadCredit.Checked = _s.UploadCredit;
-        _markdownNotes.Checked = _s.MarkdownNotes;
-        page.Controls.Add(Card("Change notes", null,
-            _uploadCredit,
-            _markdownNotes,
-            Row(Lbl("&Template"), _noteTemplate),
-            Hint("The template is for the current mods folder: {note} is the changelog entry, and {name}, {version}, {date} and {game} fill themselves in " +
-                 "(e.g. \"{version} ({date})\" on the first line, then {note}). Without {note} the entry goes after it. For RimWorld, start with {version}, " +
-                 "so the Steam version column can still read it. All of this changes only the note on Steam; the upload history and Discord announcements keep the entry as written.")));
-
+        // ---- Uploading: what happens before, during and after a run
         _autoRetry.Checked = _s.AutoRetry;
         _autoRetry.CheckedChanged += (_, _) => { _s.AutoRetry = _autoRetry.Checked; _s.Save(); };
         _updateTags.Checked = _s.UpdateTags;
@@ -717,32 +664,36 @@ public sealed class MainForm : Form
         _oneSession.CheckedChanged += (_, _) => { _s.OneSession = _oneSession.Checked; _s.Save(); };
         _verifyUploads.Checked = _s.VerifyUploads;
         _verifyUploads.CheckedChanged += (_, _) => { _s.VerifyUploads = _verifyUploads.Checked; _s.Save(); };
-        page.Controls.Add(Card("Uploading", null,
-            Row(Lbl("&Build step"), _buildCmd),
-            Hint("Run in the mods folder before anything is packaged, also for a dry run. If it fails, nothing is uploaded and its output is in the log. " +
-                 "Set for the current mods folder and kept in your settings, never in the repo."),
-            Row(Lbl("Upload &from"), _packageRef),
-            Hint("A git branch or tag to package instead of the checked-out commit (git packaging only), so a release branch can be uploaded while you work elsewhere. " +
-                 "The version and change note are then read from that branch."),
-            _autoRetry,
-            _oneSession,
-            Hint("Without it, each mod gets its own SteamCMD run and login. With it, every ticked mod is packaged and checked first, then uploaded in one run."),
-            _verifyUploads,
-            Hint("Downloads each item again the way subscribers get it, so it doubles the traffic. A difference is only a warning; the upload has already gone through."),
-            _updateTags,
-            Hint("SteamCMD cannot set tags, so they go through the Steam client: it has to be running and signed in as the account that owns the mod. " +
-                 "Version tags the mod no longer lists are taken off; other tags are kept."),
-            Hint("Upload to test items (next to Dry run) sends each ticked mod to its own private copy on Steam, created on first use and kept in " +
-                 ModInfo.TestIdFile + " in the mod folder (keep it out of git). Subscribers get nothing; page changes and records wait for the real upload.")));
-
         _webhookTest = Btn("Send t&est", async (_, _) => await TestWebhookAsync());
-        page.Controls.Add(Card("Announcements", null,
-            Row(Lbl("Discord &webhook"), _webhook, _webhookTest),
-            _ghReleases,
-            Hint("For the current mods folder. After a successful update, its name, version, change note and Workshop link are posted to the Discord channel. " +
-                 "New items are created private, so they are not announced. The webhook link is kept in your settings, never in the repo. " +
-                 "GitHub releases are made on the uploaded commit, which must be pushed first.")));
+        AddSection("Uploading", "What runs before, during and after an upload.",
+            Card("Before uploading", new Control[] { FolderTag() },
+                Row(Lbl("&Build step"), _buildCmd),
+                Hint("Run in the mods folder before anything is packaged, also for a dry run. If it fails, nothing is uploaded and its output is in the log. " +
+                     "Kept in your settings, never in the repo."),
+                Row(Lbl("Upload &from"), _packageRef),
+                Hint("A git branch or tag to package instead of the checked-out commit (git packaging only), so a release branch can be uploaded while you work elsewhere. " +
+                     "The version and change note are then read from that branch.")),
+            Card("While uploading", null,
+                _autoRetry,
+                _oneSession,
+                Hint("Without it, each mod gets its own SteamCMD run and login. With it, every ticked mod is packaged and checked first, then uploaded in one run."),
+                _verifyUploads,
+                Hint("Downloads each item again the way subscribers get it, so it doubles the traffic. A difference is only a warning; the upload has already gone through."),
+                _updateTags,
+                Hint("SteamCMD cannot set tags, so they go through the Steam client: it has to be running and signed in as the account that owns the mod. " +
+                     "Version tags the mod no longer lists are taken off; other tags are kept."),
+                Hint("Upload to test items (next to Dry run) sends each ticked mod to its own private copy on Steam, created on first use and kept in " +
+                     ModInfo.TestIdFile + " in the mod folder (keep it out of git). Subscribers get nothing; page changes and records wait for the real upload.")),
+            Card("After uploading", new Control[] { FolderTag() },
+                Row(Lbl("Discord &webhook"), _webhook, _webhookTest),
+                Hint("After a successful update, its name, version, change note and Workshop link are posted to the Discord channel. " +
+                     "New items are created private, so they are not announced. The webhook link is kept in your settings, never in the repo."),
+                _ghReleases,
+                Hint("GitHub releases are made on the uploaded commit, which must be pushed first.")));
 
+        // ---- Workshop page: the text that goes to Steam with an upload
+        _uploadCredit.Checked = _s.UploadCredit;
+        _markdownNotes.Checked = _s.MarkdownNotes;
         _descSync.Items.AddRange(new object[] { "Ask before sending it", "Always send it", "Never send it" });
         _descSync.SelectedIndex = _s.DescriptionSync switch { DescriptionSync.Always => 1, DescriptionSync.Never => 2, _ => 0 };
         _descSync.SelectedIndexChanged += (_, _) =>
@@ -750,12 +701,74 @@ public sealed class MainForm : Form
             _s.DescriptionSync = _descSync.SelectedIndex switch { 1 => DescriptionSync.Always, 2 => DescriptionSync.Never, _ => DescriptionSync.Ask };
             _s.Save();
         };
-        page.Controls.Add(Card("Workshop page", null,
-            Row(Lbl("When a mod's &description file differs from Steam"), _descSync),
-            Hint("Checked when you upload a mod that is on Steam and has a description file (steam_description.txt for Generic). " +
-                 "Public and unlisted items are compared with their page on Steam; other items with what this PC last sent. " +
-                 "The new description goes out with the upload, like a change made in Workshop page...")));
+        AddSection("Workshop page", "The change note and description that go to each mod's Steam page with an upload.",
+            Card("Change notes", null,
+                _uploadCredit,
+                _markdownNotes,
+                Row(Lbl("&Template"), _noteTemplate),
+                Hint("The template is for the current mods folder: {note} is the changelog entry, and {name}, {version}, {date} and {game} fill themselves in " +
+                     "(e.g. \"{version} ({date})\" on the first line, then {note}). Without {note} the entry goes after it. For RimWorld, start with {version}, " +
+                     "so the Steam version column can still read it. All of this changes only the note on Steam; the upload history and Discord announcements keep the entry as written.")),
+            Card("Description", null,
+                Row(Lbl("When a mod's &description file differs from Steam"), _descSync),
+                Hint("Checked when you upload a mod that is on Steam and has a description file (steam_description.txt for Generic). " +
+                     "Public and unlisted items are compared with their page on Steam; other items with what this PC last sent. " +
+                     "The new description goes out with the upload, like a change made in Workshop page...")));
 
+        // ---- SteamCMD
+        var openSteam = Btn("Open &folder", (_, _) => OpenPath(Path.GetDirectoryName(_s.EffectiveSteamCmd)!));
+        var openLogs = Btn("Open &logs", (_, _) => OpenSteamCmdLogs());
+        var branches = Btn("Game &branches", async (_, _) => await CheckGameBuildsAsync(true));
+        var testInstall = Btn("Try in a game b&eta...", async (_, _) => await TryInGameBetaAsync(SelectedMod()));
+        _watchBuilds.Checked = _s.WatchGameBuilds;
+        _watchBuilds.CheckedChanged += (_, _) => { _s.WatchGameBuilds = _watchBuilds.Checked; _s.Save(); };
+        AddSection("SteamCMD", "Valve's command-line Steam client, which every upload goes through.",
+            Card("SteamCMD", null,
+                Row(Lbl("Location"), _steamCmdPath, _install, openSteam, openLogs),
+                Hint("Its own logs (workshop_log.txt and others) help when Steam turns an upload down."),
+                Hint("Which login is used: game branches use Steam's anonymous login, so they work without an account. Uploading, downloading items and test installs " +
+                     "use your saved login, and that account must own the game.")),
+            Card("Game branches", null,
+                Row(branches, testInstall),
+                _watchBuilds,
+                Hint("Game branches lists the game's public build and betas. Try in a game beta installs a separate copy of the game on a branch, with the selected mod " +
+                     "and the Workshop items it needs, so you can test before the update reaches players.")));
+
+        // ---- Git & GitHub
+        _tagUploads.Checked = _s.TagUploads;
+        _commitIds.Checked = _s.CommitNewIds;
+        var ghActions = Btn("Set up &GitHub Actions upload...", (_, _) => SetUpGitHubActions());
+        var copySecret = Btn("Copy login &secret...", (_, _) => CopyLoginSecret());
+        AddSection("Git & GitHub", "For a mods folder that is a git repository.",
+            Card("Git", null,
+                _tagUploads,
+                _commitIds,
+                Hint("Tags are made on the commit that was uploaded and stay on this PC until you push them (git push --tags).")),
+            Card("GitHub Actions upload", null,
+                Row(ghActions, copySecret),
+                Hint($"Writes {GitHubActions.WorkflowPath} into the mods folder: pushing a tag such as v1.2.0 then uploads every mod whose version " +
+                     $"Steam does not have yet. It needs two repository secrets on GitHub: {GitHubActions.AccountSecret} (your login name) and {GitHubActions.LoginSecretName} " +
+                     "(SteamCMD's saved login, which Copy login secret puts on the clipboard).")));
+
+        // ---- Appearance
+        _contrastNote = Hint("Windows High Contrast is on, so its colours are used. The theme picked here applies when it is off.");
+        foreach (var size in Display.TextSizes) _textSize.Items.Add(size + "%");
+        _tip.SetToolTip(_textSize, "Makes all text, and the layout with it, larger than Windows' own scaling");
+        ShowThemeChoice();
+        AddSection("Appearance", "How SteamCMD Helper looks for your Windows user.",
+            Card("Theme and text", null,
+                Row(Lbl("Theme"), _themeDark, _themeLight, _themeSystem),
+                _contrastNote,
+                Row(Lbl("Te&xt size"), _textSize),
+                Hint("The theme changes straight away; Match Windows follows Windows' light or dark app mode. " +
+                     "A new text size is used the next time SteamCMD Helper starts.")));
+
+        // ---- About
+        var version = (typeof(MainForm).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "").Split('+')[0];
+        _checkUpdates.Checked = _s.CheckForUpdates;
+        _autoUpdate.Checked = _s.AutoUpdate;
+        _autoUpdate.Enabled = _s.CheckForUpdates;
+        _checkUpdateNow = Btn("Check now", async (_, _) => await CheckForUpdateAsync(true));
         var openData = Btn("Open &data folder", (_, _) => OpenPath(AppSettings.Folder));
         var forget = Btn("Forget recent folders", (_, _) =>
         {
@@ -765,28 +778,98 @@ public sealed class MainForm : Form
             FillRecent();
             Append("Recent mods folders forgotten (the current one is kept).", LogKind.Note);
         });
-        page.Controls.Add(Card("Your data", null,
-            Hint(AppSettings.Portable
-                ? $"Portable mode ({AppSettings.PortableMarker} is next to the program): settings, the recent folders list and the upload history are kept in {AppSettings.Folder}, so they travel with it."
-                : $"Settings, the recent folders list and the upload history are kept in %LocalAppData%\\SteamCmdHelper for your Windows user only. To keep them beside the program instead (on a USB stick, say), put an empty file named {AppSettings.PortableMarker} next to SteamCmdHelper.exe."),
-            Row(openData, forget)));
+        AddSection("About", "Version and updates, where your data is kept, and help.",
+            Card("Updates", null,
+                Hint($"SteamCMD Helper {version}."),
+                Row(_checkUpdates, _checkUpdateNow),
+                _autoUpdate,
+                _updateReady),
+            Card("Your data", null,
+                Hint(AppSettings.Portable
+                    ? $"Portable mode ({AppSettings.PortableMarker} is next to the program): settings, the recent folders list and the upload history are kept in {AppSettings.Folder}, so they travel with it."
+                    : $"Settings, the recent folders list and the upload history are kept in %LocalAppData%\\SteamCmdHelper for your Windows user only. To keep them beside the program instead (on a USB stick, say), put an empty file named {AppSettings.PortableMarker} next to SteamCmdHelper.exe."),
+                Row(openData, forget)),
+            Card("Help", null,
+                Row(Lbl("Everything works from the keyboard.").Role(ThemeRole.Muted), SmallBtn("Keyboard shortcuts (F1)", (_, _) => ShowShortcuts())),
+                Hint(Disclaimer + " Steam and SteamCMD are trademarks of Valve Corporation.")));
 
-        var version = (typeof(MainForm).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "").Split('+')[0];
-        _checkUpdates.Checked = _s.CheckForUpdates;
-        _autoUpdate.Checked = _s.AutoUpdate;
-        _autoUpdate.Enabled = _s.CheckForUpdates;
-        _checkUpdateNow = Btn("Check now", async (_, _) => await CheckForUpdateAsync(true));
-        page.Controls.Add(Card("About", null,
-            Hint($"SteamCMD Helper {version}."),
-            Row(_checkUpdates, _checkUpdateNow),
-            _autoUpdate,
-            _updateReady,
-            Row(Lbl("Everything works from the keyboard.").Role(ThemeRole.Muted), SmallBtn("Keyboard shortcuts (F1)", (_, _) => ShowShortcuts())),
-            Hint(Disclaimer + " Steam and SteamCMD are trademarks of Valve Corporation.")));
-        return page;
+        // The sidebar, then a hairline, then the selected section.
+        var side = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, Padding = new Padding(10, 14, 10, 12), Margin = Padding.Empty, AccessibleName = "Options sections", AccessibleRole = AccessibleRole.PageTabList };
+        var body = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
+        foreach (var (tab, page) in _sections)
+        {
+            side.Controls.Add(tab);
+            body.Controls.Add(page);
+        }
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.Controls.Add(side, 0, 0);
+        root.Controls.Add(new Panel { Dock = DockStyle.Fill, Width = 1, Margin = Padding.Empty }.Role(ThemeRole.Divider), 1, 0);
+        root.Controls.Add(body, 2, 0);
+        side.TabIndex = 0;
+        body.TabIndex = 1;
+        ShowSection(0);
+        return root;
     }
 
-    public void ShowOptions() => ShowPage(_optionsPage);
+    /// <summary>One Options section: its sidebar button, and a scrolling page with its name, what it is for and its cards.</summary>
+    void AddSection(string name, string blurb, params Control[] cards)
+    {
+        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, Padding = new Padding(16, 14, 14, 12), AutoScroll = true, Visible = false, AccessibleName = name };
+        page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        page.Controls.Add(new Label { Text = name, AutoSize = true, Font = Theme.HeadingFont, Margin = new Padding(0, 0, 0, 2), UseMnemonic = false }.Role(ThemeRole.Title));
+        page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        page.Controls.Add(new Label { Text = blurb, AutoSize = true, Margin = new Padding(0, 0, 0, 12), UseMnemonic = false }.Role(ThemeRole.Muted));
+        foreach (var c in cards)
+        {
+            page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            page.Controls.Add(c);
+        }
+        page.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        // Settings read best as one column; on a wide window keep it from stretching across the screen. The notes
+        // wrap to the width the cards get.
+        page.Resize += (_, _) =>
+        {
+            var right = Math.Max(14, page.ClientSize.Width - 16 - U(820));
+            if (page.Padding.Right != right) page.Padding = new Padding(16, 14, right, 12);
+            var text = Math.Max(U(240), page.ClientSize.Width - page.Padding.Horizontal - U(30) - (page.VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0));
+            foreach (var h in _hints) if (page.Contains(h) && h.MaximumSize.Width != text) h.MaximumSize = new Size(text, 0);
+        };
+        var index = _sections.Count;
+        var tab = new SideNavButton { Text = name, Width = 170, AccessibleName = name };
+        tab.Click += (_, _) => ShowSection(index);
+        _sections.Add((tab, page));
+    }
+
+    /// <summary>A small note at the right of a card's title for settings kept per mods folder.</summary>
+    static Label FolderTag() => new Label { Text = "For this mods folder", AutoSize = true, Font = Theme.SmallFont }.Role(ThemeRole.Muted);
+
+    void ShowSection(int index)
+    {
+        _section = Math.Clamp(index, 0, _sections.Count - 1);
+        for (var i = 0; i < _sections.Count; i++)
+        {
+            _sections[i].Page.Visible = i == _section;
+            _sections[i].Tab.Selected = i == _section;
+        }
+    }
+
+    /// <summary>Opens the Options tab, on the section that holds <paramref name="target"/> when one is given.</summary>
+    public void ShowOptions(Control? target = null)
+    {
+        ShowPage(_optionsPage);
+        var i = target == null ? -1 : _sections.FindIndex(s => s.Page.Contains(target));
+        if (i >= 0) ShowSection(i);
+    }
+
+    /// <summary>The Options section names, in order (for --shot).</summary>
+    public IReadOnlyList<string> OptionSections => _sections.Select(s => s.Tab.Text).ToList();
+
+    /// <summary>Opens the Options tab on the section with this index (for --shot).</summary>
+    public void ShowOptionSection(int index) { ShowPage(_optionsPage); ShowSection(index); }
 
     /// <summary>Selects the first row, to show the selection colours (used by --shot).</summary>
     public void SelectFirstMod()
@@ -888,6 +971,11 @@ public sealed class MainForm : Form
             case Keys.Control | Keys.Shift | Keys.Tab:
                 ShowPage(_uploadPage.Visible ? _optionsPage : _uploadPage);
                 (_uploadPage.Visible ? _navUpload : _navOptions).Focus();
+                return true;
+            case Keys.Control | Keys.PageDown when _optionsPage.Visible:
+            case Keys.Control | Keys.PageUp when _optionsPage.Visible:
+                ShowSection((_section + ((keyData & Keys.KeyCode) == Keys.PageUp ? _sections.Count - 1 : 1)) % _sections.Count);
+                _sections[_section].Tab.Focus();
                 return true;
             case Keys.Escape when _busy && _cts != null && !_filter.Focused:
                 Append("Stopping after the current step...", LogKind.Warn);
@@ -1131,7 +1219,7 @@ public sealed class MainForm : Form
     /// </summary>
     void Nudge(Control target, Label note, string text)
     {
-        ShowPage(note == _accountNote ? _optionsPage : _uploadPage);
+        if (note == _accountNote) ShowOptions(target); else ShowPage(_uploadPage);
         if (note == _projectNote && !_projectOpen) { _projectOpen = true; UpdateProjectCard(); }
         ShowNote(note, text);
         Say(text);
@@ -1472,7 +1560,7 @@ public sealed class MainForm : Form
         var installed = SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd);
         var hasRepo = Directory.Exists(_s.RepoPath);
         Step(0, installed, "SteamCMD installed", "Install SteamCMD", async () => await InstallAsync());
-        Step(1, _s.Account.Length > 0, "Steam account: " + _s.Account, "Set your Steam account", () => { ShowPage(_optionsPage); _account.Focus(); Flash(_account); });
+        Step(1, _s.Account.Length > 0, "Steam account: " + _s.Account, "Set your Steam account", () => { ShowOptions(_account); _account.Focus(); Flash(_account); });
         Step(2, hasRepo && _rows.Count > 0, $"{_rows.Count} mod{(_rows.Count == 1 ? "" : "s")} found",
             hasRepo ? "Point at the folder with your mods" : "Pick your mods folder", BrowseRepo);
         Step(3, _cfg.AppIdValid, "App ID " + _cfg.AppId, "Enter the game's app ID", () => { _projectOpen = true; UpdateProjectCard(); _appId.Focus(); Flash(_appId); });
@@ -2365,7 +2453,7 @@ public sealed class MainForm : Form
     {
         if (_busy) return;
         if (!_cfg.AppIdValid) { Append("Set the game's app ID first.", LogKind.Warn); return; }
-        if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { Append("Install SteamCMD first (Options > Install SteamCMD).", LogKind.Warn); return; }
+        if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { Append("Install SteamCMD first (Options > SteamCMD > Install SteamCMD).", LogKind.Warn); return; }
         var appId = _cfg.AppId;
         if (_branches == null)
             await RunSteamJobAsync("Reading the game's branches", async ct => _branches = await GameBuilds.FetchAsync(_s.EffectiveSteamCmd, appId, ct));
@@ -2645,7 +2733,7 @@ public sealed class MainForm : Form
         var gitRef = rollback?.Ref ?? (_s.RefFor(_s.RepoPath) is { Length: > 0 } fromRef ? fromRef : null);
         if (gitRef != null && gitPackaging && !GitOps.RefExists(_s.RepoPath, gitRef))
         {
-            ShowPage(_optionsPage);
+            ShowOptions(_packageRef);
             MessageBox.Show(this, $"\"{gitRef}\" is not a branch, tag or commit in this repo, so nothing can be packaged from it. Change Upload from under Options > Uploading.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -2890,7 +2978,7 @@ public sealed class MainForm : Form
     /// <summary>Opens SteamCMD to log in even when a saved login exists (it may be the one Steam just turned down).</summary>
     async Task<bool> ForceLoginAsync()
     {
-        if (string.IsNullOrWhiteSpace(_s.Account)) { ShowPage(_optionsPage); Nudge(_account, _accountNote, "Type your Steam account name first."); return false; }
+        if (string.IsNullOrWhiteSpace(_s.Account)) { Nudge(_account, _accountNote, "Type your Steam account name first."); return false; }
         var wasBusy = _busy;
         if (!wasBusy) SetBusy(true);
         SetLogin("Waiting for you to finish logging in...", Tone.Muted);

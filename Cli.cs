@@ -91,7 +91,7 @@ public static class Cli
 
         Logins: game-builds needs no account (Steam's anonymous login). Everything else that talks to Steam
         (upload, download, verify, test-install) uses the saved login of an account that owns the game.
-        The Steam login must already be saved: log in once from the window (Options > Log in...).
+        The Steam login must already be saved: log in once from the window (Options > Account > Log in...).
         Exit codes: 0 all done, 1 a mod failed or was not run, 2 bad arguments or nothing to upload,
         3 SteamCMD missing or not logged in.
         """;
@@ -340,7 +340,7 @@ public static class Cli
         if (o.Command == "login-secret")
         {
             if (GitHubActions.LoginSecret(steamCmd) is { } secret) { Say(secret); return ExitOk; }
-            Say($"Error: SteamCMD has no saved login at {GitHubActions.ConfigFile(steamCmd)}. Log in once from the window (Options > Log in...), then run this again.");
+            Say($"Error: SteamCMD has no saved login at {GitHubActions.ConfigFile(steamCmd)}. Log in once from the window (Options > Account > Log in...), then run this again.");
             return ExitSteam;
         }
 
@@ -481,7 +481,7 @@ public static class Cli
             catch (Exception e) when (e is not OperationCanceledException) { Say("Error: could not run SteamCMD: " + e.Message); return End(ExitSteam, "Could not run SteamCMD: " + e.Message); }
             if (!loggedIn)
             {
-                Say($"Error: no saved Steam login for {account}. Log in once from the window (Options > Log in...), then run this again.");
+                Say($"Error: no saved Steam login for {account}. Log in once from the window (Options > Account > Log in...), then run this again.");
                 return End(ExitSteam, $"No saved Steam login for {account}.");
             }
             Say("Logged in.");
