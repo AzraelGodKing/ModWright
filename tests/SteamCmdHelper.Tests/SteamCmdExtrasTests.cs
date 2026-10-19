@@ -438,6 +438,72 @@ public sealed class SteamCmdExtrasTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(_work, "steamcmd", "dl")));
     }
 
+    [Fact]
+    public async Task One_session_checks_uploads_in_the_same_steamcmd_run()
+    {
+        if (!CanFakeSteamCmd) return;
+        _repo.AddMod("Alpha", workshopId: "1111111");
+        _repo.AddMod("Beta", workshopId: "2222222");
+        var cfg = TestConfig.RimWorld();
+        // Uploads every build file, then "downloads" each item it is asked for as a copy holding only About/About.xml.
+        var steam = Fake("echo \"Logging in user '$2' to Steam Public...OK\"\n"
+            + "shift 2\n"
+            + "while [ $# -gt 0 ]; do\n"
+            + "  if [ \"$1\" = '+workshop_build_item' ]; then echo 'Committing update...Success.'; shift 2\n"
+            + "  elif [ \"$1\" = '+workshop_download_item' ]; then dir=\"$(dirname \"$0\")/dl/$3\"; mkdir -p \"$dir/About\"; printf 'x' > \"$dir/About/About.xml\"; "
+            + "echo \"Success. Downloaded item $3 to \\\"$dir\\\" (1 bytes)\"; shift 4\n"
+            + "  else shift; fi\n"
+            + "done\n"
+            + "exit 0\n");
+        var pub = new Publisher(_repo.Root, cfg, steam, "modder", _temp) { VerifyUploads = true };
+        var log = new List<string>();
+        pub.Log += log.Add;
+        var batch = new BatchUpload(pub, _record) { OneSession = true };
+
+        var results = await batch.RunAsync(ModScanner.Scan(_repo.Root, cfg), upload: true, CancellationToken.None);
+
+        Assert.All(results, r => Assert.Equal(BatchStatus.Uploaded, r.Status));
+        var call = Assert.Single(CallLines()); // one login for the uploads and the checks
+        Assert.Contains("+workshop_download_item 294100 1111111 validate", call);
+        Assert.Contains("+workshop_download_item 294100 2222222 validate", call);
+        Assert.True(call.IndexOf("+workshop_build_item", StringComparison.Ordinal) < call.IndexOf("+workshop_download_item", StringComparison.Ordinal));
+        Assert.Equal(2, log.Count(l => l.StartsWith("Warning: Steam's copy does not match this upload")));
+        Assert.DoesNotContain(log, l => l.StartsWith("Downloading ")); // no separate download run
+        Assert.False(Directory.Exists(Path.Combine(_work, "steamcmd", "dl", "1111111")));
+    }
+
+    [Fact]
+    public async Task A_batch_packages_ahead_and_leaves_no_packages_behind()
+    {
+        if (!CanFakeSteamCmd) return;
+        _repo.AddMod("Alpha", workshopId: "1111111");
+        _repo.AddMod("Beta", workshopId: "2222222");
+        _repo.AddMod("Gamma", workshopId: "3333333");
+        var cfg = TestConfig.RimWorld();
+        var steam = Fake("echo 'Waiting for user info...OK'\necho 'Committing update...Success.'\nexit 0\n");
+        var batch = new BatchUpload(new Publisher(_repo.Root, cfg, steam, "modder", _temp), _record);
+
+        var results = await batch.RunAsync(ModScanner.Scan(_repo.Root, cfg), upload: true, CancellationToken.None);
+
+        Assert.All(results, r => Assert.Equal(BatchStatus.Uploaded, r.Status));
+        Assert.Equal(3, CallLines().Length);
+        Assert.Empty(Directory.GetDirectories(_temp, Publisher.StagePrefix + "*"));
+    }
+
+    [Fact]
+    public async Task Packages_started_ahead_but_not_used_are_removed()
+    {
+        _repo.AddMod("Alpha", workshopId: "1111111");
+        _repo.AddMod("Beta", workshopId: "2222222");
+        var cfg = TestConfig.RimWorld();
+        var pub = new Publisher(_repo.Root, cfg, "no-steamcmd-needed", "modder", _temp);
+
+        pub.PackageAhead(ModScanner.Scan(_repo.Root, cfg), CancellationToken.None);
+        await pub.DropAheadAsync();
+
+        Assert.Empty(Directory.GetDirectories(_temp, Publisher.StagePrefix + "*"));
+    }
+
     // ------------------------------------------------------------ test installs
 
     [Fact]

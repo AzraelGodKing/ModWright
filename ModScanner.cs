@@ -499,6 +499,51 @@ public static class ModScanner
         return list;
     }
 
+    /// <summary>
+    /// A cheap fingerprint of what <see cref="Scan"/> reads: the mod folders, the times of the files in each mod folder
+    /// and one level down (About/About.xml, the changelog, the id file, the preview), the repo's top-level files (the
+    /// layout) and git's HEAD and index. It changes when a mod is edited, added or removed, or a commit is made, so the
+    /// window can refresh by itself only when there is something new. Empty when the folder can't be read.
+    /// </summary>
+    public static string FolderStamp(string repo, ProjectConfig cfg)
+    {
+        try
+        {
+            if (!Directory.Exists(repo)) return "";
+            var hash = new HashCode();
+            void Files(string dir)
+            {
+                foreach (var f in new DirectoryInfo(dir).EnumerateFiles())
+                {
+                    hash.Add(f.Name, StringComparer.OrdinalIgnoreCase);
+                    hash.Add(f.LastWriteTimeUtc.Ticks);
+                    hash.Add(f.Length);
+                }
+            }
+            Files(repo);
+            foreach (var git in new[] { ".git/HEAD", ".git/index", ".git/logs/HEAD" })
+            {
+                var f = new FileInfo(Path.Combine(repo, git));
+                if (f.Exists) hash.Add(f.LastWriteTimeUtc.Ticks);
+            }
+            var root = ModsRoot(repo, cfg);
+            if (Directory.Exists(root) && !string.Equals(Path.GetFullPath(root).TrimEnd('/', '\\'), Path.GetFullPath(repo).TrimEnd('/', '\\'), StringComparison.OrdinalIgnoreCase))
+                Files(root);
+            if (Directory.Exists(root))
+                foreach (var dir in Directory.GetDirectories(root).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+                {
+                    var name = Path.GetFileName(dir);
+                    if (name.StartsWith('.') || (string.IsNullOrWhiteSpace(cfg.ModMarker) && IgnoredFolder(name))) continue;
+                    hash.Add(name, StringComparer.OrdinalIgnoreCase);
+                    Files(dir);
+                    foreach (var sub in Directory.GetDirectories(dir))
+                        if (!Path.GetFileName(sub).StartsWith('.')) Files(sub);
+                }
+            return hash.ToHashCode().ToString("x8");
+        }
+        catch { return ""; }
+    }
+
     static bool IgnoredFolder(string name) =>
         new[] { "bin", "obj", "node_modules", "_tools", "scripts", "docs", "site", "tools", "tests", "test" }
             .Contains(name, StringComparer.OrdinalIgnoreCase);
