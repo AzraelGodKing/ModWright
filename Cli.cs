@@ -429,7 +429,8 @@ public static class Cli
 
         if (!cfg.AppIdValid) { Say("Error: the Steam app ID is not set. Set it in the window or in " + ProjectConfig.FileName + "."); return End(ExitUsage, "The Steam app ID is not set."); }
         var gitRef = o.Ref ?? (string.IsNullOrWhiteSpace(defaultRef) ? null : defaultRef);
-        if (gitRef != null && cfg.UseGitArchive && ModScanner.IsGitRepo(repo) && !GitOps.RefExists(repo, gitRef))
+        var isGit = ModScanner.IsGitRepo(repo);
+        if (gitRef != null && cfg.UseGitArchive && isGit && !GitOps.RefExists(repo, gitRef))
         {
             Say($"Error: \"{gitRef}\" is not a branch, tag or commit in {repo}.");
             return End(ExitUsage, $"\"{gitRef}\" is not a branch, tag or commit.");
@@ -439,7 +440,6 @@ public static class Cli
             Say($"Error: the \"{cfg.PresetName()}\" layout is experimental. Try a new private item first; add --allow-experimental to upload anyway.");
             return End(ExitUsage, $"The \"{cfg.PresetName()}\" layout is experimental.");
         }
-        var isGit = ModScanner.IsGitRepo(repo);
         if ((o.Tag || o.CommitIds || o.NoteFromGit) && !isGit)
         {
             Say("Error: --tag, --commit-ids and --note-from-git need the mods folder to be a git repo.");
