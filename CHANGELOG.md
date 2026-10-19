@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.7
 
 - **Refresh keeps your place.** Refreshing (F5, or the refresh after an upload, a version change or a changelog entry)
   keeps the mods you ticked, the selected mod and the scroll position, instead of ticking every mod again. Mods that
