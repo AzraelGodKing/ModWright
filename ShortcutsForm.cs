@@ -9,6 +9,7 @@ public sealed class ShortcutsForm : Form
         ("Alt + underlined letter", "Press that button, or go to the box whose label has the letter underlined"),
         ("Alt+U, Alt+O", "Go to the Upload or Options tab"),
         ("Ctrl+Tab", "Switch between the Upload and Options tabs"),
+        ("Ctrl+PageDown, Ctrl+PageUp", "Next or previous Options section (Up and Down in the section list too)"),
         ("Ctrl+O", "Pick the mods folder"),
         ("F5", "Read the mods folder again"),
         ("Ctrl+F", "Filter the mod list (Esc clears the filter)"),

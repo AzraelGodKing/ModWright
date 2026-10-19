@@ -266,6 +266,10 @@ public static class Theme
                 nb.Invalidate();
                 Hook(nb, PaintFocus);
                 break;
+            case SideNavButton sb:
+                StyleSideNav(sb, back);
+                Hook(sb, PaintFocus);
+                break;
             case Button b:
                 StyleButton(b);
                 b.EnabledChanged -= OnButtonEnabled;
@@ -333,6 +337,21 @@ public static class Theme
     }
 
     /// <summary>Adds a paint step once, however often the theme is applied.</summary>
+    /// <summary>Colours an Options sidebar section: muted text when not selected, a lit-up row when selected.</summary>
+    public static void StyleSideNav(SideNavButton b, Color back)
+    {
+        var p = PaletteFor(b);
+        var lit = HighContrast ? p.Accent : Blend(back, p.Text, p.Dark ? 0.10 : 0.08);
+        b.FlatStyle = FlatStyle.Flat;
+        b.FlatAppearance.BorderSize = 0;
+        b.FlatAppearance.MouseOverBackColor = b.Selected ? lit : Blend(back, p.Text, 0.05);
+        b.FlatAppearance.MouseDownBackColor = lit;
+        b.BackColor = b.Selected ? lit : back;
+        b.ForeColor = b.Selected ? (HighContrast ? p.AccentText : p.Title) : p.Muted;
+        b.UseVisualStyleBackColor = false;
+        b.Invalidate();
+    }
+
     static void Hook(Control c, PaintEventHandler h)
     {
         c.Paint -= h;
@@ -676,6 +695,62 @@ public sealed class NavButton : Button
         using var b = new SolidBrush(Theme.PaletteFor(this).Accent);
         var h = Math.Max(3, LogicalToDeviceUnits(3));
         e.Graphics.FillRectangle(b, LogicalToDeviceUnits(10), Height - h, Width - LogicalToDeviceUnits(20), h);
+    }
+}
+
+/// <summary>
+/// A section in the Options sidebar, like the list down the side of Steam's settings window: the selected one is
+/// lit up with an accent bar on its left. Up and Down move to the section above or below.
+/// </summary>
+public sealed class SideNavButton : Button
+{
+    bool _selected;
+
+    public SideNavButton()
+    {
+        AutoSize = false;
+        TextAlign = ContentAlignment.MiddleLeft;
+        Padding = new Padding(14, 0, 8, 0);
+        Margin = new Padding(0, 0, 0, 2);
+        Height = 32;
+        TabStop = true;
+        Cursor = Cursors.Hand;
+        UseMnemonic = false;
+        AccessibleRole = AccessibleRole.PageTab;
+    }
+
+    public bool Selected
+    {
+        get => _selected;
+        set
+        {
+            _selected = value;
+            AccessibleDescription = value ? "Selected" : null;
+            if (Parent != null) Theme.StyleSideNav(this, Parent.BackColor);
+        }
+    }
+
+    protected override bool IsInputKey(Keys keyData) => keyData is Keys.Up or Keys.Down || base.IsInputKey(keyData);
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.KeyCode is Keys.Up or Keys.Down && Parent != null)
+        {
+            var all = Parent.Controls.OfType<SideNavButton>().Where(b => b.Visible).ToList();
+            var i = all.IndexOf(this) + (e.KeyCode == Keys.Down ? 1 : -1);
+            if (i >= 0 && i < all.Count) { all[i].Focus(); all[i].PerformClick(); }
+            e.Handled = true;
+            return;
+        }
+        base.OnKeyDown(e);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        if (!_selected) return;
+        using var b = new SolidBrush(Theme.PaletteFor(this).Accent);
+        e.Graphics.FillRectangle(b, 0, 0, Math.Max(3, LogicalToDeviceUnits(3)), Height);
     }
 }
 

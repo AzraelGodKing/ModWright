@@ -16,7 +16,7 @@ Steam and SteamCMD are trademarks of Valve Corporation.
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) to build (running needs the .NET 8 runtime, which the SDK includes)
 - `git` on PATH if your repo uses the default packaging (`UseGitArchive`)
 - SteamCMD: required for uploading. If it is missing at start-up the app offers to download it for you
-  (also **Options > Install SteamCMD**)
+  (also **Options > SteamCMD > Install SteamCMD**)
 - A Steam account that owns the game
 
 ## Download
@@ -90,7 +90,7 @@ leaves the mod list more room.
    The game name is looked up from Steam to confirm it. RimWorld-shaped repos are detected automatically.
 3. **Layout**: pick a built-in layout (**Generic**, **RimWorld**, **Paradox (descriptor.mod)**, **Golf With Your Friends**). Built-in layouts are part of the program and are **locked**: they cannot be edited, and the layout fixes the app ID. For anything else pick **Custom**, then **Edit layout file...** (below).
    The choice is saved in `.steamhelper.json` in the repo root; for a built-in layout that file holds only its name (and your app ID for Generic).
-4. **Steam account** (on the **Options** tab): type your Steam login name. The status line says whether a saved login
+4. **Steam account** (on the **Options** tab, under **Account**): type your Steam login name. The status line says whether a saved login
    exists; the same status shows next to the Upload button, and clicking it opens Options.
    **Install SteamCMD** downloads it to `%LocalAppData%\SteamCmdHelper\steamcmd` (or uses
    `<repo>\_tools\steamcmd` if that exists).
@@ -139,7 +139,7 @@ since the last upload (and no Workshop page change goes with it), the app asks b
 subscribers would only get the change note; the command line uploads it with a warning.
 
 In a git repo, after a new item is created the app offers to commit its Workshop ID file, so nobody creates the item
-twice (**Options > Git** can do it without asking). Tick **Tag each upload in git** there to tag the uploaded commit
+twice (**Options > Git & GitHub** can do it without asking). Tick **Tag each upload in git** there to tag the uploaded commit
 as `<mod folder>-v<version>`; tags stay local until you push them.
 
 The list can be filtered by name, folder or Workshop ID (Ctrl+F), **Hide up to date** drops the mods Steam already
@@ -150,7 +150,7 @@ on Steam. The strip under the list spells out everything the selected mod needs,
 Everything works from the keyboard. **F1** (or **? > Keyboard shortcuts**) lists the shortcuts: **F5** refresh,
 **Ctrl+O** pick the mods folder, **Ctrl+F** filter, **Space** tick the selected mod, **Enter** edit its Workshop page,
 **F2** change its version, **Shift+F10** its right-click menu, **Ctrl+Enter** upload the ticked mods, **Esc** stop a
-running upload, **Ctrl+Tab** switch tabs, and **Alt** with an underlined letter for any button or box. While you move
+running upload, **Ctrl+Tab** switch tabs, **Ctrl+PageDown** / **Ctrl+PageUp** move between the Options sections, and **Alt** with an underlined letter for any button or box. While you move
 around with Tab or the arrow keys, the focused control has a clear ring around it. Screen readers are told when an
 upload finishes and when a step is missing.
 
@@ -247,7 +247,7 @@ version, and the change note sent) and **Open on Steam** (the item's page in you
 Steam's change notes use BBCode, not Markdown. When the layout's changelog is a `.md` file (Generic's `CHANGELOG.md`),
 the note sent to Steam is converted: `#` headings become `[h1]` to `[h3]`, `-` and `1.` lists `[list]` and `[olist]`,
 `**bold**`, `*italic*`, `~~strike~~`, `[text](https://...)` links, `>` quotes, `---` rules and fenced code blocks their
-tags, and inline `` `code` `` keeps its text. Untick it under **Options > Change notes**.
+tags, and inline `` `code` `` keeps its text. Untick it under **Options > Workshop page**.
 
 The same card has a **template** for the current mods folder, wrapped around every note sent to Steam: `{note}` is the
 changelog entry and `{name}`, `{version}`, `{date}` (yyyy-MM-dd) and `{game}` fill themselves in, for example
@@ -263,10 +263,10 @@ Steam gets; the changelog file, the upload history and Discord announcements kee
 
 ### Profiles, announcements and dependencies
 
-**Options > Profiles** saves the current mods folder, Steam account and SteamCMD under a name; pick a profile to switch
+**Options > Account > Profiles** saves the current mods folder, Steam account and SteamCMD under a name; pick a profile to switch
 all three at once (handy for several projects or a second Steam account).
 
-**Options > Announcements** is set per mods folder. Paste a Discord channel's webhook link (channel settings >
+**Options > Uploading > After uploading** is set per mods folder. Paste a Discord channel's webhook link (channel settings >
 Integrations > Webhooks) and each successful update is posted there with its name, version, change note and Workshop
 link; **Send test** checks the link. Mentions are switched off, so an `@everyone` in a changelog pings nobody. Tick
 **Make a GitHub release** to also create a release with the same notes on the uploaded commit, using the
@@ -309,7 +309,7 @@ SteamCmdHelper login-secret                   # SteamCMD's saved login, for that
 SteamCmdHelper help                           # every option
 ```
 
-- The Steam login must already be saved: log in once from the window (**Options > Log in...**). The command checks
+- The Steam login must already be saved: log in once from the window (**Options > Account > Log in...**). The command checks
   it once, then uploads each mod in turn.
 - A named mod that needs fixing, or does not exist, stops the command before anything is uploaded. `--all` skips
   such mods and says why. `--changed` also skips mods whose version Steam already has, found the same way as the
@@ -317,7 +317,7 @@ SteamCmdHelper help                           # every option
   Steam is not known is uploaded. With nothing to upload it exits `0`, so it can run after every push. New items need `--allow-create`; experimental layouts need `--allow-experimental`.
 - After an upload, `--tag` tags each uploaded commit as `<folder>-v<version>` (git packaging only), `--commit-ids`
   commits the Workshop id files of newly created items, and `--announce` posts to the Discord webhook and makes the
-  GitHub releases set up for the folder in the window (Options > Announcements). These are the steps the window
+  GitHub releases set up for the folder in the window (Options > Uploading > After uploading). These are the steps the window
   offers; a dry run does none of them.
 - `--note "..."` uploads every mod with that change note instead of its changelog entry. `--note-from-git` drafts each
   note from the mod's commits since its last upload, like **Draft from git commits** in the window; a mod with no
@@ -384,7 +384,7 @@ marked as rolled back. Your working folder is not touched; raise the version for
   dependency into the game's mods folder (RimWorld: `Mods`). Start the game's program in that folder to try the mod
   on the next game version; your normal Steam install is not touched. The first install downloads the whole game.
   A beta with a password takes it in the dialog (or `--beta-password`); it is on SteamCMD's command line while it runs.
-- **Upload from GitHub Actions** (**Options > Git**; `ci-setup`) writes `.github/workflows/steam-workshop-upload.yml`
+- **Upload from GitHub Actions** (**Options > Git & GitHub**; `ci-setup`) writes `.github/workflows/steam-workshop-upload.yml`
   into the mods folder. On a Windows runner it downloads SteamCMD and this program, restores SteamCMD's saved login
   from a secret, and runs `upload --changed` whenever a tag starting with `v` is pushed (or from the Actions tab, with a
   dry-run choice). Add two repository secrets: `STEAM_ACCOUNT` (your login name) and `STEAM_CONFIG_VDF`, which
@@ -395,7 +395,7 @@ marked as rolled back. Your working folder is not touched; raise the version for
 ### Which Steam login each feature uses
 
 SteamCMD can log in two ways. **Anonymous** needs no account and can only read public information. Everything that
-touches your games or Workshop items needs the **saved login**: the account you type under **Options > Steam account**,
+touches your games or Workshop items needs the **saved login**: the account you type under **Options > Account**,
 logged in once in SteamCMD's own window. That account has to own the game.
 
 | What | Login | Why |
@@ -521,7 +521,7 @@ The key is stored masked, but anyone with the exe could still extract it. Keep i
   After updating an existing public or unlisted item, the app also asks Steam whether the item's "updated" time moved:
   that confirms the update in the log, and it counts a clean run whose `Success.` line went missing as uploaded.
 - Headless checks: `SteamCmdHelper.exe [--repo <folder>] --selftest out.txt`, `... --package <ModFolder> out.txt`.
-  `--shot <folder>` saves screenshots of the main window, the Options tab and the request form in both themes.
+  `--shot <folder>` saves screenshots of the main window, each Options section and the request form in both themes.
 
 ## Privacy
 
@@ -531,7 +531,7 @@ or the person installing or operating it. What it does connect to, and why:
 - **GitHub** ([privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement)):
   at start-up it reads the public list of this project's releases to look for a newer version, and downloads the
   release when you choose to update. Nothing about you or your mods is sent. Turn it off under **Options > About**
-  (**Check for a newer version at start-up**). Making a GitHub release for an upload (**Options > Announcements**) runs your
+  (**Check for a newer version at start-up**). Making a GitHub release for an upload (**Options > Uploading > After uploading**) runs your
   own `gh` tool, only when you turn it on for a mods folder.
 - **Steam** ([Valve privacy policy](https://store.steampowered.com/privacy_agreement/)): uploads go through Valve's
   SteamCMD, which you sign in to yourself. The app reads public Workshop details and changelog pages for the Workshop ids

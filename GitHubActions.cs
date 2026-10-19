@@ -18,7 +18,7 @@ public static class GitHubActions
         #
         # It needs two repository secrets (Settings > Secrets and variables > Actions):
         #   STEAM_ACCOUNT     the Steam login name that owns the mods
-        #   STEAM_CONFIG_VDF  SteamCMD's saved login: run "SteamCmdHelper login-secret" (or Options > Git > Copy login
+        #   STEAM_CONFIG_VDF  SteamCMD's saved login: run "SteamCmdHelper login-secret" (or Options > Git & GitHub > Copy login
         #                     secret) on the PC where you logged in, and paste what it gives you
         # Anyone who can push workflow changes to this repo can use that login, so keep the repo's write access tight.
         # A saved login expires now and then. When uploads fail with a login error, log in again in the app and update
@@ -90,7 +90,7 @@ public static class GitHubActions
         Next steps:
           1. In the repo on GitHub, open Settings > Secrets and variables > Actions and add two repository secrets:
              {AccountSecret}     your Steam login name
-             {LoginSecretName}  SteamCMD's saved login (SteamCmdHelper login-secret, or Options > Git > Copy login secret)
+             {LoginSecretName}  SteamCMD's saved login (SteamCmdHelper login-secret, or Options > Git & GitHub > Copy login secret)
           2. Commit and push {WorkflowPath}.
           3. Push a tag starting with v (git tag v1.2.0, then git push --tags), or start it from the Actions tab.
         """;

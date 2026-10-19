@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Options are sorted into sections.** The Options tab now works like Steam's own settings window: a list down the
+  left (Account, Uploading, Workshop page, SteamCMD, Git & GitHub, Appearance, About) and one section at a time on the
+  right, with its name and what it is for at the top. Uploading is split into Before, While and After uploading (the
+  Discord and GitHub release settings now live under After uploading), and cards whose settings belong to the current
+  mods folder say so in their title. **Ctrl+PageDown** / **Ctrl+PageUp** (or Up and Down in the list) move between
+  sections, and links such as the login status next to Upload open the right section. Every setting and its saved
+  value is unchanged.
+
 ## 1.3.5
 
 - **A new, more polished look.** The app now follows the style of Steam's own desktop client: deep slate-blue

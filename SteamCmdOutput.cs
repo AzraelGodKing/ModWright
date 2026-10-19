@@ -82,9 +82,9 @@ public static class SteamCmdOutput
     static readonly (Regex match, string advice)[] Advices =
     {
         (new(@"Rate ?Limit", Ic), "Steam is limiting logins from this PC after too many tries. Wait about half an hour, then try again."),
-        (new(@"Two.?factor|Steam ?Guard|AccountLogonDenied|need.*code", Ic), "Steam wants a Steam Guard code. Use Options > Log in... and type the code in the SteamCMD window."),
-        (new(@"Invalid ?Password", Ic), "Steam refused the saved login (the password may have changed). Use Options > Log in... to log in again."),
-        (new(@"Login Failure|FAILED login|not logged on|Cached credentials|No cached|Expired", Ic), "The saved Steam login has expired or is gone. Use Options > Log in... to log in again."),
+        (new(@"Two.?factor|Steam ?Guard|AccountLogonDenied|need.*code", Ic), "Steam wants a Steam Guard code. Use Options > Account > Log in... and type the code in the SteamCMD window."),
+        (new(@"Invalid ?Password", Ic), "Steam refused the saved login (the password may have changed). Use Options > Account > Log in... to log in again."),
+        (new(@"Login Failure|FAILED login|not logged on|Cached credentials|No cached|Expired", Ic), "The saved Steam login has expired or is gone. Use Options > Account > Log in... to log in again."),
         (new(@"legal agreement|Workshop Legal", Ic), "This account has not accepted the Steam Workshop legal agreement. Open steamcommunity.com/sharedfiles/workshoplegalagreement while signed in and accept it."),
         (new(@"Access Denied", Ic), "Steam says this account may not change the item. It must own the item (or be a contributor to it) and own the game."),
         (new(@"File ?Not ?Found", Ic), "Steam has no item with this Workshop ID. Check the mod's id file; it may belong to another game or have been deleted."),
