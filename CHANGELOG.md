@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.4
 
 - **One SteamCMD login per batch.** A new option (off by default, `--one-session` on the command line) packages and
   checks every ticked mod, then uploads them all in one SteamCMD run, so a batch logs in once instead of once per mod.
