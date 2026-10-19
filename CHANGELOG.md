@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.6
 
 - **Options are sorted into sections.** The Options tab now works like Steam's own settings window: a list down the
   left (Account, Uploading, Workshop page, SteamCMD, Git & GitHub, Appearance, About) and one section at a time on the
