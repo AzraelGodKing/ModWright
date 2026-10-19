@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.5
 
 - **A new, more polished look.** The app now follows the style of Steam's own desktop client: deep slate-blue
   surfaces, a dark brand bar across the top (in the light theme too) with the name, a new icon and capital-letter tabs,
