@@ -299,6 +299,13 @@ SteamCmdHelper list                           # each mod's version, Workshop id 
 SteamCmdHelper list --json                    # the same as JSON, for scripts
 SteamCmdHelper version MyMod patch --note "- Fixed the thing"   # 1.2.3 -> 1.2.4, with its changelog entry
 SteamCmdHelper update                         # install the newest release of the helper (--check: only report it)
+SteamCmdHelper upload --changed --one-session --verify   # one SteamCMD login, then check each upload on Steam
+SteamCmdHelper download MyMod --to D:\restore  # Steam's copy of a mod, into an empty folder
+SteamCmdHelper verify MyMod                   # compare Steam's copy with this PC's last upload
+SteamCmdHelper game-builds                    # the game's public build and betas, and what changed
+SteamCmdHelper test-install --to D:\rw-beta --branch unstable MyMod   # game beta install with MyMod and its dependencies
+SteamCmdHelper ci-setup                       # write a GitHub Actions workflow that uploads on a v* tag
+SteamCmdHelper login-secret                   # SteamCMD's saved login, for that workflow's secret
 SteamCmdHelper help                           # every option
 ```
 
@@ -320,6 +327,9 @@ SteamCmdHelper help                           # every option
   `tag`. Everything else goes to standard error.
 - Exit codes: `0` everything worked, `1` a mod failed or was not run, `2` bad arguments or nothing to upload,
   `3` SteamCMD missing or not logged in.
+- SteamCMD runs with `+@ShutdownOnFailedCommand 1 +@NoPromptForPassword 1` whenever nobody can type into it, so an
+  expired login or a Steam Guard prompt ends the run with an error instead of leaving a scheduled task or CI job
+  waiting until it is killed.
 - The app is a Windows program, so in a `cmd` window the prompt comes back before the output finishes. Use
   `start /wait SteamCmdHelper upload ...` (or `Start-Process -Wait` in PowerShell) when the next line needs the result,
   or `--log <file>`. Redirected output (CI steps, `> out.txt`) and exit codes work as usual.
@@ -347,6 +357,61 @@ To roll back a bad update, right-click the mod > **Upload history...**, pick an 
 version again**. In a git repo with git packaging, the app packages the commit that upload came from (its upload tag
 when **Tag each upload in git** is on, else the newest commit at that time) and sends it with the old change note
 marked as rolled back. Your working folder is not touched; raise the version for the next real update.
+
+### More from SteamCMD
+
+- **One SteamCMD login per batch** (**Options > Uploading**, off by default; `--one-session`): every ticked mod is
+  packaged and checked first, then SteamCMD logs in once and uploads them one after another. Without it, each mod gets
+  its own SteamCMD run and login. SteamCMD's output is split per mod at each `Success.` or failure line, and each mod
+  is still judged on its own (and asked of Steam, like a single upload). A refused login stops the batch as before.
+- **Check each upload** (**Options > Uploading**, off by default; `--verify`): after an upload, the item is downloaded
+  again with `workshop_download_item`, the way subscribers get it, and its files are compared with what was sent. A
+  difference is a warning in the log. Steam can hand out the previous version for a few minutes after an upload.
+- **Check what Steam hands out** (right-click a mod; `verify <mod>`) does the same at any time, against this PC's last
+  upload of the mod.
+- **Download from Steam...** (right-click a mod; `download <mod|id> --to <folder>`) saves Steam's copy into an empty
+  folder, for when the local copy is lost or broken. Unlike rolling back, it does not need git.
+- **The account must own the game.** The first time an account uploads for a game, the app reads its licenses with
+  `licenses_print` and warns when the game is not among them, since Steam refuses Workshop uploads from accounts that
+  don't own it. A game borrowed through Family Sharing does not count. The command line prints the same warning.
+- **Game branches** (**Options > SteamCMD**; `game-builds`) lists the game's public build and betas with
+  `app_info_print`. At start-up (at most every 12 hours, and only once SteamCMD is installed) the app says in the log
+  when the game got a new public build or a beta changed, which is when mods break and supported versions need a bump.
+  Turn it off under **Options > SteamCMD**.
+- **Try in a game beta...** (right-click a mod, or **Options > SteamCMD**; `test-install`) installs a separate copy of
+  the game on any branch with `app_update -beta`, into an empty folder (by default under `%LocalAppData%\SteamCmdHelper\test-installs`).
+  With a mod selected, it then puts that mod, packaged as an upload would, and every Workshop item it lists as a
+  dependency into the game's mods folder (RimWorld: `Mods`). Start the game's program in that folder to try the mod
+  on the next game version; your normal Steam install is not touched. The first install downloads the whole game.
+  A beta with a password takes it in the dialog (or `--beta-password`); it is on SteamCMD's command line while it runs.
+- **Upload from GitHub Actions** (**Options > Git**; `ci-setup`) writes `.github/workflows/steam-workshop-upload.yml`
+  into the mods folder. On a Windows runner it downloads SteamCMD and this program, restores SteamCMD's saved login
+  from a secret, and runs `upload --changed` whenever a tag starting with `v` is pushed (or from the Actions tab, with a
+  dry-run choice). Add two repository secrets: `STEAM_ACCOUNT` (your login name) and `STEAM_CONFIG_VDF`, which
+  **Copy login secret...** (or `login-secret`) gives you. That text is SteamCMD's saved login: whoever has it can use
+  the login until it expires, so paste it only into the secret, and keep write access to the repo tight. When CI
+  uploads start failing with a login error, log in again in the app and update the secret.
+
+### Which Steam login each feature uses
+
+SteamCMD can log in two ways. **Anonymous** needs no account and can only read public information. Everything that
+touches your games or Workshop items needs the **saved login**: the account you type under **Options > Steam account**,
+logged in once in SteamCMD's own window. That account has to own the game.
+
+| What | Login | Why |
+| --- | --- | --- |
+| Upload, create items, test items, roll back | Saved | Steam only takes Workshop changes from the item's owner, who must own the game |
+| Check each upload, Check what Steam hands out, Download from Steam | Saved | Steam refuses anonymous Workshop downloads for most games, RimWorld included |
+| Try in a game beta (installing the game) | Saved | Installing a game needs an account that owns it |
+| The ownership check | Saved | It reads that account's licenses |
+| Game branches, the new-build notice | Anonymous | A game's branches and build ids are public |
+| Steam version, Updated, subscribers, the game's name | None (Steam's web pages) | Read from public Workshop pages without SteamCMD |
+| Workshop tags | The Steam client | SteamCMD can't set tags, so the running Steam client does it as the signed-in account |
+| GitHub Actions upload | Saved, copied into a secret | The runner has no one to type a password, so it reuses the saved login |
+
+When you need to log in: the first time you upload, download or install, the app opens SteamCMD's window for your
+password and Steam Guard code. Afterwards Steam keeps the login until it expires. When it does (or you change
+your password), the next job that needs it says so and offers to log in again. Anonymous jobs never ask.
 
 ### Mods not on Steam yet
 
@@ -446,7 +511,8 @@ The key is stored masked, but anyone with the exe could still extract it. Keep i
 - Self-updates are installed only when the download matches the release's SHA-256 checksum and version.
 - Profiles and Discord webhook links are kept in the same settings file, not in your repo.
 - The upload history lives in `%LocalAppData%\SteamCmdHelper\history.json` (the newest 1000 uploads).
-- SteamCMD keeps the login cache in its own folder; keep it out of git.
+- SteamCMD keeps the login cache in its own folder (`config/config.vdf`); keep it out of git. **Copy login secret...**
+  and `login-secret` hand that file out (base64) only when you ask, for a GitHub secret.
 - The layout file holds no secrets, but it is a new file in your repo: commit it or git-ignore it.
 - Uploads publish immediately to subscribers. Use Dry run first when unsure.
 - Install SteamCMD only installs a download that arrived whole and whose `steamcmd.exe` is signed by Valve.
@@ -470,7 +536,9 @@ or the person installing or operating it. What it does connect to, and why:
 - **Steam** ([Valve privacy policy](https://store.steampowered.com/privacy_agreement/)): uploads go through Valve's
   SteamCMD, which you sign in to yourself. The app reads public Workshop details and changelog pages for the Workshop ids
   in your mods folder, looks up a game's name from its app ID when you enter one, and downloads SteamCMD from Valve when
-  you ask it to install it. Only the Workshop ids and app ID are sent.
+  you ask it to install it. Only the Workshop ids and app ID are sent. At start-up, once SteamCMD is installed, it asks
+  Steam for the game's public branch list through SteamCMD's anonymous login (at most every 12 hours; turn it off under
+  **Options > SteamCMD**).
 - **Linear** ([privacy policy](https://linear.app/privacy)): only when you press **Send** in the request form (or
   **Report it** after a crash and then Send). It sends exactly the text shown in the form.
 - **Discord** ([privacy policy](https://discord.com/privacy)): only when you add a webhook link for a mods folder; after

@@ -36,7 +36,7 @@ public sealed class BatchAndCliTests : IDisposable
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, "steamcmd.sh");
         var calls = Path.Combine(_work, "calls.txt");
-        var body = "#!/bin/sh\n"
+        var body = "#!/bin/sh\n" + TestConfig.SkipSteamFlags
             + $"echo \"$*\" >> '{calls}'\n"
             + (loginOk ? "echo \"Logging in user '$2' to Steam Public...OK\"\necho 'Waiting for user info...OK'\n"
                        : "echo \"Logging in user '$2' to Steam Public...FAILED (Invalid Password)\"\nexit 5\n")

@@ -116,7 +116,7 @@ public sealed class WorkshopPageTests : IDisposable
     async Task<string> CapturedVdf(ModInfo mod, WorkshopPageEdit? page)
     {
         var copy = Path.Combine(_repo.Root, "captured.vdf");
-        var steam = _repo.Write("_steamcmd/steamcmd.sh", $"#!/bin/sh\ncp \"$4\" '{copy}'\necho 'Success.'\nexit 0\n");
+        var steam = _repo.Write("_steamcmd/steamcmd.sh", "#!/bin/sh\n" + TestConfig.SkipSteamFlags + TestConfig.SkipSteamFlags + $"cp \"$4\" '{copy}'\necho 'Success.'\nexit 0\n");
         Process.Start("chmod", new[] { "+x", steam })!.WaitForExit();
 
         var pub = new Publisher(_repo.Root, _cfg, steam, "account", Path.Combine(_repo.Root, "_temp")) { PageEdits = _ => page };

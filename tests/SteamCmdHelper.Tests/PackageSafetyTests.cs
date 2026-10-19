@@ -35,7 +35,7 @@ public sealed class PackageSafetyTests : IDisposable
     string FakeSteamCmd()
     {
         var path = Path.Combine(_root, "steamcmd.sh");
-        File.WriteAllText(path, "#!/bin/sh\necho 'Uploading content...'\necho 'Success.'\nexit 0\n");
+        File.WriteAllText(path, "#!/bin/sh\n" + TestConfig.SkipSteamFlags + "echo 'Uploading content...'\necho 'Success.'\nexit 0\n");
         Process.Start("chmod", new[] { "+x", path })!.WaitForExit();
         return path;
     }

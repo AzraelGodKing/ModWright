@@ -138,7 +138,9 @@ static class Program
                 retryAfter: settings.AutoRetry ? TimeSpan.FromSeconds(30) : null,
                 webhook: settings.WebhookFor(settings.RepoPath), gitHubReleases: settings.GitHubReleasesFor(settings.RepoPath),
                 json: jsonOut ? Console.Out : null,
-                tagUpdater: settings.UpdateTags ? WorkshopTags.UpdateOnSteamAsync : null).GetAwaiter().GetResult();
+                tagUpdater: settings.UpdateTags ? WorkshopTags.UpdateOnSteamAsync : null,
+                oneSession: settings.OneSession, verifyUploads: settings.VerifyUploads,
+                ownership: (account, appId, token) => SteamCmd.OwnsAsync(settings.EffectiveSteamCmd, account, appId, token)).GetAwaiter().GetResult();
         }
         finally { runLog?.Dispose(); }
     }

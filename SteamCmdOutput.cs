@@ -69,6 +69,16 @@ public static class SteamCmdOutput
         return new UploadOutcome(true, expectedId != null ? "Uploaded" : "Created", id);
     }
 
+    /// <summary>
+    /// True for a line that ends one workshop_build_item: its "Success" line or a SteamCMD failure line. Used to split one
+    /// SteamCMD run that uploads several mods into one part per mod.
+    /// </summary>
+    public static bool EndsItem(string line)
+    {
+        var l = Clean(line);
+        return l.Length > 0 && (SuccessLine.IsMatch(l) || FailureLine.IsMatch(l));
+    }
+
     static readonly (Regex match, string advice)[] Advices =
     {
         (new(@"Rate ?Limit", Ic), "Steam is limiting logins from this PC after too many tries. Wait about half an hour, then try again."),

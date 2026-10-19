@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+- **One SteamCMD login per batch.** A new option (off by default, `--one-session` on the command line) packages and
+  checks every ticked mod, then uploads them all in one SteamCMD run, so a batch logs in once instead of once per mod.
+- **Check uploads on Steam.** An option (off by default, `--verify`) downloads each upload back with
+  `workshop_download_item` and compares its files with what was sent. **Check what Steam hands out** on the right-click
+  menu (and `verify <mod>`) does the same at any time.
+- **Download from Steam.** Right-click a mod (or `download <mod|id> --to <folder>`) to save Steam's copy into an empty
+  folder, for when the local copy is lost.
+- **New game builds are noticed.** At start-up (at most every 12 hours) the app reads the game's branches with
+  SteamCMD's anonymous login and says when there is a new public build or a beta changed. **Options > SteamCMD >
+  Game branches** and `game-builds` list them.
+- **Try in a game beta.** Installs a separate copy of the game on any branch with SteamCMD, and puts the selected mod
+  and the Workshop items it depends on into its mods folder (`test-install` on the command line).
+- **Upload from GitHub Actions.** **Options > Git > Set up GitHub Actions upload** (or `ci-setup`) writes a workflow
+  that uploads changed mods when a `v*` tag is pushed. **Copy login secret** (or `login-secret`) gives the saved login
+  for its secret.
+- **Ownership check.** The first upload for a game checks that the account owns it (`licenses_print`) and warns when
+  it doesn't, since Steam would refuse the upload.
+- **No more hanging runs.** SteamCMD now runs with `@ShutdownOnFailedCommand` and `@NoPromptForPassword` whenever
+  nobody can type into it, so an expired login ends a scheduled or CI run with an error instead of waiting.
+- The README explains which features use Steam's anonymous login and which need your saved login.
+
 ## 1.3.3
 
 - **Workshop tags are set.** SteamCMD cannot send tags, so uploads never changed them and RimWorld mods did not show

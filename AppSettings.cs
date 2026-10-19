@@ -50,6 +50,14 @@ public sealed class AppSettings
     public bool UpdateTags { get; set; } = true;
     /// <summary>Try an update once more after a short wait when Steam was busy or could not be reached.</summary>
     public bool AutoRetry { get; set; } = true;
+    /// <summary>Upload a batch with one SteamCMD login instead of one SteamCMD run per mod.</summary>
+    public bool OneSession { get; set; }
+    /// <summary>After each upload, download the item back from Steam and compare it with what was sent.</summary>
+    public bool VerifyUploads { get; set; }
+    /// <summary>At start-up, look at the game's Steam branches (at most every 12 hours) and say when the game updated.</summary>
+    public bool WatchGameBuilds { get; set; } = true;
+    /// <summary>"account|appid" pairs whose license SteamCMD has confirmed, so the check runs once per account and game.</summary>
+    public List<string> OwnershipChecked { get; set; } = new();
     /// <summary>Commit a newly created item's Workshop id file without asking.</summary>
     public bool CommitNewIds { get; set; }
     /// <summary>Saved profiles (mods folder, account, SteamCMD), by name.</summary>

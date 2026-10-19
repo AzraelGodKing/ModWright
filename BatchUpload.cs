@@ -57,11 +57,18 @@ public sealed class BatchUpload
     public static bool IsLoginFailure(string reason) => LoginFailed.IsMatch(reason);
 
     /// <summary>
+    /// Upload a batch of several mods with one SteamCMD run (<see cref="Publisher.RunSessionAsync"/>): one login, then each
+    /// mod in turn. Off: each mod gets its own SteamCMD run. Dry runs and single mods always run one at a time.
+    /// </summary>
+    public bool OneSession { get; init; }
+
+    /// <summary>
     /// Runs every mod in order. Cancelling stops after the current mod; it and the rest are reported as not run.
     /// Never throws for a single mod's failure.
     /// </summary>
     public async Task<List<BatchItem>> RunAsync(IReadOnlyList<ModInfo> mods, bool upload, CancellationToken ct)
     {
+        if (OneSession && upload && mods.Count > 1) return await RunSessionAsync(mods, ct);
         var results = new List<BatchItem>();
         string? stopReason = null;
         for (var i = 0; i < mods.Count; i++)
@@ -79,26 +86,9 @@ public sealed class BatchUpload
             try
             {
                 var res = await _pub.RunAsync(m, upload, ct);
-                var existing = _pub.TestItems ? m.TestWorkshopId : m.WorkshopId;
-                if (!res.Ok && upload && existing != null && RetryAfter is { } wait && IsTransient(res.Message))
-                {
-                    Retrying?.Invoke(m, res.Message, wait);
-                    await Task.Delay(wait, ct);
-                    res = await _pub.RunAsync(m, upload, ct);
-                }
-                var id = existing ?? res.NewId;
-                if (!res.Ok)
-                {
-                    item = new BatchItem(m, BatchStatus.Failed, res.Message, id);
-                    if (upload && IsLoginFailure(res.Message)) stopReason = "Steam refused the login";
-                }
-                else if (!upload) item = new BatchItem(m, BatchStatus.Checked, res.Message, id, res.Version);
-                else if (res.Skipped) item = new BatchItem(m, BatchStatus.Skipped, res.Message, id, res.Version);
-                else
-                {
-                    if (id != null && !_pub.TestItems) UploadedVersions.Remember(id, res.Version ?? m.Version, _recordPath);
-                    item = new BatchItem(m, existing != null ? BatchStatus.Uploaded : BatchStatus.Created, res.Message, id, res.Version);
-                }
+                res = await RetryAsync(m, res, upload, ct);
+                item = ToItem(m, res, upload);
+                if (!res.Ok && upload && IsLoginFailure(res.Message)) stopReason = "Steam refused the login";
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -113,6 +103,69 @@ public sealed class BatchUpload
             Finished?.Invoke(item, i, mods.Count);
         }
         return results;
+    }
+
+    /// <summary>
+    /// The one-session batch: every mod is packaged and checked, then SteamCMD logs in once and uploads them all. A mod
+    /// that failed because Steam was busy is then tried once more on its own (<see cref="RetryAfter"/>). When Steam
+    /// refused the login, the first mod reports it and the rest are reported as not run, as in a normal batch.
+    /// </summary>
+    async Task<List<BatchItem>> RunSessionAsync(IReadOnlyList<ModInfo> mods, CancellationToken ct)
+    {
+        PublishResult?[] got;
+        var cancelled = false;
+        try { got = await _pub.RunSessionAsync(mods, i => Starting?.Invoke(mods[i], i, mods.Count), ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { got = new PublishResult?[mods.Count]; cancelled = true; }
+
+        var results = new List<BatchItem>();
+        string? stopReason = cancelled ? "cancelled" : null;
+        for (var i = 0; i < mods.Count; i++)
+        {
+            var m = mods[i];
+            BatchItem item;
+            if (got[i] is not { } res || stopReason != null)
+                item = new BatchItem(m, BatchStatus.NotRun, "Not run: " + (stopReason ?? "cancelled") + ".", m.WorkshopId);
+            else
+            {
+                try
+                {
+                    if (!ct.IsCancellationRequested) res = await RetryAsync(m, res, true, ct);
+                    item = ToItem(m, res, true);
+                    if (!res.Ok && IsLoginFailure(res.Message)) stopReason = "Steam refused the login";
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    item = new BatchItem(m, BatchStatus.NotRun, "Cancelled while running.", m.WorkshopId);
+                    stopReason = "cancelled";
+                }
+                catch (Exception e) { item = new BatchItem(m, BatchStatus.Failed, e.Message, m.WorkshopId); }
+            }
+            results.Add(item);
+            Finished?.Invoke(item, i, mods.Count);
+        }
+        return results;
+    }
+
+    /// <summary>Tries an update once more after <see cref="RetryAfter"/> when Steam was busy or unreachable.</summary>
+    async Task<PublishResult> RetryAsync(ModInfo m, PublishResult res, bool upload, CancellationToken ct)
+    {
+        var existing = _pub.TestItems ? m.TestWorkshopId : m.WorkshopId;
+        if (res.Ok || !upload || existing == null || RetryAfter is not { } wait || !IsTransient(res.Message)) return res;
+        Retrying?.Invoke(m, res.Message, wait);
+        await Task.Delay(wait, ct);
+        return await _pub.RunAsync(m, upload, ct);
+    }
+
+    /// <summary>What a publisher result means for the batch, remembering the version Steam now has.</summary>
+    BatchItem ToItem(ModInfo m, PublishResult res, bool upload)
+    {
+        var existing = _pub.TestItems ? m.TestWorkshopId : m.WorkshopId;
+        var id = existing ?? res.NewId;
+        if (!res.Ok) return new BatchItem(m, BatchStatus.Failed, res.Message, id);
+        if (!upload) return new BatchItem(m, BatchStatus.Checked, res.Message, id, res.Version);
+        if (res.Skipped) return new BatchItem(m, BatchStatus.Skipped, res.Message, id, res.Version);
+        if (id != null && !_pub.TestItems) UploadedVersions.Remember(id, res.Version ?? m.Version, _recordPath);
+        return new BatchItem(m, existing != null ? BatchStatus.Uploaded : BatchStatus.Created, res.Message, id, res.Version);
     }
 
     /// <summary>One line with the counts, e.g. "2 uploaded, 1 failed, 1 not run".</summary>
