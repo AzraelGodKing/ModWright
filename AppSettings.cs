@@ -68,6 +68,18 @@ public sealed class AppSettings
     public List<string> GitHubReleaseRepos { get; set; } = new();
     /// <summary>The mod list's "Hide up to date" box.</summary>
     public bool HideUpToDate { get; set; }
+    /// <summary>The main window's place and size in pixels (x, y, width, height) when it last closed; empty = centred.</summary>
+    public int[] WindowBounds { get; set; } = Array.Empty<int>();
+    public bool WindowMaximized { get; set; }
+    /// <summary>The mod list's column widths in pixels, kept only for the <see cref="ColumnLayout"/> they were made at.</summary>
+    public int[] ColumnWidths { get; set; } = Array.Empty<int>();
+    /// <summary>Screen DPI and text size the column widths were saved at ("96|100").</summary>
+    public string ColumnLayout { get; set; } = "";
+    /// <summary>The column the mod list is sorted by (-1 = folder order), and whether it is reversed.</summary>
+    public int SortColumn { get; set; } = -1;
+    public bool SortDescending { get; set; }
+    /// <summary>The Options section that was open last.</summary>
+    public int OptionsSection { get; set; }
 
     public const int MaxRecent = 10;
 

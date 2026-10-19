@@ -122,7 +122,11 @@ public sealed class Publisher
     void At(string s, int pct) => Stage?.Invoke(s, pct);
 
     /// <summary>True when <see cref="GitRef"/> applies: one is set and the layout packages with git.</summary>
-    bool FromRef => GitRef != null && _cfg.UseGitArchive && ModScanner.IsGitRepo(_repo);
+    bool? _isGit;
+    /// <summary>Whether the mods folder is a git repo, asked of git once per publisher instead of once per mod.</summary>
+    bool IsGit => _isGit ??= ModScanner.IsGitRepo(_repo);
+
+    bool FromRef => GitRef != null && _cfg.UseGitArchive && IsGit;
 
     /// <summary>A mod that is packaged, checked and has its build file written, ready for SteamCMD.</summary>
     sealed class Prepared
@@ -136,6 +140,8 @@ public sealed class Publisher
         public required int Visibility { get; init; }
         public required string StageRoot { get; init; }
         public required string VdfPath { get; init; }
+        /// <summary>Steam's copy, when a one-login batch already downloaded it back to check the upload.</summary>
+        public DownloadResult? Downloaded { get; set; }
     }
 
     public async Task<PublishResult> RunAsync(ModInfo m, bool upload, CancellationToken ct)
@@ -184,6 +190,7 @@ public sealed class Publisher
         var results = new PublishResult?[mods.Count];
         var ready = new List<(int Index, Prepared Item)>();
         var keep = new HashSet<string>();
+        PackageAhead(mods, ct);
         try
         {
             for (var i = 0; i < mods.Count; i++)
@@ -205,12 +212,17 @@ public sealed class Publisher
             Say($"Uploading {ready.Count} mod{(ready.Count == 1 ? "" : "s")} with one SteamCMD login.");
             var args = new List<string>(SteamCmd.NoPrompt) { "+login", _account };
             foreach (var (_, p) in ready) args.AddRange(new[] { "+workshop_build_item", p.VdfPath });
+            // Checking uploads downloads each existing item back in the same run, so the check needs no login of its own.
+            // New items get their id from this run, so they are checked afterwards as before.
+            var checkInRun = VerifyUploads ? ready.Where(r => r.Item.Mod.WorkshopId != null).Select(r => r.Item.Mod.WorkshopId!).Distinct().ToList() : new List<string>();
+            foreach (var id in checkInRun) args.AddRange(new[] { "+workshop_download_item", _cfg.AppId, id, "validate" });
             args.Add("+quit");
 
             // SteamCMD's lines arrive on another thread; the window's handlers expect to be called on its own.
             var ctx = SynchronizationContext.Current;
             void Starting(int index) { if (ctx != null) ctx.Post(_ => starting?.Invoke(index), null); else starting?.Invoke(index); }
             var parts = ready.Select(_ => new List<string>()).ToList();
+            var downloads = new List<string>();
             var current = 0;
             var gate = new object();
             var started = DateTimeOffset.UtcNow;
@@ -221,7 +233,8 @@ public sealed class Publisher
                 int? next = null;
                 lock (gate)
                 {
-                    parts[Math.Min(current, parts.Count - 1)].Add(line);
+                    if (current >= parts.Count && checkInRun.Count > 0) downloads.Add(line); // after the last upload: the checks
+                    else parts[Math.Min(current, parts.Count - 1)].Add(line);
                     if (current < parts.Count && SteamCmdOutput.EndsItem(line) && SteamCmd.LoginFailure(new[] { line }) == null)
                     {
                         current++;
@@ -247,6 +260,8 @@ public sealed class Publisher
                 // A part that ended with "Success" is judged on its own lines; SteamCMD's exit code belongs to the run as a whole.
                 var mine = parts[k];
                 var itemExit = mine.Any(l => SteamCmdOutput.EndsItem(l)) ? 0 : exit;
+                if (p.Mod.WorkshopId is { } checkedId && checkInRun.Contains(checkedId))
+                    p.Downloaded = WorkshopDownload.Evaluate(downloads, exit, _steamCmd, _cfg.AppId, checkedId);
                 var (result, kept) = await FinishAsync(p, mine, itemExit, started, ct);
                 if (kept) keep.Add(p.StageRoot);
                 results[index] = result;
@@ -256,6 +271,7 @@ public sealed class Publisher
         finally
         {
             foreach (var (_, p) in ready) if (!keep.Contains(p.StageRoot)) TryDelete(p.StageRoot);
+            await DropAheadAsync();
         }
     }
 
@@ -274,8 +290,9 @@ public sealed class Publisher
         if (GitRef != null && !FromRef) Say($"Note: \"{GitRef}\" is a git ref, but this layout does not package with git, so the working folder is uploaded.");
         if (_cfg.ChangelogByVersion && notes.Length == 0 && typed == null && !FromRef)
             return (new PublishResult(false, $"{_cfg.Changelog} has no entry for version {(m.Version.Length > 0 ? m.Version : "(unknown)")}."), null);
-        SweepStale(_tempRoot, StaleAfter);
-        var stageRoot = Path.Combine(_tempRoot, StagePrefix + Guid.NewGuid().ToString("N"));
+        var ahead = TakeAhead(m);
+        if (ahead == null) SweepStale(_tempRoot, StaleAfter);
+        var stageRoot = ahead?.Root ?? NewStageRoot();
         var stage = Path.Combine(stageRoot, ProjectConfig.Norm(m.RelPath));
         Directory.CreateDirectory(stageRoot);
 
@@ -285,7 +302,8 @@ public sealed class Publisher
         try
         {
             At("Packaging...", 10);
-            await PackageAsync(m, stageRoot, stage, ct);
+            if (ahead != null) await ahead.Value.Done;
+            else await PackageAsync(m, stageRoot, stage, ct);
             File.Delete(Path.Combine(stage, ModInfo.TestIdFile)); // a test item's id is for this PC, not for players
 
             // From another commit, the version and change note are that commit's, read from the package.
@@ -309,7 +327,7 @@ public sealed class Publisher
             if (last != null) report = report with { Diff = PackageDiffs.Compare(last, report.Files) };
             // git archive only has what git tracks, so anything ignored (a built .dll above all) would silently stay behind.
             // From another commit the working folder is a different version, so there is nothing to compare with.
-            var gitPackaging = _cfg.UseGitArchive && ModScanner.IsGitRepo(_repo);
+            var gitPackaging = _cfg.UseGitArchive && IsGit;
             if (gitPackaging && !FromRef) report = report with { LeftOut = PackageCheck.LeftOut(m.Dir, report.Files, _cfg.Exclude ?? Array.Empty<string>()) };
             Packaged?.Invoke(m, report);
             if (report.Files.Count == 0) return (new PublishResult(false, "The package is empty, so the upload would remove every file from the item on Steam."), null);
@@ -455,7 +473,7 @@ public sealed class Publisher
                 "(\"Update Workshop tags\" on the mod's right-click menu tries again without uploading.)");
         }
 
-        if (VerifyUploads && (m.WorkshopId ?? newId) is { } check) await VerifyAsync(m, check, p.Report.Files, ct);
+        if (VerifyUploads && (m.WorkshopId ?? newId) is { } check) await VerifyAsync(m, check, p.Report.Files, p.Downloaded, ct);
 
         if (!TestItems && (m.WorkshopId ?? newId) is { } id)
         {
@@ -474,11 +492,16 @@ public sealed class Publisher
     /// Downloads the item back the way a subscriber gets it and compares it with what was just sent. Only warns: the
     /// upload itself already went through.
     /// </summary>
-    async Task VerifyAsync(ModInfo m, string id, IReadOnlyList<PackageFile> sent, CancellationToken ct)
+    async Task VerifyAsync(ModInfo m, string id, IReadOnlyList<PackageFile> sent, DownloadResult? downloaded, CancellationToken ct)
     {
         At("Checking what Steam hands out...", 99);
-        Say($"Downloading {m.Name} back from Steam to check it...");
-        var d = await WorkshopDownload.DownloadAsync(_steamCmd, _account, _cfg.AppId, id, null, ct);
+        DownloadResult d;
+        if (downloaded != null) d = downloaded;
+        else
+        {
+            Say($"Downloading {m.Name} back from Steam to check it...");
+            d = await WorkshopDownload.DownloadAsync(_steamCmd, _account, _cfg.AppId, id, null, ct);
+        }
         if (!d.Ok) { Say("Warning: could not download the item back to check it: " + d.Message); return; }
         try { foreach (var line in WorkshopDownload.Describe(WorkshopDownload.Compare(sent, d.Folder!), "this upload")) Say(line); }
         finally { WorkshopDownload.Forget(_steamCmd, d.Folder); }
@@ -557,9 +580,63 @@ public sealed class Publisher
 
     // ------------------------------------------------------------ packaging
 
+    string NewStageRoot() => Path.Combine(_tempRoot, StagePrefix + Guid.NewGuid().ToString("N"));
+
+    /// <summary>Packages started early by <see cref="PackageAhead"/>, by mod folder: where each goes, and its packaging.</summary>
+    readonly Dictionary<string, (string Root, Task Done)> _ahead = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>How many mods <see cref="PackageAhead"/> packages at the same time.</summary>
+    const int PackageAheadAtOnce = 3;
+
+    /// <summary>
+    /// Starts packaging <paramref name="mods"/> in the background, a few at a time, so a batch doesn't wait for each
+    /// package in turn: the next mods are ready while the current one is checked or uploaded. An upload of one of these
+    /// mods then takes its package (<see cref="TakeAhead"/>) instead of building it again; everything else (the checks,
+    /// the log lines, the questions) still happens in order. <see cref="DropAheadAsync"/> removes any not used.
+    /// </summary>
+    public void PackageAhead(IEnumerable<ModInfo> mods, CancellationToken ct)
+    {
+        SweepStale(_tempRoot, StaleAfter);
+        var gate = new SemaphoreSlim(PackageAheadAtOnce);
+        foreach (var m in mods)
+        {
+            if (_ahead.ContainsKey(m.Dir)) continue;
+            var root = NewStageRoot();
+            var stage = Path.Combine(root, ProjectConfig.Norm(m.RelPath));
+            _ahead[m.Dir] = (root, Task.Run(async () =>
+            {
+                await gate.WaitAsync(ct);
+                try
+                {
+                    Directory.CreateDirectory(root);
+                    await PackageAsync(m, root, stage, ct);
+                }
+                finally { gate.Release(); }
+            }, ct));
+        }
+    }
+
+    (string Root, Task Done)? TakeAhead(ModInfo m)
+    {
+        if (!_ahead.Remove(m.Dir, out var a)) return null;
+        return a;
+    }
+
+    /// <summary>Waits for packages started by <see cref="PackageAhead"/> that no upload took, and removes them.</summary>
+    public async Task DropAheadAsync()
+    {
+        var left = _ahead.Values.ToList();
+        _ahead.Clear();
+        foreach (var (root, done) in left)
+        {
+            try { await done; } catch { }
+            TryDelete(root);
+        }
+    }
+
     async Task PackageAsync(ModInfo m, string stageRoot, string stage, CancellationToken ct)
     {
-        if (_cfg.UseGitArchive && ModScanner.IsGitRepo(_repo))
+        if (_cfg.UseGitArchive && IsGit)
         {
             var zip = Path.Combine(stageRoot, "package.zip");
             var commit = GitRef ?? "HEAD";

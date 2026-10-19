@@ -69,6 +69,14 @@ public sealed class BatchUpload
     public async Task<List<BatchItem>> RunAsync(IReadOnlyList<ModInfo> mods, bool upload, CancellationToken ct)
     {
         if (OneSession && upload && mods.Count > 1) return await RunSessionAsync(mods, ct);
+        // The next mods are packaged while the current one is checked and uploaded.
+        if (mods.Count > 1) _pub.PackageAhead(mods, ct);
+        try { return await RunEachAsync(mods, upload, ct); }
+        finally { await _pub.DropAheadAsync(); }
+    }
+
+    async Task<List<BatchItem>> RunEachAsync(IReadOnlyList<ModInfo> mods, bool upload, CancellationToken ct)
+    {
         var results = new List<BatchItem>();
         string? stopReason = null;
         for (var i = 0; i < mods.Count; i++)
