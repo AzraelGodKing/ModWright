@@ -41,7 +41,7 @@ public sealed class PublisherTests : IDisposable
         var dir = Path.Combine(_root, "steamcmd");
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, "steamcmd.sh");
-        var body = "#!/bin/sh\n" + string.Concat(lines.Select(l => $"printf '%s\\n' '{l.Replace("'", "'\\''")}'\n"));
+        var body = "#!/bin/sh\n" + TestConfig.SkipSteamFlags + string.Concat(lines.Select(l => $"printf '%s\\n' '{l.Replace("'", "'\\''")}'\n"));
         // Arguments are: +login <account> +workshop_build_item <vdf> +quit
         if (assignId != null) body += $"sed -i 's/\"publishedfileid\" \"0\"/\"publishedfileid\" \"{assignId}\"/' \"$4\"\n";
         body += $"exit {exit}\n";

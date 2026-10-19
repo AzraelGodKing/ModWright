@@ -54,7 +54,7 @@ public sealed class UploadControlTests : IDisposable
     {
         var path = Path.Combine(_root, "steamcmd.sh");
         var runs = Path.Combine(_root, "runs.txt");
-        var body = "#!/bin/sh\n"
+        var body = "#!/bin/sh\n" + TestConfig.SkipSteamFlags
             + $"echo run >> '{runs}'\n"
             + $"cp \"$4\" '{_root}/last.vdf'\n"
             + (newId != null ? $"sed -i 's/\"publishedfileid\" \"0\"/\"publishedfileid\" \"{newId}\"/' \"$4\"\n" : "")

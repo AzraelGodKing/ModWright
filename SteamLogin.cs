@@ -32,7 +32,7 @@ public static class SteamLogin
     /// </summary>
     public static async Task<(bool ok, string output)> VerifyAsync(string steamCmd, string account, CancellationToken ct)
     {
-        var psi = new ProcessStartInfo(steamCmd, $"+login {account} +quit")
+        var psi = new ProcessStartInfo(steamCmd, $"{string.Join(" ", SteamCmd.FailFast)} +login {account} +quit")
         {
             WorkingDirectory = Path.GetDirectoryName(steamCmd) ?? "",
             RedirectStandardOutput = true,

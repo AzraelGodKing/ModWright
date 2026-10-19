@@ -50,6 +50,11 @@ public sealed class MainForm : Form
     readonly CheckBox _updateTags = new() { AutoSize = true, Text = "Set Workshop tags after each upload (RimWorld: Mod and each supported version from About.xml)" };
     readonly CheckBox _autoRetry = new() { AutoSize = true, Text = "Try an update once more when Steam is busy or can't be reached (after 30 seconds)" };
     readonly CheckBox _commitIds = new() { AutoSize = true, Text = "Commit a new item's Workshop ID file without asking" };
+    readonly CheckBox _oneSession = new() { AutoSize = true, Text = "Upload several mods with one SteamCMD login (faster batches)" };
+    readonly CheckBox _verifyUploads = new() { AutoSize = true, Text = "Check each upload by downloading it back from Steam and comparing the files" };
+    readonly CheckBox _watchBuilds = new() { AutoSize = true, Text = "At start-up, say when the game gets a new build or beta (checked at most every 12 hours)" };
+    /// <summary>The game's Steam branches, once SteamCMD has listed them this session.</summary>
+    List<GameBranch>? _branches;
     readonly System.Windows.Forms.Timer _clock = new() { Interval = 1000 };
     string _currentBase = "";
     DateTime _modStarted;
@@ -157,7 +162,7 @@ public sealed class MainForm : Form
             if (UpdatedFrom != null) Append($"Updated SteamCMD Helper from {UpdatedFrom} to {UpdateCheck.CurrentVersion}.", LogKind.Ok);
             if (!NoStartupPrompts) _ = Task.Run(() => { SelfUpdate.CleanUp(SelfUpdate.AppDir); SelfUpdate.CleanStaging(UpdateCheck.CurrentVersion); }); // what the last update left
             if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { if (!NoStartupPrompts) await OfferInstallAsync(); }
-            else if (SteamLogin.LooksCached(_s.EffectiveSteamCmd, _s.Account)) _ = VerifyLoginAsync(false);
+            else _ = StartupSteamAsync(SteamLogin.LooksCached(_s.EffectiveSteamCmd, _s.Account));
             if (_s.CheckForUpdates && !NoStartupPrompts) await CheckForUpdateAsync(false);
         };
         Activated += (_, _) => { if (!_busy) Taskbar.Progress(this, 0, Taskbar.State.None); };
@@ -546,8 +551,13 @@ public sealed class MainForm : Form
         var copyId = menu.Items.Add("Copy Workshop &ID", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(m.WorkshopId!, "Workshop ID"); });
         var copyLink = menu.Items.Add("Copy Workshop lin&k", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(WorkshopUrl(m), "Workshop link"); });
         var tags = menu.Items.Add("Update Workshop &tags", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await UpdateTagsAsync(m); });
+        menu.Items.Add(new ToolStripSeparator());
+        var steamCopy = menu.Items.Add("Check what Steam &hands out", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await CheckSteamCopyAsync(m); });
+        var download = menu.Items.Add("&Download from Steam...", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await DownloadFromSteamAsync(m); });
+        menu.Items.Add("Try in a game &beta...", null, async (_, _) => await TryInGameBetaAsync(SelectedMod()));
         menu.Opening += (_, e) =>
         {
+            steamCopy.Enabled = download.Enabled = SelectedMod()?.OnSteam == true;
             e.Cancel = _busy || SelectedMod() == null;
             onSteam.Enabled = copyId.Enabled = copyLink.Enabled = SelectedMod()?.OnSteam == true;
             tags.Visible = WorkshopTags.LayoutHasTags(_cfg);
@@ -644,16 +654,32 @@ public sealed class MainForm : Form
 
         var openSteam = Btn("Open &folder", (_, _) => OpenPath(Path.GetDirectoryName(_s.EffectiveSteamCmd)!));
         var openLogs = Btn("Open &logs", (_, _) => OpenSteamCmdLogs());
+        var branches = Btn("Game &branches", async (_, _) => await CheckGameBuildsAsync(true));
+        var testInstall = Btn("Try in a game b&eta...", async (_, _) => await TryInGameBetaAsync(SelectedMod()));
+        _watchBuilds.Checked = _s.WatchGameBuilds;
+        _watchBuilds.CheckedChanged += (_, _) => { _s.WatchGameBuilds = _watchBuilds.Checked; _s.Save(); };
         page.Controls.Add(Card("SteamCMD", null,
             Row(Lbl("Location"), _steamCmdPath, _install, openSteam, openLogs),
-            Hint("SteamCMD is Valve's command-line Steam client; every upload goes through it. Its own logs (workshop_log.txt and others) help when Steam turns an upload down.")));
+            Hint("SteamCMD is Valve's command-line Steam client; every upload goes through it. Its own logs (workshop_log.txt and others) help when Steam turns an upload down."),
+            Row(branches, testInstall),
+            _watchBuilds,
+            Hint("Game branches lists the game's public build and betas. Try in a game beta installs a separate copy of the game on a branch, with the selected mod " +
+                 "and the Workshop items it needs, so you can test before the update reaches players."),
+            Hint("Which login is used: game branches use Steam's anonymous login, so they work without an account. Uploading, downloading items and test installs " +
+                 "use your saved login, and that account must own the game.")));
 
         _tagUploads.Checked = _s.TagUploads;
         _commitIds.Checked = _s.CommitNewIds;
+        var ghActions = Btn("Set up &GitHub Actions upload...", (_, _) => SetUpGitHubActions());
+        var copySecret = Btn("Copy login &secret...", (_, _) => CopyLoginSecret());
         page.Controls.Add(Card("Git", null,
             _tagUploads,
             _commitIds,
-            Hint("Used when the mods folder is a git repository. Tags are made on the commit that was uploaded and stay on this PC until you push them (git push --tags).")));
+            Hint("Used when the mods folder is a git repository. Tags are made on the commit that was uploaded and stay on this PC until you push them (git push --tags)."),
+            Row(ghActions, copySecret),
+            Hint($"GitHub Actions upload writes {GitHubActions.WorkflowPath} into the mods folder: pushing a tag such as v1.2.0 then uploads every mod whose version " +
+                 $"Steam does not have yet. It needs two repository secrets on GitHub: {GitHubActions.AccountSecret} (your login name) and {GitHubActions.LoginSecretName} " +
+                 "(SteamCMD's saved login, which Copy login secret puts on the clipboard).")));
 
         _uploadCredit.Checked = _s.UploadCredit;
         _markdownNotes.Checked = _s.MarkdownNotes;
@@ -669,6 +695,10 @@ public sealed class MainForm : Form
         _autoRetry.CheckedChanged += (_, _) => { _s.AutoRetry = _autoRetry.Checked; _s.Save(); };
         _updateTags.Checked = _s.UpdateTags;
         _updateTags.CheckedChanged += (_, _) => { _s.UpdateTags = _updateTags.Checked; _s.Save(); };
+        _oneSession.Checked = _s.OneSession;
+        _oneSession.CheckedChanged += (_, _) => { _s.OneSession = _oneSession.Checked; _s.Save(); };
+        _verifyUploads.Checked = _s.VerifyUploads;
+        _verifyUploads.CheckedChanged += (_, _) => { _s.VerifyUploads = _verifyUploads.Checked; _s.Save(); };
         page.Controls.Add(Card("Uploading", null,
             Row(Lbl("&Build step"), _buildCmd),
             Hint("Run in the mods folder before anything is packaged, also for a dry run. If it fails, nothing is uploaded and its output is in the log. " +
@@ -677,6 +707,10 @@ public sealed class MainForm : Form
             Hint("A git branch or tag to package instead of the checked-out commit (git packaging only), so a release branch can be uploaded while you work elsewhere. " +
                  "The version and change note are then read from that branch."),
             _autoRetry,
+            _oneSession,
+            Hint("Without it, each mod gets its own SteamCMD run and login. With it, every ticked mod is packaged and checked first, then uploaded in one run."),
+            _verifyUploads,
+            Hint("Downloads each item again the way subscribers get it, so it doubles the traffic. A difference is only a warning; the upload has already gone through."),
             _updateTags,
             Hint("SteamCMD cannot set tags, so they go through the Steam client: it has to be running and signed in as the account that owns the mod. " +
                  "Version tags the mod no longer lists are taken off; other tags are kept."),
@@ -1972,7 +2006,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _filter, _hideUpToDate, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _testItems, _changed, _buildCmd, _packageRef, _autoRetry, _updateTags })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _filter, _hideUpToDate, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _testItems, _changed, _buildCmd, _packageRef, _autoRetry, _updateTags, _oneSession, _verifyUploads, _watchBuilds })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -2159,7 +2193,7 @@ public sealed class MainForm : Form
         if (string.IsNullOrWhiteSpace(_s.Account)) { Nudge(_account, _accountNote, "Type your Steam account name here first."); return false; }
         if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { Nudge(_install, _accountNote, "SteamCMD is not installed yet. Press Install SteamCMD below."); return false; }
 
-        if (await VerifyLoginAsync(false)) return true;
+        if (await VerifyLoginAsync(false)) return await OwnershipOkAsync();
 
         var r = MessageBox.Show(this,
             "Steam needs you to log in once.\n\nA SteamCMD window will open. Type your password, then the Steam Guard code, and wait until the window closes by itself.\n\nYour password goes to Steam only; this program never sees it.",
@@ -2173,7 +2207,201 @@ public sealed class MainForm : Form
         catch (Exception e) { Append("Could not open SteamCMD: " + e.Message, LogKind.Error); }
         finally { if (!wasBusy) SetBusy(false); }
 
-        return await VerifyLoginAsync(true);
+        return await VerifyLoginAsync(true) && await OwnershipOkAsync();
+    }
+
+    /// <summary>
+    /// Once per account and game: asks SteamCMD whether the account has a license for the game, since Steam refuses
+    /// Workshop uploads and downloads from accounts that don't (Family Sharing does not count). True to go on.
+    /// </summary>
+    async Task<bool> OwnershipOkAsync()
+    {
+        if (!_cfg.AppIdValid) return true;
+        var key = $"{_s.Account}|{_cfg.AppId}".ToLowerInvariant();
+        if (_s.OwnershipChecked.Contains(key)) return true;
+        bool? owns;
+        var wasBusy = _busy;
+        if (!wasBusy) SetBusy(true);
+        SetLogin("Checking the account owns the game...", Tone.Muted);
+        try { owns = await SteamCmd.OwnsAsync(_s.EffectiveSteamCmd, _s.Account, _cfg.AppId, CancellationToken.None); }
+        catch { owns = null; }
+        finally { if (!wasBusy) SetBusy(false); SetLogin($"Logged in as {_s.Account}", Tone.Ok); }
+        if (owns == true) { _s.OwnershipChecked.Add(key); _s.Save(); return true; }
+        if (owns == null) return true; // could not tell; Steam says so itself if it refuses
+        Append($"Steam's license list for {_s.Account} does not include {GameLabel()} (app {_cfg.AppId}).", LogKind.Warn);
+        return MessageBox.Show(this,
+            $"Steam's license list for {_s.Account} does not include {GameLabel()} (app {_cfg.AppId}).\n\n" +
+            "Steam only takes Workshop uploads and downloads from an account that owns the game. A game borrowed through Family Sharing does not count.\n\nContinue anyway?",
+            Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+    }
+
+    string GameLabel() => _cfg.GameName.Length > 0 ? _cfg.GameName : "app " + _cfg.AppId;
+
+    /// <summary>Writes a log line from any thread.</summary>
+    void Log(string line)
+    {
+        if (InvokeRequired) BeginInvoke(() => Append(line, Display.KindOf(line)));
+        else Append(line, Display.KindOf(line));
+    }
+
+    /// <summary>Runs a SteamCMD job with the window busy and Esc able to stop it.</summary>
+    async Task RunSteamJobAsync(string what, Func<CancellationToken, Task> job)
+    {
+        _cts = new CancellationTokenSource();
+        SetBusy(true);
+        try { await job(_cts.Token); }
+        catch (OperationCanceledException) { Append(what + " stopped.", LogKind.Warn); }
+        catch (Exception e) { Append($"{what} failed: {e.Message}", LogKind.Error); }
+        finally { SetBusy(false); _cts.Dispose(); _cts = null; }
+    }
+
+    /// <summary>At start-up: the saved login (when there seems to be one), then whether the game updated.</summary>
+    async Task StartupSteamAsync(bool loginCached)
+    {
+        if (loginCached) await VerifyLoginAsync(false);
+        if (_s.WatchGameBuilds && !NoStartupPrompts && !IsDisposed) await CheckGameBuildsAsync(false);
+    }
+
+    /// <summary>
+    /// Reads the game's Steam branches (anonymous login) and logs what changed since the last look. With
+    /// <paramref name="list"/> every branch is listed too; without it nothing runs until <see cref="GameBuilds.CheckEvery"/> has passed.
+    /// </summary>
+    async Task CheckGameBuildsAsync(bool list)
+    {
+        if (_busy || !_cfg.AppIdValid || !SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd))
+        {
+            if (list) Append(_busy ? "Busy; try again when the current job ends." : !_cfg.AppIdValid ? "Set the game's app ID first." : "Install SteamCMD first.", LogKind.Warn);
+            return;
+        }
+        if (!list && !GameBuilds.Due(_cfg.AppId, DateTimeOffset.UtcNow)) return;
+        var appId = _cfg.AppId;
+        if (list) Append($"Asking Steam for {GameLabel()}'s branches (anonymous login, no account needed)...", LogKind.Note);
+        List<GameBranch>? found = null;
+        await RunSteamJobAsync("Reading the game's branches", async ct => found = await GameBuilds.FetchAsync(_s.EffectiveSteamCmd, appId, ct));
+        if (found == null) { if (list) Append("SteamCMD did not return the game's branches. Steam may be down, or the game hides them.", LogKind.Warn); return; }
+        _branches = found;
+        if (list) foreach (var b in found) Append("  " + GameBuilds.Describe(b));
+        var before = GameBuilds.Load().GetValueOrDefault(appId);
+        var changes = GameBuilds.Changes(found, before, _cfg.GameName);
+        foreach (var c in changes) Append(c, LogKind.Warn);
+        if (list && before != null && changes.Count == 0) Append($"Nothing changed since {before.Checked.ToLocalTime():d MMM yyyy HH:mm}.", LogKind.Note);
+        GameBuilds.Remember(appId, found);
+    }
+
+    /// <summary>Downloads the mod the way subscribers get it and compares it with this PC's last upload of it.</summary>
+    async Task CheckSteamCopyAsync(ModInfo m)
+    {
+        if (_busy || m.WorkshopId == null) return;
+        var sent = PackageDiffs.Load(PackageDiffs.DefaultDir, m.WorkshopId);
+        if (sent == null) { Append($"{m.Name}: this PC has no record of what its last upload sent, so there is nothing to compare with. Upload it once from here first.", LogKind.Warn); return; }
+        if (!await LoginFlowAsync()) return;
+        Append($"{m.Name}: downloading Workshop item {m.WorkshopId} as subscribers get it...", LogKind.Note);
+        await RunSteamJobAsync("Checking Steam's copy", async ct =>
+        {
+            var d = await WorkshopDownload.DownloadAsync(_s.EffectiveSteamCmd, _s.Account, _cfg.AppId, m.WorkshopId, Log, ct);
+            if (!d.Ok) { Append($"{m.Name}: {d.Message}", LogKind.Error); return; }
+            try
+            {
+                var check = await Task.Run(() => WorkshopDownload.Compare(sent.Files, d.Folder!), ct);
+                foreach (var line in WorkshopDownload.Describe(check, $"the upload of v{sent.Version} on {sent.Time.ToLocalTime():d MMM yyyy}"))
+                    Append($"{m.Name}: {line}", check.Matches ? LogKind.Ok : Display.KindOf(line));
+            }
+            finally { WorkshopDownload.Forget(_s.EffectiveSteamCmd, d.Folder); }
+        });
+    }
+
+    /// <summary>Saves Steam's copy of the mod into a folder, for when the local copy is lost or broken.</summary>
+    async Task DownloadFromSteamAsync(ModInfo m)
+    {
+        if (_busy || m.WorkshopId == null) return;
+        using var pick = new FolderBrowserDialog { Description = $"Pick where to save {m.Name} from Steam", UseDescriptionForTitle = true };
+        if (pick.ShowDialog(this) != DialogResult.OK) return;
+        var dest = pick.SelectedPath;
+        if (Directory.EnumerateFileSystemEntries(dest).Any()) dest = Path.Combine(dest, $"{m.Folder} (from Steam)");
+        if (Directory.Exists(dest) && Directory.EnumerateFileSystemEntries(dest).Any())
+        {
+            MessageBox.Show(this, $"{dest} is not empty. Pick an empty folder, so nothing is overwritten.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        if (!await LoginFlowAsync()) return;
+        Append($"{m.Name}: downloading Workshop item {m.WorkshopId}...", LogKind.Note);
+        await RunSteamJobAsync("Downloading from Steam", async ct =>
+        {
+            var d = await WorkshopDownload.DownloadAsync(_s.EffectiveSteamCmd, _s.Account, _cfg.AppId, m.WorkshopId, Log, ct);
+            if (!d.Ok) { Append($"{m.Name}: {d.Message}", LogKind.Error); return; }
+            try
+            {
+                var n = await Task.Run(() => WorkshopDownload.CopyTo(d.Folder!, dest), ct);
+                Append($"{m.Name}: saved {n} files from Steam to {dest}.", LogKind.Ok);
+                OpenPath(dest);
+            }
+            finally { WorkshopDownload.Forget(_s.EffectiveSteamCmd, d.Folder); }
+        });
+    }
+
+    /// <summary>Installs a test copy of the game on a branch, optionally with the selected mod and what it needs.</summary>
+    async Task TryInGameBetaAsync(ModInfo? m)
+    {
+        if (_busy) return;
+        if (!_cfg.AppIdValid) { Append("Set the game's app ID first.", LogKind.Warn); return; }
+        if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { Append("Install SteamCMD first (Options > Install SteamCMD).", LogKind.Warn); return; }
+        var appId = _cfg.AppId;
+        if (_branches == null)
+            await RunSteamJobAsync("Reading the game's branches", async ct => _branches = await GameBuilds.FetchAsync(_s.EffectiveSteamCmd, appId, ct));
+        using var f = new TestInstallForm(_cfg.GameName, appId, _branches, Path.Combine(AppSettings.Folder, "test-installs", appId), m, _cfg.GameModsFolder);
+        if (f.ShowDialog(this) != DialogResult.OK) return;
+        if (!await LoginFlowAsync()) return;
+        var folder = Path.GetFullPath(f.Folder);
+        Append($"Installing {GameLabel()} ({f.Branch} branch) into {folder}. The first time downloads the whole game.", LogKind.Note);
+        await RunSteamJobAsync("The test install", async ct =>
+        {
+            var last = -10.0;
+            var (ok, msg) = await TestInstall.InstallGameAsync(_s.EffectiveSteamCmd, _s.Account, appId, folder, f.Branch, f.Password, Log,
+                (state, pct) => { if (pct >= last + 10 || pct >= 100) { last = pct; Log($"{state} {pct:0}%"); } }, ct);
+            Append(msg, ok ? LogKind.Ok : LogKind.Error);
+            if (!ok) return;
+            if (f.AddMod && m != null)
+            {
+                var packager = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account);
+                var problems = await TestInstall.AddModsAsync(packager, _s.EffectiveSteamCmd, _s.Account, _cfg, folder, new[] { m }, Log, ct);
+                foreach (var p in problems) Append(p, LogKind.Warn);
+            }
+            Append($"The test install is in {folder}. Start the game's program there; turn the mods on in the game's mod list.", LogKind.Ok);
+            OpenPath(folder);
+        });
+    }
+
+    /// <summary>Writes the GitHub Actions workflow into the mods folder and says what else it needs.</summary>
+    void SetUpGitHubActions()
+    {
+        if (_busy || _s.RepoPath.Length == 0) { Append("Pick the mods folder first.", LogKind.Warn); return; }
+        var path = Path.Combine(_s.RepoPath, ProjectConfig.Norm(GitHubActions.WorkflowPath));
+        if (File.Exists(path) && MessageBox.Show(this, $"{GitHubActions.WorkflowPath} already exists. Replace it with a fresh copy?", Text,
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        try
+        {
+            GitHubActions.Write(_s.RepoPath, overwrite: true);
+            Append("Wrote " + path, LogKind.Ok);
+            MessageBox.Show(this, $"Wrote {GitHubActions.WorkflowPath}.\n\n{GitHubActions.NextSteps}", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception e) { Append("Could not write the workflow: " + e.Message, LogKind.Error); }
+    }
+
+    /// <summary>Puts SteamCMD's saved login on the clipboard, for the workflow's secret, after a warning.</summary>
+    void CopyLoginSecret()
+    {
+        var secret = GitHubActions.LoginSecret(_s.EffectiveSteamCmd);
+        if (secret == null)
+        {
+            MessageBox.Show(this, "SteamCMD has no saved login yet. Log in once (Log in... above), then try again.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        if (MessageBox.Show(this,
+                $"This copies SteamCMD's saved login to the clipboard, for the {GitHubActions.LoginSecretName} secret on GitHub.\n\n" +
+                "Anyone who gets this text can use your Steam login until it expires. Paste it only into that secret, then copy something else to clear the clipboard.\n\nCopy it?",
+                Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        Clipboard.SetText(secret);
+        Append($"Copied SteamCMD's saved login for the {GitHubActions.LoginSecretName} secret. Clear the clipboard once it is pasted.", LogKind.Note);
     }
 
     /// <summary>At start-up without SteamCMD: offer the one-click install (the "Get set up" card keeps the link if declined).</summary>
@@ -2471,6 +2699,7 @@ public sealed class MainForm : Form
             Credit = _s.UploadCredit,
             NoteTemplate = _s.TemplateFor(_s.RepoPath),
             MarkdownToSteam = _s.MarkdownNotes,
+            VerifyUploads = _s.VerifyUploads,
         };
         var history = UploadHistory.Load();
         pub.Log += l => BeginInvoke(() => Append(l, Display.KindOf(l)));
@@ -2483,7 +2712,7 @@ public sealed class MainForm : Form
         pub.Stage += (t, p) => BeginInvoke(() => SetStage(t, p));
 
         // One login check above covers the batch; each mod then reuses Steam's saved login.
-        var batch = new BatchUpload(pub) { RetryAfter = _s.AutoRetry ? TimeSpan.FromSeconds(30) : null };
+        var batch = new BatchUpload(pub) { RetryAfter = _s.AutoRetry ? TimeSpan.FromSeconds(30) : null, OneSession = _s.OneSession };
         batch.Retrying += (m, why, wait) => Append($"{m.Name}: Steam was busy or could not be reached ({why}). Trying again in {wait.TotalSeconds:0} seconds...", LogKind.Warn);
         batch.Starting += (m, i, n) =>
         {

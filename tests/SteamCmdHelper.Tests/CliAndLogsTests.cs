@@ -39,7 +39,7 @@ public sealed class CliAndLogsTests : IDisposable
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, "steamcmd.sh");
         var builds = Path.Combine(_work, "builds.txt");
-        File.WriteAllText(path, "#!/bin/sh\n"
+        File.WriteAllText(path, "#!/bin/sh\n" + TestConfig.SkipSteamFlags
             + "echo \"Logging in user '$2' to Steam Public...OK\"\necho 'Waiting for user info...OK'\n"
             + "[ \"$3\" = '+workshop_build_item' ] || exit 0\n"
             + $"cat \"$4\" >> '{builds}'\n"

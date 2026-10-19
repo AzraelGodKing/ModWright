@@ -96,6 +96,12 @@ public sealed class Publisher
     /// </summary>
     public Func<string, string, string[], CancellationToken, Task<TagResult>>? TagUpdater { get; init; }
 
+    /// <summary>
+    /// After each successful upload, download the item back with SteamCMD (as a subscriber gets it) and compare it with
+    /// what was sent. Off by default: it downloads the whole mod again.
+    /// </summary>
+    public bool VerifyUploads { get; init; }
+
     /// <summary>How far Steam's clock and this PC's may disagree when matching Steam's "updated" time to the upload.</summary>
     public static readonly TimeSpan ClockSlack = TimeSpan.FromMinutes(2);
 
@@ -118,25 +124,164 @@ public sealed class Publisher
     /// <summary>True when <see cref="GitRef"/> applies: one is set and the layout packages with git.</summary>
     bool FromRef => GitRef != null && _cfg.UseGitArchive && ModScanner.IsGitRepo(_repo);
 
+    /// <summary>A mod that is packaged, checked and has its build file written, ready for SteamCMD.</summary>
+    sealed class Prepared
+    {
+        public required ModInfo Mod { get; init; }
+        public required string Version { get; init; }
+        public required string Notes { get; init; }
+        public required PackageReport Report { get; init; }
+        public required string[] Tags { get; init; }
+        public WorkshopPageEdit? Page { get; init; }
+        public required int Visibility { get; init; }
+        public required string StageRoot { get; init; }
+        public required string VdfPath { get; init; }
+    }
+
     public async Task<PublishResult> RunAsync(ModInfo m, bool upload, CancellationToken ct)
     {
         if (TestItems) m = m.AsTestItem();
+        var (early, p) = await PrepareAsync(m, upload, ct);
+        if (early != null) return early;
+
+        // The package is removed on every way out except a failed upload, where it is kept so the build file can be inspected.
+        var keep = false;
+        try
+        {
+            var started = DateTimeOffset.UtcNow;
+            var output = new List<string>();
+            var exit = await RunProcAsync(_steamCmd,
+                SteamCmd.FailFast.Concat(new[] { "+login", _account, "+workshop_build_item", p!.VdfPath, "+quit" }),
+                Path.GetDirectoryName(_steamCmd) ?? "",
+                line =>
+                {
+                    Say(line);
+                    lock (output) output.Add(line);
+                    MapStage(line);
+                }, ct);
+            List<string> lines;
+            lock (output) lines = output.ToList();
+            (var result, keep) = await FinishAsync(p, lines, exit, started, ct);
+            return result;
+        }
+        finally
+        {
+            if (!keep) TryDelete(p!.StageRoot);
+        }
+    }
+
+    /// <summary>
+    /// Uploads several mods with one SteamCMD run: one login, then one workshop_build_item per mod, so a batch does not
+    /// log in and start SteamCMD again for every mod. Each mod is packaged and checked first, the same as
+    /// <see cref="RunAsync"/>; a mod that fails or is skipped there never reaches SteamCMD. SteamCMD's output is split
+    /// into one part per mod at each "Success" or failure line, and each mod is then judged on its own part (and asked
+    /// of Steam, as a single upload is). Returns one result per mod, in order; null for a mod that was not reached
+    /// because the run was cancelled.
+    /// </summary>
+    /// <param name="starting">Called with a mod's index when SteamCMD starts on it.</param>
+    public async Task<PublishResult?[]> RunSessionAsync(IReadOnlyList<ModInfo> mods, Action<int>? starting, CancellationToken ct)
+    {
+        var results = new PublishResult?[mods.Count];
+        var ready = new List<(int Index, Prepared Item)>();
+        var keep = new HashSet<string>();
+        try
+        {
+            for (var i = 0; i < mods.Count; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                var m = TestItems ? mods[i].AsTestItem() : mods[i];
+                Say($"Packaging {m.Name} ({i + 1} of {mods.Count})...");
+                try
+                {
+                    var (early, p) = await PrepareAsync(m, true, ct);
+                    if (early != null) results[i] = early;
+                    else ready.Add((i, p!));
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception e) { results[i] = new PublishResult(false, e.Message); }
+            }
+            if (ready.Count == 0) return results;
+
+            Say($"Uploading {ready.Count} mod{(ready.Count == 1 ? "" : "s")} with one SteamCMD login.");
+            var args = new List<string>(SteamCmd.NoPrompt) { "+login", _account };
+            foreach (var (_, p) in ready) args.AddRange(new[] { "+workshop_build_item", p.VdfPath });
+            args.Add("+quit");
+
+            // SteamCMD's lines arrive on another thread; the window's handlers expect to be called on its own.
+            var ctx = SynchronizationContext.Current;
+            void Starting(int index) { if (ctx != null) ctx.Post(_ => starting?.Invoke(index), null); else starting?.Invoke(index); }
+            var parts = ready.Select(_ => new List<string>()).ToList();
+            var current = 0;
+            var gate = new object();
+            var started = DateTimeOffset.UtcNow;
+            starting?.Invoke(ready[0].Index);
+            var exit = await RunProcAsync(_steamCmd, args, Path.GetDirectoryName(_steamCmd) ?? "", line =>
+            {
+                Say(line);
+                int? next = null;
+                lock (gate)
+                {
+                    parts[Math.Min(current, parts.Count - 1)].Add(line);
+                    if (current < parts.Count && SteamCmdOutput.EndsItem(line) && SteamCmd.LoginFailure(new[] { line }) == null)
+                    {
+                        current++;
+                        if (current < parts.Count) next = ready[current].Index;
+                    }
+                }
+                MapStage(line);
+                if (next is { } n) Starting(n);
+            }, ct);
+
+            // A refused login fails every mod the same way.
+            var all = parts.SelectMany(x => x).ToList();
+            var login = SteamCmd.LoginFailure(all);
+            for (var k = 0; k < ready.Count; k++)
+            {
+                var (index, p) = ready[k];
+                if (login != null)
+                {
+                    keep.Add(p.StageRoot);
+                    results[index] = new PublishResult(false, "SteamCMD reported a failure: " + login);
+                    continue;
+                }
+                // A part that ended with "Success" is judged on its own lines; SteamCMD's exit code belongs to the run as a whole.
+                var mine = parts[k];
+                var itemExit = mine.Any(l => SteamCmdOutput.EndsItem(l)) ? 0 : exit;
+                var (result, kept) = await FinishAsync(p, mine, itemExit, started, ct);
+                if (kept) keep.Add(p.StageRoot);
+                results[index] = result;
+            }
+            return results;
+        }
+        finally
+        {
+            foreach (var (_, p) in ready) if (!keep.Contains(p.StageRoot)) TryDelete(p.StageRoot);
+        }
+    }
+
+    /// <summary>
+    /// Packages the mod, runs every check and writes the build file. Returns a finished result when the mod stops here
+    /// (a dry run, a failed check, an unchanged package the user skipped), else the prepared upload. The package is
+    /// removed unless a prepared upload is returned.
+    /// </summary>
+    async Task<(PublishResult? Done, Prepared? Item)> PrepareAsync(ModInfo m, bool upload, CancellationToken ct)
+    {
         At("Reading changelog...", 5);
         var typed = NoteOverride?.Invoke(m);
         var notes = typed ?? NotesFor(m, _cfg);
         var version = m.Version;
-        if (!_cfg.AppIdValid) return new PublishResult(false, "The Steam app ID is not set. Enter the game's app ID in the window first.");
+        if (!_cfg.AppIdValid) return (new PublishResult(false, "The Steam app ID is not set. Enter the game's app ID in the window first."), null);
         if (GitRef != null && !FromRef) Say($"Note: \"{GitRef}\" is a git ref, but this layout does not package with git, so the working folder is uploaded.");
         if (_cfg.ChangelogByVersion && notes.Length == 0 && typed == null && !FromRef)
-            return new PublishResult(false, $"{_cfg.Changelog} has no entry for version {(m.Version.Length > 0 ? m.Version : "(unknown)")}.");
+            return (new PublishResult(false, $"{_cfg.Changelog} has no entry for version {(m.Version.Length > 0 ? m.Version : "(unknown)")}."), null);
         SweepStale(_tempRoot, StaleAfter);
         var stageRoot = Path.Combine(_tempRoot, StagePrefix + Guid.NewGuid().ToString("N"));
         var stage = Path.Combine(stageRoot, ProjectConfig.Norm(m.RelPath));
         Directory.CreateDirectory(stageRoot);
 
-        // The package is removed on every way out (success, dry run, a check failing, packaging throwing,
-        // cancellation) except a failed upload, where it is kept so the build file can be inspected.
-        var keep = false;
+        // The package is removed on every way out (dry run, a check failing, packaging throwing, cancellation) except
+        // handing back a prepared upload.
+        var handedOver = false;
         try
         {
             At("Packaging...", 10);
@@ -149,7 +294,7 @@ public sealed class Publisher
                 version = ModScanner.VersionIn(stage, _cfg) ?? m.Version;
                 if (typed == null) notes = NotesFor(new ModInfo { Dir = stage, Version = version }, _cfg);
                 if (_cfg.ChangelogByVersion && notes.Length == 0 && typed == null)
-                    return new PublishResult(false, $"{_cfg.Changelog} at {GitRef} has no entry for version {(version.Length > 0 ? version : "(unknown)")}.");
+                    return (new PublishResult(false, $"{_cfg.Changelog} at {GitRef} has no entry for version {(version.Length > 0 ? version : "(unknown)")}."), null);
                 Say($"Packaged {m.Name} from {GitRef} (version {(version.Length > 0 ? version : "unknown")}).");
             }
             // The template's {version} is the version sent, which differs from the mod's for an older git ref.
@@ -159,7 +304,7 @@ public sealed class Publisher
                 sent = shaped.Substring(0, 7900 - (Credit ? CreditLine.Length + 2 : 0)) + "\n[i]...see the full changelog on the project page.[/i]"
                     + (Credit ? "\n" + CreditLine : "");
 
-            var report = PackageCheck.Inspect(stage, hash: ManifestDir != null);
+            var report = PackageCheck.Inspect(stage, hash: ManifestDir != null || VerifyUploads);
             var last = ManifestDir != null && m.OnSteam ? PackageDiffs.Load(ManifestDir, m.WorkshopId!) : null;
             if (last != null) report = report with { Diff = PackageDiffs.Compare(last, report.Files) };
             // git archive only has what git tracks, so anything ignored (a built .dll above all) would silently stay behind.
@@ -167,16 +312,16 @@ public sealed class Publisher
             var gitPackaging = _cfg.UseGitArchive && ModScanner.IsGitRepo(_repo);
             if (gitPackaging && !FromRef) report = report with { LeftOut = PackageCheck.LeftOut(m.Dir, report.Files, _cfg.Exclude ?? Array.Empty<string>()) };
             Packaged?.Invoke(m, report);
-            if (report.Files.Count == 0) return new PublishResult(false, "The package is empty, so the upload would remove every file from the item on Steam.");
+            if (report.Files.Count == 0) return (new PublishResult(false, "The package is empty, so the upload would remove every file from the item on Steam."), null);
             var missing = PackageCheck.MissingRequired(report.Files, _cfg.RequiredInPackage());
             if (missing.Count > 0)
-                return new PublishResult(false, $"The package has no {string.Join(", ", missing)}, so the mod would break for everyone who updates. " +
-                    (gitPackaging ? "Check it is committed and not left out by an export-ignore rule in .gitattributes." : "Check it exists and is not in the layout's Exclude list."));
+                return (new PublishResult(false, $"The package has no {string.Join(", ", missing)}, so the mod would break for everyone who updates. " +
+                    (gitPackaging ? "Check it is committed and not left out by an export-ignore rule in .gitattributes." : "Check it exists and is not in the layout's Exclude list.")), null);
             var code = report.LeftOut.Where(PackageCheck.IsCode).ToList();
             if (code.Count > 0)
-                return new PublishResult(false, $"The package leaves out {PackageCheck.Examples(code)}, which {(code.Count == 1 ? "is" : "are")} in the mod folder but not in git " +
+                return (new PublishResult(false, $"The package leaves out {PackageCheck.Examples(code)}, which {(code.Count == 1 ? "is" : "are")} in the mod folder but not in git " +
                     "(ignored by .gitignore or not committed), so players would get the mod without its code. Commit it, or add where the build lands to the " +
-                    "layout's BuiltFiles (for example \"1.6/Assemblies/*.dll\"), or delete it if it is left over.");
+                    "layout's BuiltFiles (for example \"1.6/Assemblies/*.dll\"), or delete it if it is left over."), null);
             if (report.LeftOut.Count > 0)
                 Say($"Warning: the package leaves out {report.LeftOut.Count} file{(report.LeftOut.Count == 1 ? "" : "s")} in the mod folder that git does not have (ignored or not committed): {PackageCheck.Examples(report.LeftOut)}.");
             foreach (var w in report.Warnings) Say("Warning: the package " + w + ".");
@@ -191,13 +336,13 @@ public sealed class Publisher
 
             // A test item gets no page changes: they are meant for the real item's next upload.
             var page = TestItems ? new WorkshopPageEdit { Title = m.Name + " (test)" } : PageEdits?.Invoke(m);
-            if (page != null && WorkshopPage.Validate(page) is { } bad) return new PublishResult(false, "Workshop page: " + bad);
+            if (page != null && WorkshopPage.Validate(page) is { } bad) return (new PublishResult(false, "Workshop page: " + bad), null);
             string extra;
             var visibility = page?.Visibility ?? WorkshopPage.Private;
             if (!m.OnSteam)
             {
                 var desc = page?.Description ?? ReadDescription(m);
-                if (desc.Length < 20) return new PublishResult(false, $"No description found. Add {_cfg.SteamDescriptionFile}.");
+                if (desc.Length < 20) return (new PublishResult(false, $"No description found. Add {_cfg.SteamDescriptionFile}."), null);
                 var preview = page?.Preview ?? (string.IsNullOrWhiteSpace(_cfg.Preview) ? null : Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Preview)));
                 extra = WorkshopPage.VdfLines(page?.Title ?? m.Name, desc, null, preview) + WorkshopPage.VdfLines(null, null, visibility);
             }
@@ -227,7 +372,7 @@ public sealed class Publisher
             {
                 if (tags.Length > 0) Say("Workshop tags to set after the upload: " + WorkshopTags.Describe(tags) + ".");
                 Say("Dry run: nothing uploaded. The package was built and checked, then removed.");
-                return new PublishResult(true, "Dry run OK", null, Version: version != m.Version ? version : null);
+                return (new PublishResult(true, "Dry run OK", null, Version: version != m.Version ? version : null), null);
             }
 
             if (report.Diff is { Identical: true } same && page == null)
@@ -235,90 +380,127 @@ public sealed class Publisher
                 if (UploadUnchanged != null && !UploadUnchanged(m, same))
                 {
                     Say($"Skipped {m.Name}: its package is the same as {same.LastUpload}.");
-                    return new PublishResult(true, "Skipped: nothing changed " + same.Since, Skipped: true);
+                    return (new PublishResult(true, "Skipped: nothing changed " + same.Since, Skipped: true), null);
                 }
                 Say($"Warning: no file changed {same.Since}, so subscribers get only the change note.");
             }
 
-            var started = DateTimeOffset.UtcNow;
-            var output = new List<string>();
-            var exit = await RunProcAsync(_steamCmd,
-                new[] { "+login", _account, "+workshop_build_item", vdfPath, "+quit" },
-                Path.GetDirectoryName(_steamCmd) ?? "",
-                line =>
-                {
-                    Say(line);
-                    lock (output) output.Add(line);
-                    MapStage(line);
-                }, ct);
-
-            string? vdfAfter = null;
-            try { vdfAfter = await File.ReadAllTextAsync(vdfPath, ct); } catch (IOException) { }
-            UploadOutcome outcome;
-            lock (output) outcome = SteamCmdOutput.Evaluate(output, exit, m.WorkshopId, vdfAfter);
-
-            // SteamCMD's console output is not always complete. For an existing item, ask Steam whether the update
-            // landed: a clean run that never said "Success" counts once Steam shows the item updated since it started.
-            var steamSays = m.OnSteam && (outcome.Ok || outcome.Unconfirmed) && SteamCheck != null
-                ? await ConfirmOnSteamAsync(m.WorkshopId!, started, ct)
-                : null;
-            if (!outcome.Ok && steamSays == true)
+            handedOver = true;
+            return (null, new Prepared
             {
-                Say("SteamCMD did not print \"Success\", but Steam shows the item updated just now, so the upload went through.");
-                outcome = outcome with { Ok = true, Reason = "Uploaded", Unconfirmed = false };
-            }
-            else if (outcome.Ok && steamSays == false)
-                Say("Steam's page does not show this update yet. It usually appears within a minute; check the item if it does not.");
-
-            // Save a new item's id as soon as Steam hands one out, even if the run then failed: creating it
-            // again would make a duplicate Workshop item.
-            var newId = m.OnSteam ? null : outcome.PublishedFileId;
-            if (newId != null) await SaveIdAsync(m, newId, ct);
-
-            if (!outcome.Ok)
-            {
-                keep = true;
-                Say("Package and build file kept for inspection in " + stageRoot);
-                var msg = outcome.Reason;
-                if (outcome.Unconfirmed && m.OnSteam && SteamCheck != null)
-                    msg += steamSays == false
-                        ? " Steam's page still shows the previous update time."
-                        : " Steam could not confirm it either (private items can't be read); check the item's change notes on Steam before uploading again.";
-                if (!m.OnSteam)
-                    msg += newId != null
-                        ? $" Steam did create item {newId} and its id was saved to {_cfg.WorkshopIdFile}: do NOT create it again."
-                        : $" Check your Steam profile before trying again (a new item may not be public); if it was created, put its number in {_cfg.WorkshopIdFile} and do NOT create it again.";
-                return new PublishResult(false, msg, newId);
-            }
-
-            if (newId != null && TestItems) Say($"Created a PRIVATE test item {newId} for {m.Name} {version}. Saved to {ModInfo.TestIdFile} in the mod folder (keep it out of git).");
-            else if (newId != null) Say($"Created {m.Name} {version} as {WorkshopPage.VisibilityName(visibility).ToUpperInvariant()} item {newId}. Saved to {_cfg.WorkshopIdFile} (commit it).");
-            else Say($"Uploaded {m.Name} {version}" + (TestItems ? $" to its test item {m.WorkshopId}" : ""));
-
-            if (TagUpdater != null && tags.Length > 0 && (m.WorkshopId ?? newId) is { } tagged)
-            {
-                At("Setting Workshop tags...", 98);
-                var t = await TagUpdater(_cfg.AppId, tagged, tags, ct);
-                Say(t.Ok ? t.Message : $"Warning: the upload went through, but the Workshop tags were not set: {t.Message} " +
-                    "(\"Update Workshop tags\" on the mod's right-click menu tries again without uploading.)");
-            }
-
-            if (!TestItems && (m.WorkshopId ?? newId) is { } id)
-            {
-                if (HistoryFile != null) UploadHistory.Add(new UploadEntry(DateTimeOffset.UtcNow, id, m.Name, version, notes, newId != null, _cfg.AppId,
-                    report.TotalBytes, (DateTimeOffset.UtcNow - started).TotalSeconds), HistoryFile);
-                WorkshopStatus.Forget(id);
-                if (ManifestDir != null) PackageDiffs.Save(ManifestDir, id, new PackageManifest(DateTimeOffset.UtcNow, m.Version, report.Files.ToList()));
-                if (SentDescriptions != null && page?.Description != null) DescriptionSync.Remember(id, page.Description, SentDescriptions);
-            }
-
-            At("Uploaded", 100);
-            return new PublishResult(true, outcome.Reason, newId, Version: version != m.Version ? version : null);
+                Mod = m, Version = version, Notes = notes, Report = report, Tags = tags, Page = page, Visibility = visibility,
+                StageRoot = stageRoot, VdfPath = vdfPath,
+            });
         }
         finally
         {
-            if (!keep) TryDelete(stageRoot);
+            if (!handedOver) TryDelete(stageRoot);
         }
+    }
+
+    /// <summary>
+    /// Judges one mod's SteamCMD output and does everything after a successful upload. Returns the result and whether
+    /// the package should be kept for inspection (a failed upload).
+    /// </summary>
+    async Task<(PublishResult Result, bool Keep)> FinishAsync(Prepared p, IReadOnlyList<string> output, int exit, DateTimeOffset started, CancellationToken ct)
+    {
+        var m = p.Mod;
+        var version = p.Version;
+        string? vdfAfter = null;
+        try { vdfAfter = await File.ReadAllTextAsync(p.VdfPath, ct); } catch (IOException) { }
+        var outcome = SteamCmdOutput.Evaluate(output, exit, m.WorkshopId, vdfAfter);
+
+        // SteamCMD's console output is not always complete. For an existing item, ask Steam whether the update
+        // landed: a clean run that never said "Success" counts once Steam shows the item updated since it started.
+        var steamSays = m.OnSteam && (outcome.Ok || outcome.Unconfirmed) && SteamCheck != null
+            ? await ConfirmOnSteamAsync(m.WorkshopId!, started, ct)
+            : null;
+        if (!outcome.Ok && steamSays == true)
+        {
+            Say("SteamCMD did not print \"Success\", but Steam shows the item updated just now, so the upload went through.");
+            outcome = outcome with { Ok = true, Reason = "Uploaded", Unconfirmed = false };
+        }
+        else if (outcome.Ok && steamSays == false)
+            Say("Steam's page does not show this update yet. It usually appears within a minute; check the item if it does not.");
+
+        // Save a new item's id as soon as Steam hands one out, even if the run then failed: creating it
+        // again would make a duplicate Workshop item.
+        var newId = m.OnSteam ? null : outcome.PublishedFileId;
+        if (newId != null) await SaveIdAsync(m, newId, ct);
+
+        if (!outcome.Ok)
+        {
+            Say("Package and build file kept for inspection in " + p.StageRoot);
+            var msg = outcome.Reason;
+            if (outcome.Unconfirmed && m.OnSteam && SteamCheck != null)
+                msg += steamSays == false
+                    ? " Steam's page still shows the previous update time."
+                    : " Steam could not confirm it either (private items can't be read); check the item's change notes on Steam before uploading again.";
+            if (!m.OnSteam)
+                msg += newId != null
+                    ? $" Steam did create item {newId} and its id was saved to {_cfg.WorkshopIdFile}: do NOT create it again."
+                    : $" Check your Steam profile before trying again (a new item may not be public); if it was created, put its number in {_cfg.WorkshopIdFile} and do NOT create it again.";
+            return (new PublishResult(false, msg, newId), true);
+        }
+
+        if (newId != null && TestItems) Say($"Created a PRIVATE test item {newId} for {m.Name} {version}. Saved to {ModInfo.TestIdFile} in the mod folder (keep it out of git).");
+        else if (newId != null) Say($"Created {m.Name} {version} as {WorkshopPage.VisibilityName(p.Visibility).ToUpperInvariant()} item {newId}. Saved to {_cfg.WorkshopIdFile} (commit it).");
+        else Say($"Uploaded {m.Name} {version}" + (TestItems ? $" to its test item {m.WorkshopId}" : ""));
+
+        if (TagUpdater != null && p.Tags.Length > 0 && (m.WorkshopId ?? newId) is { } tagged)
+        {
+            At("Setting Workshop tags...", 98);
+            var t = await TagUpdater(_cfg.AppId, tagged, p.Tags, ct);
+            Say(t.Ok ? t.Message : $"Warning: the upload went through, but the Workshop tags were not set: {t.Message} " +
+                "(\"Update Workshop tags\" on the mod's right-click menu tries again without uploading.)");
+        }
+
+        if (VerifyUploads && (m.WorkshopId ?? newId) is { } check) await VerifyAsync(m, check, p.Report.Files, ct);
+
+        if (!TestItems && (m.WorkshopId ?? newId) is { } id)
+        {
+            if (HistoryFile != null) UploadHistory.Add(new UploadEntry(DateTimeOffset.UtcNow, id, m.Name, version, p.Notes, newId != null, _cfg.AppId,
+                p.Report.TotalBytes, (DateTimeOffset.UtcNow - started).TotalSeconds), HistoryFile);
+            WorkshopStatus.Forget(id);
+            if (ManifestDir != null) PackageDiffs.Save(ManifestDir, id, new PackageManifest(DateTimeOffset.UtcNow, m.Version, p.Report.Files.ToList()));
+            if (SentDescriptions != null && p.Page?.Description != null) DescriptionSync.Remember(id, p.Page.Description, SentDescriptions);
+        }
+
+        At("Uploaded", 100);
+        return (new PublishResult(true, outcome.Reason, newId, Version: version != m.Version ? version : null), false);
+    }
+
+    /// <summary>
+    /// Downloads the item back the way a subscriber gets it and compares it with what was just sent. Only warns: the
+    /// upload itself already went through.
+    /// </summary>
+    async Task VerifyAsync(ModInfo m, string id, IReadOnlyList<PackageFile> sent, CancellationToken ct)
+    {
+        At("Checking what Steam hands out...", 99);
+        Say($"Downloading {m.Name} back from Steam to check it...");
+        var d = await WorkshopDownload.DownloadAsync(_steamCmd, _account, _cfg.AppId, id, null, ct);
+        if (!d.Ok) { Say("Warning: could not download the item back to check it: " + d.Message); return; }
+        try { foreach (var line in WorkshopDownload.Describe(WorkshopDownload.Compare(sent, d.Folder!), "this upload")) Say(line); }
+        finally { WorkshopDownload.Forget(_steamCmd, d.Folder); }
+    }
+
+    /// <summary>
+    /// Builds the mod's package exactly as an upload would (git archive or copy, plus build outputs) into
+    /// <paramref name="dest"/>, for trying it in a game install. Nothing is checked or sent.
+    /// </summary>
+    public async Task PackageToAsync(ModInfo m, string dest, CancellationToken ct)
+    {
+        var stageRoot = Path.Combine(_tempRoot, StagePrefix + Guid.NewGuid().ToString("N"));
+        var stage = Path.Combine(stageRoot, ProjectConfig.Norm(m.RelPath));
+        Directory.CreateDirectory(stageRoot);
+        try
+        {
+            await PackageAsync(m, stageRoot, stage, ct);
+            File.Delete(Path.Combine(stage, ModInfo.TestIdFile));
+            if (Directory.Exists(dest)) Directory.Delete(dest, true);
+            CopyDir(stage, dest, Array.Empty<string>());
+        }
+        finally { TryDelete(stageRoot); }
     }
 
     /// <summary>
@@ -466,7 +648,7 @@ public sealed class Publisher
 
     static void TryDelete(string dir) { try { Directory.Delete(dir, true); } catch { } }
 
-    static async Task<int> RunProcAsync(string file, IEnumerable<string> args, string workDir, Action<string> onLine, CancellationToken ct)
+    internal static async Task<int> RunProcAsync(string file, IEnumerable<string> args, string workDir, Action<string> onLine, CancellationToken ct)
     {
         var psi = new ProcessStartInfo(file)
         {

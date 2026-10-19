@@ -136,6 +136,12 @@ public sealed class ProjectConfig
     /// </summary>
     public string VersionTagsKey { get; set; } = "";
 
+    /// <summary>
+    /// Where the game loads local mods from, inside its install folder (RimWorld: "Mods"). Used by "Try in a game beta"
+    /// to put a mod and the Workshop items it needs into a test install. Empty = the game is installed without mods.
+    /// </summary>
+    public string GameModsFolder { get; set; } = "";
+
     /// <summary>Names or *.ext patterns left out of the package in copy mode.</summary>
     public string[] Exclude { get; set; } = { ".git", ".vs", "obj", "bin", "*.pdb" };
 
@@ -191,6 +197,7 @@ public sealed class ProjectConfig
             // The tags RimWorld's own uploader sets: "Mod" and each supported version, which the Workshop filters by.
             Tags = new[] { "Mod" },
             VersionTagsKey = "ModMetaData/supportedVersions/li",
+            GameModsFolder = "Mods",
             Source = "built-in RimWorld layout"
         },
         // Modelled on a downloaded Workshop item: a folder holding "Map" (JSON course file), Preview.jpg and optional Additional0.jpg...
@@ -237,7 +244,7 @@ public sealed class ProjectConfig
         ChangelogFirstLineIsVersion = p.ChangelogFirstLineIsVersion; ChangelogByVersion = p.ChangelogByVersion;
         WorkshopIdFile = p.WorkshopIdFile; WorkshopIdKey = p.WorkshopIdKey; Preview = p.Preview; SteamDescriptionFile = p.SteamDescriptionFile;
         BuiltFiles = p.BuiltFiles; RequiredFiles = p.RequiredFiles; UseGitArchive = p.UseGitArchive; Exclude = p.Exclude;
-        Tags = p.Tags; VersionTagsKey = p.VersionTagsKey;
+        Tags = p.Tags; VersionTagsKey = p.VersionTagsKey; GameModsFolder = p.GameModsFolder;
         Source = p.Source;
     }
 
