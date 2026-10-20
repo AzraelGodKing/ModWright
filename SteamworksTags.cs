@@ -68,7 +68,7 @@ static class SteamworksTags
     /// Writes the embedded steam_api64.dll next to the settings (once per version of it) and points the Steamworks
     /// wrapper at it, so no build has to ship it as a loose file.
     /// </summary>
-    static void LoadSteamApi()
+    internal static void LoadSteamApi()
     {
         using var res = typeof(SteamworksTags).Assembly.GetManifestResourceStream("SteamCmdHelper.steam_api64.dll")
             ?? throw new FileNotFoundException("steam_api64.dll is not built into this copy.");
