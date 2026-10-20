@@ -14,6 +14,8 @@ public sealed class CliOptions
     public bool OneSession, Verify;
     /// <summary>ci-setup: replace an existing workflow file.</summary>
     public bool Force;
+    /// <summary>game-version: only add the version to About.xml, without copying version folders.</summary>
+    public bool NoCopy;
     public string? Repo, Account, SteamCmd, LogFile, Note, Ref;
     /// <summary>download and test-install: the folder to put the files in.</summary>
     public string? To;
@@ -31,7 +33,7 @@ public static class Cli
 {
     public const int ExitOk = 0, ExitFailed = 1, ExitUsage = 2, ExitSteam = 3;
 
-    static readonly string[] Commands = { "upload", "list", "version", "update", "download", "verify", "game-builds", "test-install", "ci-setup", "login-secret", "help" };
+    static readonly string[] Commands = { "upload", "list", "version", "update", "download", "verify", "game-builds", "test-install", "ci-setup", "login-secret", "game-version", "help" };
 
     public const string Usage = """
         SteamCMD Helper command line
@@ -62,6 +64,10 @@ public static class Cli
           SteamCmdHelper login-secret                        print SteamCMD's saved login for the workflow's
                                                              STEAM_CONFIG_VDF secret. Anyone with this text
                                                              can use your Steam login: only paste it there
+          SteamCmdHelper game-version <version> <mod>...     RimWorld: add a game version (such as 1.7) to
+                [--all] [--no-copy]                          supportedVersions; mods with version folders get
+                                                             the newest copied to it and a loadFolders.xml
+                                                             entry (--no-copy: only About.xml)
           SteamCmdHelper help                                show this text
 
         Options:
@@ -140,6 +146,7 @@ public static class Cli
                 case "--one-session": o.OneSession = true; break;
                 case "--verify": o.Verify = true; break;
                 case "--force": o.Force = true; break;
+                case "--no-copy": o.NoCopy = true; break;
                 case "--to": o.To = Value(); break;
                 case "--branch": o.Branch = Value(); break;
                 case "--beta-password": o.BetaPassword = Value(); break;
@@ -159,6 +166,14 @@ public static class Cli
         {
             if (o.Mods.Count != 1) o.Error = "Name one mod or Workshop id to download.";
             else if (string.IsNullOrWhiteSpace(o.To)) o.Error = "Give the folder to download into with --to <folder>.";
+            return o;
+        }
+        if (o.NoCopy && o.Command != "game-version") { o.Error = "--no-copy only goes with \"game-version\"."; return o; }
+        if (o.Command == "game-version")
+        {
+            if (o.Mods.Count == 0) o.Error = "Give the game version to add, such as 1.7, then the mods or --all.";
+            else if (o.Mods.Count == 1 && !o.All) o.Error = "Name the mods to add the version to, or use --all.";
+            else if (o.Mods.Count > 1 && o.All) o.Error = "Give mod names or --all, not both.";
             return o;
         }
         if (o.Command == "verify")
@@ -258,10 +273,6 @@ public static class Cli
     static int SetVersions(CliOptions o, ProjectConfig cfg, List<ModInfo> mods, Action<string> say)
     {
         var spec = o.Mods[^1].Trim();
-        ModScanner.Bump? part = spec.ToLowerInvariant() switch
-        {
-            "patch" => ModScanner.Bump.Patch, "minor" => ModScanner.Bump.Minor, "major" => ModScanner.Bump.Major, _ => null,
-        };
         var picked = new List<ModInfo>();
         foreach (var name in o.Mods.Take(o.Mods.Count - 1))
         {
@@ -269,27 +280,31 @@ public static class Cli
             if (m == null) { say($"Error: {name}: no such mod in the repo. Nothing was changed."); return ExitUsage; }
             if (!picked.Contains(m)) picked.Add(m);
         }
-        var failed = false;
+        var ok = VersionBatch.Apply(picked, cfg, spec, o.Note, l => say(l.StartsWith("  ") && l.Contains("needs one") ? l + " Add it, or run this with --note \"...\"." : l));
+        return ok ? ExitOk : ExitFailed;
+    }
+
+    /// <summary>"game-version": adds a RimWorld version to the named mods (or every mod with --all).</summary>
+    static int AddGameVersion(CliOptions o, ProjectConfig cfg, List<ModInfo> mods, Action<string> say)
+    {
+        if (!RimWorldLint.Applies(cfg)) { say("Error: game-version is for RimWorld mods (About/About.xml with supportedVersions)."); return ExitUsage; }
+        var version = o.Mods[0];
+        var picked = new List<ModInfo>();
+        if (o.All) picked.AddRange(mods);
+        foreach (var name in o.Mods.Skip(1))
+        {
+            var m = Find(mods, name);
+            if (m == null) { say($"Error: {name}: no such mod in the repo. Nothing was changed."); return ExitUsage; }
+            if (!picked.Contains(m)) picked.Add(m);
+        }
+        var ok = true;
         foreach (var m in picked)
         {
-            var version = part is { } p ? ModScanner.NextVersion(m.Version, p) : spec.TrimStart('v', 'V');
-            if (version == null) { say($"{m.Folder}: its version \"{m.Version}\" is not a number, so it cannot be raised. Give the new version instead."); failed = true; continue; }
-            var error = ModScanner.SetVersion(m, cfg, version);
-            if (error != null) { say($"{m.Folder}: {error}"); failed = true; continue; }
-            var old = m.Version;
-            m.Version = version;
-            say($"{m.Folder}: version {(old.Length > 0 ? old : "?")} -> {version}.");
-            if (!ModScanner.NeedsChangelogEntry(m, cfg)) continue;
-            if (string.IsNullOrWhiteSpace(o.Note))
-            {
-                say($"  {cfg.Changelog} has no {version} entry yet, and the upload needs one. Add it, or run this with --note \"...\".");
-                continue;
-            }
-            var noteError = ModScanner.AddChangelogEntry(m, cfg, version, o.Note);
-            if (noteError != null) { say("  " + noteError); failed = true; }
-            else say($"  Added the {version} entry to {cfg.Changelog}.");
+            var r = GameVersions.Add(m.Dir, version, !o.NoCopy);
+            if (r.Error != null) { say($"{m.Folder}: {r.Error}"); ok = false; }
+            else say($"{m.Folder}: " + (r.Done.Count == 0 ? $"already supports {version}." : string.Join("; ", r.Done) + "."));
         }
-        return failed ? ExitFailed : ExitOk;
+        return ok ? ExitOk : ExitFailed;
     }
 
     /// <summary>Finds a mod by folder name, path in the repo, or display name (case-insensitive).</summary>
@@ -366,6 +381,7 @@ public static class Cli
         var historyFile = recordPath == null ? UploadHistory.DefaultFile : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(recordPath))!, "history.json");
 
         if (o.Command == "version") return SetVersions(o, cfg, mods, Say);
+        if (o.Command == "game-version") return AddGameVersion(o, cfg, mods, Say);
         var dataDir = Path.GetDirectoryName(Path.GetFullPath(historyFile))!;
         switch (o.Command)
         {

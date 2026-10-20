@@ -592,6 +592,8 @@ public sealed class MainForm : Form
         menu.Items.Add("Stats and comme&nts...", null, (_, _) => ShowStats(SelectedMod()));
         var bulk = menu.Items.Add("Workshop pages of ticked &mods...", null, async (_, _) => await EditTickedPagesAsync());
         var entry = menu.Items.Add("Write the &changelog entry...", null, (_, _) => { if (SelectedMod() is { } m && AskChangelogEntry(m, m.Version)) RefreshAll(); });
+        var bulkVersion = menu.Items.Add("Change the version of tic&ked mods...", null, (_, _) => ChangeTickedVersions());
+        var gameVersion = menu.Items.Add("Add a &game version to ticked mods...", null, (_, _) => AddGameVersion());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Upload &history...", null, (_, _) => { if (SelectedMod() is { } m) ShowHistory(m); });
         menu.Items.Add("&Preview package...", null, async (_, _) => { if (SelectedMod() is { } m) await PreviewPackageAsync(m); });
@@ -619,7 +621,8 @@ public sealed class MainForm : Form
             onSteam.Enabled = copyId.Enabled = copyLink.Enabled = SelectedMod()?.OnSteam == true;
             tags.Visible = WorkshopTags.LayoutHasTags(_cfg);
             tags.Enabled = required.Enabled = SelectedMod()?.OnSteam == true;
-            bulk.Visible = Selected().Count() > 1;
+            bulk.Visible = bulkVersion.Visible = Selected().Count() > 1;
+            gameVersion.Visible = RimWorldLint.Applies(_cfg);
             thunder.Visible = TickedOrSelected().Any(x => Thunderstore.Has(x.Dir));
             changelog.Enabled = ChangelogOf(SelectedMod()) != null;
             entry.Visible = SelectedMod() is { } m && ModScanner.NeedsChangelogEntry(m, _cfg);
@@ -2310,6 +2313,67 @@ public sealed class MainForm : Form
     }
 
     ModInfo? SelectedMod() => _list.SelectedItems.Count > 0 ? _list.SelectedItems[0].Tag as ModInfo : null;
+
+    /// <summary>"Change the version of ticked mods...": patch, minor, major or one number for every ticked mod, with one changelog line.</summary>
+    void ChangeTickedVersions()
+    {
+        if (_busy) return;
+        var mods = TickedOrSelected();
+        if (mods.Count == 0) return;
+        using var f = new Form { Text = Text, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false, ClientSize = new Size(480, 330), Font = Font };
+        var l = new Label { Text = $"New version for {mods.Count} mod{(mods.Count == 1 ? "" : "s")}:", AutoSize = true, Location = new Point(12, 12) };
+        var patch = new RadioButton { Text = "&Patch (1.2.3 to 1.2.4)", AutoSize = true, Location = new Point(12, 38), Checked = true };
+        var minor = new RadioButton { Text = "Mi&nor (1.3.0)", AutoSize = true, Location = new Point(190, 38) };
+        var major = new RadioButton { Text = "Ma&jor (2.0.0)", AutoSize = true, Location = new Point(320, 38) };
+        var exact = new RadioButton { Text = "&All to", AutoSize = true, Location = new Point(12, 68) };
+        var number = new TextBox { Location = new Point(90, 66), Width = 120, AccessibleName = "Version for all", PlaceholderText = "e.g. 1.4.0" };
+        number.TextChanged += (_, _) => exact.Checked = number.TextLength > 0;
+        var nl = new Label { Text = "&Changelog entry for the mods whose layout needs one (RimWorld):", AutoSize = true, Location = new Point(12, 102) };
+        var note = new TextBox { Text = "- ", Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, Location = new Point(12, 124), Size = new Size(456, 140) };
+        var ok = new Button { Text = "Save", DialogResult = DialogResult.OK, Location = new Point(312, 290), Width = 75 };
+        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(393, 290), Width = 75 };
+        f.Controls.AddRange(new Control[] { l, patch, minor, major, exact, number, nl, note, ok, cancel });
+        f.CancelButton = cancel;
+        ok.Role(ThemeRole.Accent);
+        Theme.Apply(f);
+        if (f.ShowDialog(this) != DialogResult.OK) return;
+        var spec = exact.Checked ? number.Text.Trim() : major.Checked ? "major" : minor.Checked ? "minor" : "patch";
+        if (spec.Length == 0) return;
+        var text = note.Text.Replace("\r\n", "\n").Trim();
+        VersionBatch.Apply(mods, _cfg, spec, text is "" or "-" ? null : text, line => Append(line, line.Contains("needs one") || line.Contains("cannot") ? LogKind.Warn : LogKind.Note));
+        RefreshAll();
+    }
+
+    /// <summary>"Add a game version to ticked mods...": a new RimWorld version in supportedVersions, version folders and loadFolders.xml.</summary>
+    void AddGameVersion()
+    {
+        if (_busy) return;
+        var mods = TickedOrSelected();
+        if (mods.Count == 0) return;
+        var suggested = GameVersions.Next(NewMod.NewestVersion(ModScanner.ModsRoot(_s.RepoPath, _cfg)));
+        var version = Prompt($"Game version to add to {(mods.Count == 1 ? mods[0].Name : mods.Count + " mods")}:", suggested);
+        if (string.IsNullOrWhiteSpace(version)) return;
+        var copy = true;
+        if (mods.Any(m => Directory.GetDirectories(m.Dir).Any(d => System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(d), @"^\d+\.\d+$"))))
+        {
+            var yes = new TaskDialogButton("Copy them");
+            var page = new TaskDialogPage
+            {
+                Caption = Text, Heading = "Copy the newest version folders?", Icon = TaskDialogIcon.Information,
+                Text = $"Some of these mods keep files in version folders (such as 1.6). Copy each mod's newest one to {version.Trim()} and add it to loadFolders.xml? " +
+                       "Their Assemblies are copied as they are, so rebuild them against the new game version.",
+                Buttons = { yes, new TaskDialogButton("Only add it to About.xml") }, DefaultButton = yes,
+            };
+            copy = TaskDialog.ShowDialog(this, page) == yes;
+        }
+        foreach (var m in mods)
+        {
+            var r = GameVersions.Add(m.Dir, version, copy);
+            if (r.Error != null) Append($"{m.Name}: {r.Error}", LogKind.Warn);
+            else Append($"{m.Name}: " + (r.Done.Count == 0 ? $"already supports {version.Trim()}." : string.Join("; ", r.Done) + "."), LogKind.Note);
+        }
+        RefreshAll();
+    }
 
     void UpdateSelectionButtons() => _editPage.Enabled = !_busy && SelectedMod() != null;
 
