@@ -60,6 +60,8 @@ public sealed class AppSettings
     public bool UpdateRequired { get; set; } = true;
     /// <summary>After an upload, send the mod's gallery folder and translated descriptions through the Steam client.</summary>
     public bool UpdatePageExtras { get; set; } = true;
+    /// <summary>The author name "New mod..." last used (RimWorld's About.xml author and packageId).</summary>
+    public string ModAuthor { get; set; } = "";
     /// <summary>Try an update once more after a short wait when Steam was busy or could not be reached.</summary>
     public bool AutoRetry { get; set; } = true;
     /// <summary>Upload a batch with one SteamCMD login instead of one SteamCMD run per mod.</summary>

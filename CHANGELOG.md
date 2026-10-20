@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **New mod.** Ctrl+N (or **New mod...** on the right-click menu and the empty list) makes a ready-to-upload mod folder
+  for the current layout. For RimWorld that is an About.xml with a packageId made from the author and name, the
+  supported versions (the newest any of your mods supports by default), a placeholder preview, the changelog entry
+  and the description file, and optionally a C# project with Harmony that builds into the newest version's Assemblies
+  folder. Paradox mods get a descriptor.mod. The author is remembered for the next one.
 - **Required items are set on the Workshop page.** After each upload, the item's "Required items" on Steam are set from
   the Workshop links in the mod's metadata (RimWorld's `modDependencies`), so players who subscribe are offered what the
   mod needs. Like tags, this goes through the Steam client, which has to be running as the item's owner. Items this app
