@@ -70,6 +70,14 @@ public sealed class MoreIdeasTests : IDisposable
         Assert.Equal("Alpha's description\n\nNew footer", text);
     }
 
+    [Theory]
+    [InlineData("Join us on discord.gg/old", "discord.gg/old", "discord.gg/new", "", "Join us on discord.gg/new")]
+    [InlineData("Text\r\n", "", "", "Ko-fi link", "Text\n\nKo-fi link")]
+    [InlineData("Text\n\nKo-fi link", "", "", "Ko-fi link\r\n", "Text\n\nKo-fi link")] // already there
+    [InlineData("", "", "", "Only this", "Only this")]
+    public void Many_pages_get_the_same_text_change(string current, string find, string replace, string append, string expected) =>
+        Assert.Equal(expected, WorkshopPage.EditText(current, find, replace, append));
+
     [Fact]
     public void Footer_is_kept_per_mods_folder()
     {

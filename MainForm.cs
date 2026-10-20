@@ -575,6 +575,7 @@ public sealed class MainForm : Form
         var menu = new ContextMenuStrip();
         menu.Items.Add(new ToolStripMenuItem("Edit &Workshop page...", null, (_, _) => EditWorkshopPage(SelectedMod())) { ShortcutKeyDisplayString = "Enter" });
         menu.Items.Add(new ToolStripMenuItem("Change the &version to upload...", null, (_, _) => { if (SelectedMod() is { } m) ChangeVersion(m); }) { ShortcutKeyDisplayString = "F2" });
+        var bulk = menu.Items.Add("Workshop pages of ticked &mods...", null, async (_, _) => await EditTickedPagesAsync());
         var entry = menu.Items.Add("Write the &changelog entry...", null, (_, _) => { if (SelectedMod() is { } m && AskChangelogEntry(m, m.Version)) RefreshAll(); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Upload &history...", null, (_, _) => { if (SelectedMod() is { } m) ShowHistory(m); });
@@ -600,6 +601,7 @@ public sealed class MainForm : Form
             onSteam.Enabled = copyId.Enabled = copyLink.Enabled = SelectedMod()?.OnSteam == true;
             tags.Visible = WorkshopTags.LayoutHasTags(_cfg);
             tags.Enabled = required.Enabled = SelectedMod()?.OnSteam == true;
+            bulk.Visible = Selected().Count() > 1;
             changelog.Enabled = ChangelogOf(SelectedMod()) != null;
             entry.Visible = SelectedMod() is { } m && ModScanner.NeedsChangelogEntry(m, _cfg);
             shrink.Visible = SelectedMod() is { PreviewOk: false, PreviewPath.Length: > 0 };
@@ -2180,6 +2182,53 @@ public sealed class MainForm : Form
         Append(f.Result.IsEmpty
             ? $"{m.Name}: Workshop page changes cleared."
             : $"{m.Name}: Workshop page changes ({f.Result.Summary()}) will be sent with the next upload.", LogKind.Note);
+        RefreshAll();
+    }
+
+    /// <summary>
+    /// One visibility, text replacement or addition for every ticked mod's Workshop page, saved as each mod's page
+    /// changes for its next upload. Descriptions start from a change already waiting, else from Steam's page; an item
+    /// whose page can't be read (private, offline) keeps its description, so nothing on Steam is lost.
+    /// </summary>
+    async Task EditTickedPagesAsync()
+    {
+        var mods = Selected().ToList();
+        if (_busy || mods.Count == 0) return;
+        BulkPageEdit edit;
+        using (var f = new BulkPageForm(mods))
+        {
+            if (f.ShowDialog(this) != DialogResult.OK) return;
+            edit = f.Result;
+        }
+        UseWaitCursor = true;
+        var changed = 0;
+        try
+        {
+            foreach (var m in mods)
+            {
+                var page = WorkshopPage.Get(m.Dir) ?? new WorkshopPageEdit();
+                var parts = new List<string>();
+                if (edit.Visibility is { } v && page.Visibility != v) { page.Visibility = v; parts.Add("visibility"); }
+                if (edit.ChangesDescriptions)
+                {
+                    var current = page.Description
+                        ?? (m.OnSteam ? (await WorkshopPage.FetchAsync(m.WorkshopId!))?.Description : Publisher.DescriptionFor(m, _cfg));
+                    if (current == null) Append($"{m.Name}: Steam's page could not be read (private or offline), so its description was left alone.", LogKind.Warn);
+                    else if (WorkshopPage.EditText(current, edit.Find, edit.Replace, edit.Append) is var text && text != current.Replace("\r\n", "\n"))
+                    {
+                        if (text.Length > WorkshopPage.MaxDescription) { Append($"{m.Name}: the description would be {text.Length} characters (Steam allows {WorkshopPage.MaxDescription}), so it was left alone.", LogKind.Warn); }
+                        else { page.Description = text; parts.Add("description"); }
+                    }
+                }
+                if (parts.Count == 0) continue;
+                WorkshopPage.Set(m.Dir, page);
+                changed++;
+                Append($"{m.Name}: Workshop page changes ({page.Summary()}) will be sent with the next upload.", LogKind.Note);
+            }
+        }
+        catch (Exception e) { Append("Could not save the Workshop page changes: " + e.Message, LogKind.Error); }
+        finally { UseWaitCursor = false; }
+        if (changed == 0) Append("None of the ticked mods' pages needed that change.", LogKind.Note);
         RefreshAll();
     }
 

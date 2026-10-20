@@ -12,6 +12,9 @@
   file and line. A `packageId` RimWorld would refuse, two mods with the same `packageId`, a `modDependencies` entry
   without one, `loadFolders.xml` entries for folders that are not there or versions it leaves out, and version folders
   that `supportedVersions` does not list are warned about.
+- **Workshop pages of ticked mods...** (right-click, with two or more mods ticked) sets one visibility, replaces a
+  phrase or adds text at the end of every ticked mod's description at once. The changes wait for each mod's next upload
+  and show in the upload confirmation, like single edits. An item whose page Steam won't show keeps its description.
 - **Dependency updates are pointed out.** The upload confirmation says when a Workshop item a mod needs (Harmony, a
   framework) was updated on Steam after the mod's own last upload, so it can be tried in game with it first.
 - **Shared description footer** (Options > Workshop page > Description, per mods folder): text such as Discord, Ko-fi
