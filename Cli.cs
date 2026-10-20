@@ -315,7 +315,9 @@ public static class Cli
     /// <param name="json">Where "upload --json" writes its JSON; null for <paramref name="output"/>.</param>
     /// <param name="oneSession">Upload a batch with one SteamCMD login (Options; --one-session turns it on for one run).</param>
     /// <param name="verifyUploads">Download each upload back and compare it (Options; --verify turns it on for one run).</param>
-    /// <param name="pageExtras">Sets each item's required items through the Steam client after upload; null leaves them.</param>
+    /// <param name="pageExtras">Sets each item's required items, gallery and translations through the Steam client after upload; null leaves them.</param>
+    /// <param name="pageExtrasPage">Whether <paramref name="pageExtras"/> sends the gallery and translations.</param>
+    /// <param name="pageExtrasRequired">Whether <paramref name="pageExtras"/> sets required items.</param>
     /// <param name="descriptionFooter">The mods folder's shared description footer.</param>
     /// <param name="ownership">Asks whether the account owns the game (account, app id); null skips the check.</param>
     public static async Task<int> RunAsync(CliOptions o, string repo, string steamCmd, string account, TextWriter output,
@@ -326,7 +328,7 @@ public static class Cli
         Func<string, string, string[], CancellationToken, Task<TagResult>>? tagUpdater = null,
         bool oneSession = false, bool verifyUploads = false,
         Func<string, string, CancellationToken, Task<bool?>>? ownership = null, string? descriptionFooter = null,
-        Func<ExtrasRequest, CancellationToken, Task<ExtrasResult>>? pageExtras = null)
+        Func<ExtrasRequest, CancellationToken, Task<ExtrasResult>>? pageExtras = null, bool pageExtrasPage = true, bool pageExtrasRequired = true)
     {
         void Say(string s) => output.WriteLine(s);
         var tags = new Dictionary<ModInfo, string>();
@@ -513,7 +515,10 @@ public static class Cli
             SteamCheck = recordPath == null ? Publisher.LiveSteamCheck : null,
             TagUpdater = tagUpdater,
             PageExtras = pageExtras,
+            SetGalleryAndLanguages = pageExtrasPage,
+            SetRequired = pageExtrasRequired,
             RequiredRecord = recordPath == null ? null : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(historyFile))!, "required-items.json"),
+            SentRecord = recordPath == null ? null : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(historyFile))!, "page-extras.json"),
             Credit = credit,
             NoteTemplate = noteTemplate,
             DescriptionFooter = descriptionFooter,

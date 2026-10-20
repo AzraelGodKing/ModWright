@@ -21,6 +21,15 @@
 - **New comments.** **Count comments** in the same window counts the comments on every mod through the Steam client and
   names the mods with new ones in the log and their row tooltip; **Open comments** opens the item's comments and marks
   them read. **Options > Workshop page** can count them at start-up while Steam is running (at most every 6 hours).
+- **Gallery images and videos.** A `Gallery` folder in a RimWorld mod (any folder, for custom layouts: `GalleryFolder`)
+  holds PNG, JPG or GIF images and a `videos.txt` of YouTube links. After each upload the item's extra images and
+  videos on Steam are made to match it: new ones are added, changed images replaced, ones the folder no longer has
+  removed. The folder is never packaged.
+- **Descriptions in other languages.** A file next to the description file such as `steam_description.german.txt` (or
+  `.de.txt`, `.zh.txt` and other short codes) is sent as that language's description, and a first line `Title: ...` as
+  its title, so players with Steam in that language read the page in it. Only changed translations are sent again.
+- Gallery and translations go through the Steam client like tags. **Update required items, gallery and languages** on
+  the right-click menu sends them without uploading, and **Options > Uploading** can turn them off.
 - **Dependency updates are pointed out.** The upload confirmation says when a Workshop item a mod needs (Harmony, a
   framework) was updated on Steam after the mod's own last upload, so it can be tried in game with it first.
 - **Shared description footer** (Options > Workshop page > Description, per mods folder): text such as Discord, Ko-fi

@@ -105,6 +105,6 @@ public sealed class RequiredItemsTests : IDisposable
             Path.Combine(_work, "uploaded.json"), temp, pageExtras: (_, _) => Task.FromResult(ExtrasResult.Fail("Steam is not running.")));
 
         Assert.Equal(Cli.ExitOk, code);
-        Assert.Contains("the required items were not all set: Steam is not running.", sw.ToString());
+        Assert.Contains("the Workshop page was not fully updated: Steam is not running.", sw.ToString());
     }
 }

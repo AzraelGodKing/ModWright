@@ -142,6 +142,13 @@ public sealed class ProjectConfig
     /// </summary>
     public string GameModsFolder { get; set; } = "";
 
+    /// <summary>
+    /// A folder in each mod (one name, such as "Gallery") whose images, and YouTube links in its videos.txt, become the
+    /// item's extra preview images and videos through the Steam client (<see cref="WorkshopExtras"/>). It is never
+    /// packaged. Empty = no gallery.
+    /// </summary>
+    public string GalleryFolder { get; set; } = "";
+
     /// <summary>Names or *.ext patterns left out of the package in copy mode.</summary>
     public string[] Exclude { get; set; } = { ".git", ".vs", "obj", "bin", "*.pdb" };
 
@@ -198,6 +205,7 @@ public sealed class ProjectConfig
             Tags = new[] { "Mod" },
             VersionTagsKey = "ModMetaData/supportedVersions/li",
             GameModsFolder = "Mods",
+            GalleryFolder = "Gallery",
             Source = "built-in RimWorld layout"
         },
         // Modelled on a downloaded Workshop item: a folder holding "Map" (JSON course file), Preview.jpg and optional Additional0.jpg...
@@ -244,7 +252,7 @@ public sealed class ProjectConfig
         ChangelogFirstLineIsVersion = p.ChangelogFirstLineIsVersion; ChangelogByVersion = p.ChangelogByVersion;
         WorkshopIdFile = p.WorkshopIdFile; WorkshopIdKey = p.WorkshopIdKey; Preview = p.Preview; SteamDescriptionFile = p.SteamDescriptionFile;
         BuiltFiles = p.BuiltFiles; RequiredFiles = p.RequiredFiles; UseGitArchive = p.UseGitArchive; Exclude = p.Exclude;
-        Tags = p.Tags; VersionTagsKey = p.VersionTagsKey; GameModsFolder = p.GameModsFolder;
+        Tags = p.Tags; VersionTagsKey = p.VersionTagsKey; GameModsFolder = p.GameModsFolder; GalleryFolder = p.GalleryFolder;
         Source = p.Source;
     }
 
