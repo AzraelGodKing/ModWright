@@ -71,6 +71,8 @@ public sealed class MainForm : Form
     readonly CheckBox _oneSession = new() { AutoSize = true, Text = "Upload several mods with one SteamCMD login (faster batches)" };
     readonly CheckBox _notifyDone = new() { AutoSize = true, Text = "Show a Windows notification when an upload ends while the window is in the background" };
     readonly CheckBox _verifyUploads = new() { AutoSize = true, Text = "Check each upload by downloading it back from Steam and comparing the files" };
+    readonly CheckBox _steamBack = new() { AutoSize = true, Text = "Bring the Steam client back &online after uploading (restarts it when SteamCMD's login took its place)" };
+    Button _restartSteam = null!;
     readonly CheckBox _watchBuilds = new() { AutoSize = true, Text = "At start-up, say when the game gets a new build or beta (checked at most every 12 hours)" };
     /// <summary>The game's Steam branches, once SteamCMD has listed them this session.</summary>
     List<GameBranch>? _branches;
@@ -855,7 +857,10 @@ public sealed class MainForm : Form
         _notifyDone.CheckedChanged += (_, _) => { _s.NotifyWhenDone = _notifyDone.Checked; _s.Save(); };
         _verifyUploads.Checked = _s.VerifyUploads;
         _verifyUploads.CheckedChanged += (_, _) => { _s.VerifyUploads = _verifyUploads.Checked; _s.Save(); };
+        _steamBack.Checked = _s.SteamBackOnline;
+        _steamBack.CheckedChanged += (_, _) => { _s.SteamBackOnline = _steamBack.Checked; _s.Save(); };
         _webhookTest = Btn("Send t&est", async (_, _) => await TestWebhookAsync());
+        _restartSteam = Btn("&Restart Steam now", async (_, _) => await RestartSteamNowAsync());
         AddSection("Uploading", "What runs before, during and after an upload.",
             Card("Before uploading", new Control[] { FolderTag() },
                 Row(Lbl("&Build step"), _buildCmd),
@@ -883,6 +888,11 @@ public sealed class MainForm : Form
                 Hint("Also through the Steam client. The gallery folder (RimWorld: Gallery in the mod, never packaged) holds PNG, JPG or GIF images and a videos.txt " +
                      "of YouTube links; the page's extra images and videos are made to match it. A file such as steam_description.german.txt (or .de.txt) " +
                      "is the German description, and a first line \"Title: ...\" sets the German title. Only changed images and translations are sent again."),
+                _steamBack,
+                Row(_restartSteam),
+                Hint("Steam lets an account sign in once at a time, so SteamCMD's login leaves the Steam client offline. When Steam was running before the " +
+                     "upload, it is closed and started again in the tray, and its saved login (\"Remember me\") signs it back in, before the tags and page " +
+                     "steps above and once the batch ends. Not while a game is running, and not when Steam signs in as another account."),
                 Hint("Upload to test items (next to Dry run) sends each ticked mod to its own private copy on Steam, created on first use and kept in " +
                      ModInfo.TestIdFile + " in the mod folder (keep it out of git). Subscribers get nothing; page changes and records wait for the real upload.")),
             Card("After uploading", new Control[] { FolderTag() },
@@ -2555,6 +2565,21 @@ public sealed class MainForm : Form
         return fresh;
     }
 
+    /// <summary>Options > Uploading > Restart Steam now: brings the Steam client back online after anything SteamCMD logged in for.</summary>
+    async Task RestartSteamNowAsync()
+    {
+        if (_busy) return;
+        _restartSteam.Enabled = false;
+        UseWaitCursor = true;
+        Append("Restarting the Steam client...", LogKind.Note);
+        try
+        {
+            var said = await SteamRestart.RestartAsync(null);
+            Append(said, said.StartsWith("Warning:") ? LogKind.Warn : said.StartsWith("Steam is back") ? LogKind.Ok : LogKind.Note);
+        }
+        finally { _restartSteam.Enabled = !_busy; UseWaitCursor = false; }
+    }
+
     /// <summary>At start-up, when turned on and Steam is running: count comments, at most every six hours.</summary>
     async Task StartupCommentsAsync()
     {
@@ -2836,7 +2861,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _tsTeam, _tsCommunity, _tsCategories, _tsToken, _tsAfter, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _groups, _afterCmd, _pushTags, _keepPackages, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _watchBuilds })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _tsTeam, _tsCommunity, _tsCategories, _tsToken, _tsAfter, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _groups, _afterCmd, _pushTags, _keepPackages, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _steamBack, _restartSteam, _watchBuilds })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -3596,6 +3621,8 @@ public sealed class MainForm : Form
             await RefreshAllAsync();
         }
 
+        // Looked at before SteamCMD's login check, since that login is what takes the Steam client's place.
+        var steamBack = !dry && _s.SteamBackOnline ? SteamRestart.Prepare(_s.Account) : null;
         if (!dry && !await LoginFlowAsync(trustRecent: true)) { Append("Stopped: not logged in to Steam.", LogKind.Warn); return; }
 
         var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account)
@@ -3611,6 +3638,7 @@ public sealed class MainForm : Form
             SteamCheck = Publisher.LiveSteamCheck,
             TagUpdater = _s.UpdateTags ? WorkshopTags.UpdateOnSteamAsync : null,
             PageExtras = _s.UpdateRequired || _s.UpdatePageExtras ? (r, ct) => WorkshopExtras.ApplyOnSteamAsync(r, ct) : null,
+            SteamClientBack = steamBack,
             SetRequired = _s.UpdateRequired,
             SetGalleryAndLanguages = _s.UpdatePageExtras,
             Credit = _s.UploadCredit,

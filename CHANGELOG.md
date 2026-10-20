@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Steam comes back online after uploading.** Steam lets an account sign in once at a time, so SteamCMD's login left
+  the Steam client disconnected until you restarted it. When Steam was running before an upload, it is now closed and
+  started again in the tray, where its saved login signs it back in: before the tags, required items, gallery and
+  translations that go through it, and once the batch ends. It is left alone while a game is running or when Steam
+  signs in as a different account. On by default (Options > Uploading), also for command-line and scheduled uploads;
+  **Restart Steam now** there does it by hand, and Check setup warns when Steam has no saved login to sign back in with.
+
 ## 1.4.1
 
 - **What's new reads properly.** The window that shows the changes after an update (and from Options > About) broke

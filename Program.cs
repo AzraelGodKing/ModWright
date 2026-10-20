@@ -144,7 +144,7 @@ static class Program
                 descriptionFooter: settings.FooterFor(settings.RepoPath),
                 pageExtras: settings.UpdateRequired || settings.UpdatePageExtras ? (r, token) => WorkshopExtras.ApplyOnSteamAsync(r, token) : null,
                 pageExtrasPage: settings.UpdatePageExtras, pageExtrasRequired: settings.UpdateRequired,
-                settings: settings).GetAwaiter().GetResult();
+                settings: settings, prepareSteamBack: settings.SteamBackOnline ? account => SteamRestart.Prepare(account) : null).GetAwaiter().GetResult();
         }
         finally { runLog?.Dispose(); }
     }

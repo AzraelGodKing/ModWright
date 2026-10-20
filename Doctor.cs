@@ -24,6 +24,8 @@ public static class Doctor
         public Func<string, bool> ToolRuns { get; init; } = DefaultToolRuns;
         /// <summary>True when the Steam client is running.</summary>
         public Func<bool> SteamRunning { get; init; } = DefaultSteamRunning;
+        /// <summary>The Steam client's state, for bringing it back online after uploads.</summary>
+        public Func<SteamRestart.State> SteamState { get; init; } = SteamRestart.ReadState;
         /// <summary>Free bytes on the drive that holds a folder.</summary>
         public Func<string, long?> FreeBytes { get; init; } = DefaultFreeBytes;
         /// <summary>The real login check (SteamCMD with the saved login); null skips it.</summary>
@@ -91,6 +93,16 @@ public static class Doctor
                 Add(probes.SteamRunning() ? CheckLevel.Ok : CheckLevel.Warn, "Steam client",
                     probes.SteamRunning() ? "running (tags, required items, gallery and translations go through it)."
                                           : "not running: tags, required items, gallery and translations are set through it after each upload, so start Steam as the mods' owner first.");
+            if (s.SteamBackOnline && probes.SteamState() is { Running: true } steam)
+            {
+                if (steam.RememberedAccount.Length == 0)
+                    Add(CheckLevel.Warn, "Steam restart", "Steam has no saved login, so when it is restarted after an upload it waits for your password. " +
+                        "Sign in to Steam once with \"Remember me\" ticked, or turn off Options > Uploading > Bring the Steam client back online.");
+                else if (account.Length > 0 && !steam.RememberedAccount.Equals(account, StringComparison.OrdinalIgnoreCase))
+                    Add(CheckLevel.Ok, "Steam restart", $"Steam signs in as {steam.RememberedAccount}, not {account}, so uploads do not log it out and it is left alone.");
+                else
+                    Add(CheckLevel.Ok, "Steam restart", $"after an upload, Steam is restarted and signs back in as {steam.RememberedAccount}.");
+            }
             if (s.ThunderstoreAfterUpload(repo) && string.IsNullOrEmpty(s.ThunderstoreToken))
                 Add(CheckLevel.Fail, "Thunderstore", "publishing after each upload is on, but no token is set (Options > Uploading > Thunderstore).");
             if (s.BuildFor(repo) is { Length: > 0 } build) Add(CheckLevel.Ok, "Build step", build);

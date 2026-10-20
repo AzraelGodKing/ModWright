@@ -514,6 +514,12 @@ logged in once in SteamCMD's own window. That account has to own the game.
 | Publish to Thunderstore | Thunderstore token | Thunderstore has its own accounts; Steam is not involved |
 | GitHub Actions upload | Saved, copied into a secret | The runner has no one to type a password, so it reuses the saved login |
 
+Because Steam lets an account sign in once at a time, SteamCMD's login takes the Steam client's place when both use
+the same account, and the client goes offline. With **Options > Uploading > Bring the Steam client back online** (on
+by default), a Steam that was running before the upload is restarted in the tray afterwards and signs back in with its
+saved login ("Remember me"). Using a second Steam account for SteamCMD avoids this altogether, but that account must
+own the game and be able to update the items.
+
 When you need to log in: the first time you upload, download or install, the app opens SteamCMD's window for your
 password and Steam Guard code. Afterwards Steam keeps the login until it expires. When it does (or you change
 your password), the next job that needs it says so and offers to log in again. Anonymous jobs never ask.
