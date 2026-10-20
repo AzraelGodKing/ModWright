@@ -25,8 +25,9 @@ public sealed class RequestForm : Form
     };
     const string AnyArea = "Not sure / other";
 
-    readonly ComboBox _kind = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 280 };
-    readonly ComboBox _area = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
+    // The drop-downs share the row's width, down to these sizes; the window is widened to fit them (see OnLoad).
+    readonly ComboBox _kind = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill, Width = 230, MinimumSize = new Size(230, 0) };
+    readonly ComboBox _area = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill, Width = 160, MinimumSize = new Size(160, 0) };
     readonly Label _areaLabel = new() { Text = "About", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(12, 6, 8, 0) };
     readonly TextBox _summary = new() { Dock = DockStyle.Fill };
     readonly TableLayoutPanel _summaryRow = new() { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Margin = new Padding(0, 4, 0, 0) };
@@ -34,12 +35,15 @@ public sealed class RequestForm : Form
     readonly TextBox _appId = new() { Width = 120 };
     readonly Label _appIdHint = new Label
     {
-        AutoSize = true, MaximumSize = new Size(560, 0), Margin = new Padding(0, 0, 0, 4),
+        AutoSize = true, Margin = new Padding(0, 0, 0, 4),
         Text = "The app ID is the number in the game's store URL, e.g. store.steampowered.com/app/294100/ is 294100."
     }.Role(ThemeRole.Muted);
     readonly TextBox _details = new() { Dock = DockStyle.Fill, Multiline = true, ScrollBars = ScrollBars.Vertical, AcceptsReturn = true, Font = new Font("Consolas", 9f) };
-    readonly Label _intro = new() { AutoSize = true, MaximumSize = new Size(560, 0) };
-    readonly Label _note = new Label { AutoSize = true, MaximumSize = new Size(560, 0) }.Role(ThemeRole.Muted);
+    readonly Label _intro = new() { AutoSize = true };
+    readonly Label _note = new Label { AutoSize = true }.Role(ThemeRole.Muted);
+    readonly TableLayoutPanel _root = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 8, Padding = new Padding(12) };
+    readonly TableLayoutPanel _type = new() { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 4, Margin = new Padding(0, 8, 0, 0) };
+    readonly FlowLayoutPanel _buttons = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
     readonly string _modFileNames;
     readonly bool _direct;
     readonly HashSet<string> _templates = new();
@@ -49,7 +53,7 @@ public sealed class RequestForm : Form
         _direct = RequestSender.Available; // this build can send requests itself (no browser, no login)
         _modFileNames = modFileNames;
         Text = "Send a request";
-        Width = 640; Height = 600; MinimumSize = new Size(540, 520);
+        Width = 720; Height = 600; MinimumSize = new Size(560, 520);
         StartPosition = FormStartPosition.CenterParent;
         Font = new Font("Segoe UI", 9.5f);
         FormBorderStyle = FormBorderStyle.Sizable;
@@ -62,13 +66,18 @@ public sealed class RequestForm : Form
         foreach (var (_, text) in RequestSender.Areas) _area.Items.Add(text);
         _area.SelectedIndex = 0;
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 8, Padding = new Padding(12) };
+        var root = _root;
+        // One column as wide as the window, so no row can push past its right edge and be cut off.
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (var i = 0; i < 8; i++) root.RowStyles.Add(i == 5 ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.AutoSize));
 
         root.Controls.Add(_intro, 0, 0);
 
-        var type = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 4, Margin = new Padding(0, 8, 0, 0) };
-        for (var i = 0; i < 4; i++) type.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        var type = _type;
+        type.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        type.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
+        type.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        type.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
         type.Controls.Add(new Label { Text = "Request", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 8, 0) });
         type.Controls.Add(_kind);
         type.Controls.Add(_areaLabel);
@@ -98,12 +107,13 @@ public sealed class RequestForm : Form
         var open = new Button { Text = _direct ? "Send request" : "Open Linear issue", AutoSize = true, Padding = new Padding(8, 2, 8, 2) }.Role(ThemeRole.Accent);
         var copy = new Button { Text = "Copy text instead", AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
         var cancel = new Button { Text = "Cancel", AutoSize = true, Padding = new Padding(8, 2, 8, 2), DialogResult = DialogResult.Cancel };
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
+        var buttons = _buttons;
         buttons.Controls.Add(cancel);
         buttons.Controls.Add(open);
         buttons.Controls.Add(copy);
         root.Controls.Add(buttons, 0, 7);
         Controls.Add(root);
+        root.SizeChanged += (_, _) => WrapText();
         CancelButton = cancel;
         AcceptButton = null;
 
@@ -117,6 +127,29 @@ public sealed class RequestForm : Form
             try { Clipboard.SetText(BuildBody(layoutName)); MessageBox.Show(this, "Copied. Paste it into a new issue in Linear.", Text); }
             catch (Exception e) { MessageBox.Show(this, "Could not copy: " + e.Message, Text); }
         };
+    }
+
+    /// <summary>
+    /// After scaling for the screen and text size: widens the window until the request row and the buttons fit,
+    /// so nothing is cut off at the right, and makes that the smallest it can be dragged to.
+    /// </summary>
+    protected override void OnLoad(EventArgs e)
+    {
+        var chrome = Width - ClientSize.Width + _root.Padding.Horizontal;
+        var need = Math.Max(_type.GetPreferredSize(Size.Empty).Width + _type.Margin.Horizontal, _buttons.GetPreferredSize(Size.Empty).Width + _buttons.Margin.Horizontal) + chrome;
+        var screen = Screen.FromControl(this).WorkingArea.Width;
+        need = Math.Min(need, screen);
+        if (MinimumSize.Width < need) MinimumSize = new Size(need, MinimumSize.Height);
+        if (Width < need) Width = need;
+        WrapText();
+        base.OnLoad(e); // after the resize, so the window is centred at its final size
+    }
+
+    /// <summary>Wraps the explanations at the window's width instead of a fixed one.</summary>
+    void WrapText()
+    {
+        var width = Math.Max(100, _root.ClientSize.Width - _root.Padding.Horizontal - 4);
+        foreach (var l in new[] { _intro, _note, _appIdHint }) l.MaximumSize = new Size(width, 0);
     }
 
     RequestSender.RequestKind Kind => Kinds[Math.Max(0, _kind.SelectedIndex)].kind;

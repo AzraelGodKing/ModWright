@@ -263,6 +263,18 @@ static class Program
                 Snap(new WhatsNewForm("Updated from 1.3.8 to 1.4.0. Here is what changed:", WhatsNew.Between(WhatsNew.BuiltIn(), "1.3.7", UpdateCheck.CurrentVersion)), Path.Combine(args[sh + 1], $"whatsnew{suffix}.png"));
                 Snap(new ShortcutsForm(), Path.Combine(args[sh + 1], $"shortcuts{suffix}.png"));
                 Snap(new RequestForm("RimWorld", "294100", "RimWorld", "About/About.xml\r\nAbout/Preview.png\r\nAssemblies/Mod.dll"), Path.Combine(args[sh + 1], $"request{suffix}.png"));
+                RequestForm Feature()
+                {
+                    var f = new RequestForm("RimWorld", "294100", "RimWorld", "");
+                    f.Prefill(RequestSender.RequestKind.Feature, "", RequestForm.Template(RequestSender.RequestKind.Feature, ""));
+                    return f;
+                }
+                Snap(Feature(), Path.Combine(args[sh + 1], $"request-feature{suffix}.png"));
+                // The same at 125% text, where the request row used to push past the window's right edge.
+                var scale = Theme.TextScale;
+                Theme.TextScale = 1.25f;
+                try { Snap(Feature(), Path.Combine(args[sh + 1], $"request-feature-125{suffix}.png")); }
+                finally { Theme.TextScale = scale; }
                 var example = new ModInfo { Name = "Example Mod", Folder = "ExampleMod", Dir = Path.Combine(Path.GetTempPath(), "steamcmd_helper_shot_example") };
                 Snap(new WorkshopPageForm(example, "About/steam_description.txt", "[h1]Example Mod[/h1]\nAdds an example to the game."), Path.Combine(args[sh + 1], $"workshop-page{suffix}.png"));
                 var other = new ModInfo { Name = "Other Mod", Folder = "OtherMod", Version = "2.1.0", Dir = Path.Combine(Path.GetTempPath(), "steamcmd_helper_shot_other"), Dirty = true };
