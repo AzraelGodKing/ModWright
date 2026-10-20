@@ -78,6 +78,8 @@ jobs:
         timeout-minutes: 3
         shell: pwsh
         run: |
+          # A 1920x1080 screen, so the wide-window shots (the details panel beside the mod list) fit.
+          try { Set-DisplayResolution -Width 1920 -Height 1080 -Force } catch { "Could not change the screen size: $_" }
           New-Item -ItemType Directory -Force shots | Out-Null
           Start-Process -FilePath publish/SteamCmdHelper.exe -ArgumentList '--shot', "$PWD\shots" -Wait
           Get-ChildItem shots
