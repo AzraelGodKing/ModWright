@@ -8,6 +8,14 @@
   translations that go through it, and once the batch ends. It is left alone while a game is running or when Steam
   signs in as a different account. On by default (Options > Uploading), also for command-line and scheduled uploads;
   **Restart Steam now** there does it by hand, and Check setup warns when Steam has no saved login to sign back in with.
+- **A tidier right-click menu.** The mod list's menu had grown to 18 items in one long list. The everyday ones (Workshop
+  page, version, changelog entry) stay at the top, and the rest are grouped: **On Steam** (open, stats and comments,
+  tags, required items, checking and downloading Steam's copy, game betas), **Package** (preview, upload history, kept
+  packages, shrinking the preview image), **Open**, **Copy** and **Ticked mods**. Ctrl+K still finds every item, named
+  with its group ("Copy: Workshop ID"), and submenus follow the dark or light theme.
+- **The request window fits its contents.** With Report a bug or Suggest a feature picked, the request row was wider
+  than the window, so the summary box, the "About" choice and the Cancel button were cut off at the right, worst with
+  larger text. The window now widens to fit, its drop-downs share the row, and the explanations wrap at its width.
 
 ## 1.4.1
 

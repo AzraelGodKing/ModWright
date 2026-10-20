@@ -523,11 +523,21 @@ public static class Theme
     /// <summary>Right-click menus in the theme's colours.</summary>
     public static void StyleMenu(ToolStrip menu)
     {
+        PaintMenu(menu);
+        Localizer.Apply(menu);
+    }
+
+    static void PaintMenu(ToolStrip menu)
+    {
         menu.Renderer = new ToolStripProfessionalRenderer(new MenuColors(Current)) { RoundedEdges = false };
         menu.BackColor = Current.Surface;
         menu.ForeColor = Current.Text;
-        foreach (ToolStripItem i in menu.Items) i.ForeColor = Current.Text;
-        Localizer.Apply(menu);
+        foreach (ToolStripItem i in menu.Items)
+        {
+            i.ForeColor = Current.Text;
+            // Submenus are menus of their own, so they get the same colours.
+            if (i is ToolStripDropDownItem { HasDropDownItems: true } sub) PaintMenu(sub.DropDown);
+        }
     }
 
     sealed class MenuColors(Palette p) : ProfessionalColorTable

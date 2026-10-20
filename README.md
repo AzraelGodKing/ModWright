@@ -130,7 +130,7 @@ When packaging with git, files in the mod folder that git does not have (ignored
 compared against the package: a `.dll` left out that way stops the upload, since players would get the mod without its
 code, and anything else left out is a warning. The RimWorld layout picks up builds in `Assemblies` and in version
 folders such as `1.6/Assemblies` even when `*.dll` is ignored.
-Right-click a mod and choose **Preview package...** to see every file and its size before uploading.
+Right-click a mod and choose **Package > Preview package...** to see every file and its size before uploading.
 
 Each upload remembers which files it sent (`%LocalAppData%\SteamCmdHelper\manifests`), so the next one of the same item
 says in the log what was added, changed and removed since then, and **Preview package...** marks each file. A package
@@ -199,7 +199,7 @@ The list columns:
   not refused for a missing entry. If you skip it, double-click the row's **Status** to write it later.
 - **Workshop ID**: from the mod's own id file (`About/PublishedFileId.txt` for RimWorld); `0` means the upload creates a new item.
 - **Preview**: a thumbnail of the preview image; a red frame means it is over Steam's 1 MB limit, ✖ that it is
-  missing (hover for the size). Right-click a mod and choose **Shrink preview image under 1 MB** to re-save an
+  missing (hover for the size). Right-click a mod and choose **Package > Shrink preview image under 1 MB** to re-save an
   oversized preview just small enough (the original is kept in `%LocalAppData%\SteamCmdHelper\preview-backups`).
 - **Status**: a badge, followed by the first problem or warning when there is one:
   `Fix` (red, can't be uploaded), `Failed` (red, failed in the last run), `Changed` (amber, Steam has an older
@@ -220,7 +220,7 @@ Players filter the Workshop by tags, such as RimWorld's `Mod` and the game versi
 file has no way to send tags, so after each upload the app sets them through the Steam client instead, the same way
 RimWorld's own uploader does. For RimWorld a mod gets `Mod` plus one tag per `<li>` under `supportedVersions` in
 `About/About.xml` (`1.6.4104` counts as `1.6`). Version tags the mod no longer lists are taken off, and any other tag
-on the item is kept. To fix mods uploaded before this, right-click one and choose **Update Workshop tags**: that sends
+on the item is kept. To fix mods uploaded before this, right-click one and choose **On Steam > Update Workshop tags**: that sends
 only the tags, not the files.
 
 The Steam client has to be running and signed in as the account that owns the mod (and the game), because Steam only
@@ -239,7 +239,7 @@ to send it with the upload. Public and unlisted items are compared with their pa
 PC last sent. **Options > Workshop page** can send it every time without asking, or never. The command line sends it
 only when that is set to **Always send it**.
 
-The same right-click menu has **Upload history...** (every upload of the mod made from this PC: when, which
+The same right-click menu has **Package > Upload history...** (every upload of the mod made from this PC: when, which
 version, and the change note sent) and **Open on Steam** (the item's page in your browser).
 
 ### How change notes look on Steam
@@ -360,7 +360,7 @@ real item: the first time, a private item titled "<name> (test)" is created and 
 nothing, and pending Workshop page changes, the upload history, tags and announcements all wait for the real upload.
 Subscribe to the test item in the game to check the build first. `--test` does the same on the command line.
 
-To roll back a bad update, right-click the mod > **Upload history...**, pick an earlier upload and press **Upload this
+To roll back a bad update, right-click the mod > **Package > Upload history...**, pick an earlier upload and press **Upload this
 version again**. In a git repo with git packaging, the app packages the commit that upload came from (its upload tag
 when **Tag each upload in git** is on, else the newest commit at that time) and sends it with the old change note
 marked as rolled back. Your working folder is not touched; raise the version for the next real update.
@@ -374,9 +374,9 @@ marked as rolled back. Your working folder is not touched; raise the version for
 - **Check each upload** (**Options > Uploading**, off by default; `--verify`): after an upload, the item is downloaded
   again with `workshop_download_item`, the way subscribers get it, and its files are compared with what was sent. A
   difference is a warning in the log. Steam can hand out the previous version for a few minutes after an upload.
-- **Check what Steam hands out** (right-click a mod; `verify <mod>`) does the same at any time, against this PC's last
+- **Check what Steam hands out** (right-click a mod > On Steam; `verify <mod>`) does the same at any time, against this PC's last
   upload of the mod.
-- **Download from Steam...** (right-click a mod; `download <mod|id> --to <folder>`) saves Steam's copy into an empty
+- **Download from Steam...** (right-click a mod > On Steam; `download <mod|id> --to <folder>`) saves Steam's copy into an empty
   folder, for when the local copy is lost or broken. Unlike rolling back, it does not need git.
 - **The account must own the game.** The first time an account uploads for a game, the app reads its licenses with
   `licenses_print` and warns when the game is not among them, since Steam refuses Workshop uploads from accounts that
@@ -385,7 +385,7 @@ marked as rolled back. Your working folder is not touched; raise the version for
   `app_info_print`. At start-up (at most every 12 hours, and only once SteamCMD is installed) the app says in the log
   when the game got a new public build or a beta changed, which is when mods break and supported versions need a bump.
   Turn it off under **Options > SteamCMD**.
-- **Try in a game beta...** (right-click a mod, or **Options > SteamCMD**; `test-install`) installs a separate copy of
+- **Try in a game beta...** (right-click a mod > On Steam, or **Options > SteamCMD**; `test-install`) installs a separate copy of
   the game on any branch with `app_update -beta`, into an empty folder (by default under `%LocalAppData%\SteamCmdHelper\test-installs`).
   With a mod selected, it then puts that mod, packaged as an upload would, and every Workshop item it lists as a
   dependency into the game's mods folder (RimWorld: `Mods`). Start the game's program in that folder to try the mod
@@ -402,7 +402,7 @@ marked as rolled back. Your working folder is not touched; raise the version for
 ### Required items, gallery and other languages
 
 Three more parts of the Workshop page go through the Steam client after an upload, like tags (the client has to be
-running as the mod's owner). Each can be turned off under **Options > Uploading**, and right-click >
+running as the mod's owner). Each can be turned off under **Options > Uploading**, and right-click > On Steam >
 **Update required items, gallery and languages** sends them without uploading.
 
 - **Required items.** The Workshop links in a mod's metadata (RimWorld's `modDependencies` with a `steamWorkshopUrl`)
@@ -418,7 +418,7 @@ running as the mod's owner). Each can be turned off under **Options > Uploading*
 **Options > Workshop page > Description** has a **footer** for the mods folder: it is added to the end of every
 description sent from a description file (with `{name}`, `{id}` and `{game}` filled in), never twice.
 
-**Workshop pages of ticked mods...** (right-click with several mods ticked) finds and replaces text in, or appends a
+**Workshop pages of ticked mods...** (right-click > Ticked mods > Workshop pages, with several mods ticked) finds and replaces text in, or appends a
 line to, every ticked mod's description, and sets their visibility, all sent with their next upload.
 
 ### Checks, stats and new mods
@@ -431,7 +431,7 @@ line to, every ticked mod's description, and sets their visibility, all sent wit
   unclosed BBCode tags in the note or description, and **Preview as on Steam** opens the note as Steam shows it.
 - **Dependency updates.** The upload confirmation says when a Workshop item a mod needs was updated since the mod's
   last upload, so you can test against it first.
-- **Stats and comments...** (right-click) charts subscribers, favourites, views and lifetime subscribers per mod or for
+- **Stats and comments...** (right-click > On Steam) charts subscribers, favourites, views and lifetime subscribers per mod or for
   the whole folder from the daily counts, and shows how many comments are new. Comments are counted through the Steam
   client, on request or at start-up when **Options > Workshop page** says so.
 - **New mod** (Ctrl+N, or the empty list) makes a ready-to-upload folder for the layout. For RimWorld: About.xml with a
@@ -452,7 +452,7 @@ line to, every ticked mod's description, and sets their visibility, all sent wit
   line (`upload ... --repo ...`) as you, with the saved Steam login, so the window need not stay open; the PC must be
   on and you signed in, and if it was off it runs as soon as it can. The same window lists and cancels them. Its
   output goes to the past logs.
-- **Ticked mods, all at once** (right-click with two or more ticked): change their version, or (RimWorld) add a new
+- **Ticked mods, all at once** (right-click > Ticked mods, with two or more ticked): change their version, or (RimWorld) add a new
   game version to `supportedVersions`, copying the newest version folder and adding it to `loadFolders.xml`.
 - A Windows notification says how a run went when the window is in the background (Options > Uploading).
 
@@ -464,8 +464,8 @@ line to, every ticked mod's description, and sets their visibility, all sent wit
   `SCH_WORKSHOP_ID`, `SCH_WORKSHOP_URL`, `SCH_CREATED`, `SCH_APP_ID`, `SCH_COMMIT` and `SCH_NOTE_FILE` (a file with
   the change note as sent). Like the build step it comes from this PC's settings, never from the repo.
 - **Keep a zip of what each upload sent** (Options > Uploading) saves exactly what was sent (the newest 5 per mod); **Uploaded packages**
-  on the right-click menu opens the folder.
-- **Copy the mod list as** Markdown, Steam BBCode or CSV, and **Export CSV** in the history window.
+  on the right-click menu's Package submenu opens the folder.
+- **Copy > The mod list as** Markdown, Steam BBCode or CSV, and **Export CSV** in the history window.
 
 ### Check setup
 
