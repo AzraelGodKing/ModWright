@@ -55,6 +55,7 @@ public sealed class MainForm : Form
     readonly TextBox _packageRef = new() { Width = 200, PlaceholderText = "the checked-out commit", AccessibleName = "Branch or tag to upload from" };
     readonly CheckBox _updateTags = new() { AutoSize = true, Text = "Set Workshop tags after each upload (RimWorld: Mod and each supported version from About.xml)" };
     readonly CheckBox _updateRequired = new() { AutoSize = true, Text = "Set the Workshop page's \"Required items\" from the Workshop links in each mod's metadata (RimWorld: modDependencies)" };
+    readonly CheckBox _updatePageExtras = new() { AutoSize = true, Text = "Send each mod's gallery (images and videos.txt in its gallery folder) and translated descriptions" };
     readonly CheckBox _autoRetry = new() { AutoSize = true, Text = "Try an update once more when Steam is busy or can't be reached (after 30 seconds)" };
     readonly CheckBox _commitIds = new() { AutoSize = true, Text = "Commit a new item's Workshop ID file without asking" };
     readonly CheckBox _oneSession = new() { AutoSize = true, Text = "Upload several mods with one SteamCMD login (faster batches)" };
@@ -592,7 +593,7 @@ public sealed class MainForm : Form
         var copyId = menu.Items.Add("Copy Workshop &ID", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(m.WorkshopId!, "Workshop ID"); });
         var copyLink = menu.Items.Add("Copy Workshop lin&k", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(WorkshopUrl(m), "Workshop link"); });
         var tags = menu.Items.Add("Update Workshop &tags", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await UpdateTagsAsync(m); });
-        var required = menu.Items.Add("Update &required items", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await UpdateRequiredAsync(m); });
+        var required = menu.Items.Add("Update &required items, gallery and languages", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await UpdatePageExtrasAsync(m); });
         menu.Items.Add(new ToolStripSeparator());
         var steamCopy = menu.Items.Add("Check what Steam &hands out", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await CheckSteamCopyAsync(m); });
         var download = menu.Items.Add("&Download from Steam...", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await DownloadFromSteamAsync(m); });
@@ -634,22 +635,33 @@ public sealed class MainForm : Form
         finally { SetBusy(false); _cts.Dispose(); _cts = null; }
     }
 
-    /// <summary>Sets the item's "Required items" on Steam from the mod's metadata, without uploading it.</summary>
-    async Task UpdateRequiredAsync(ModInfo m)
+    /// <summary>
+    /// Sets the item's "Required items", gallery and translated descriptions on Steam from the mod's files, without
+    /// uploading it (each part only when it is turned on in Options).
+    /// </summary>
+    async Task UpdatePageExtrasAsync(ModInfo m)
     {
         if (_busy || m.WorkshopId == null) return;
-        var req = WorkshopExtras.RequiredRequest(_cfg.AppId, m.WorkshopId, Dependencies.Find(m, _cfg));
-        if (req == null) { Append($"{m.Name}: its metadata links no Workshop items it needs, so there are no required items to set.", LogKind.Note); return; }
-        Append($"{m.Name}: setting required items ({(req.Required!.Length == 0 ? "none" : string.Join(", ", req.Required))}) through the Steam client...", LogKind.Note);
+        var req = WorkshopExtras.For(_cfg.AppId, m.WorkshopId, _cfg, m.Dir, _s.UpdateRequired ? Dependencies.Find(m, _cfg) : Array.Empty<string>(), _s.UpdatePageExtras);
+        if (req != null && !_s.UpdateRequired) req.Required = null;
+        if (req == null || req.Required == null && req.Gallery == null && req.Languages == null)
+        {
+            Append($"{m.Name}: nothing to send. Required items come from Workshop links in its metadata" +
+                   (string.IsNullOrWhiteSpace(_cfg.GalleryFolder) ? "" : $", the gallery from its {_cfg.GalleryFolder} folder") +
+                   $", and translations from files like {Path.GetFileNameWithoutExtension(_cfg.SteamDescriptionFile)}.german{Path.GetExtension(_cfg.SteamDescriptionFile)} (unchanged ones are not sent again).", LogKind.Note);
+            return;
+        }
+        Append($"{m.Name}: updating the Workshop page through the Steam client...", LogKind.Note);
         _cts = new CancellationTokenSource();
         SetBusy(true);
         try
         {
             var r = await WorkshopExtras.ApplyOnSteamAsync(req, _cts.Token);
             if (r.RequiredNow != null) WorkshopExtras.Remember(m.WorkshopId, r.RequiredNow);
+            if (r.Ok && r.PageSent) WorkshopExtras.RememberSent(req);
             foreach (var d in r.Done) Append($"{m.Name}: {d}.", LogKind.Ok);
-            if (!r.Ok) Append($"{m.Name}: the required items were not all set: {r.Error}", LogKind.Error);
-            else if (r.Done.Count == 0) Append($"{m.Name}: required items already right.", LogKind.Ok);
+            if (!r.Ok) Append($"{m.Name}: the Workshop page was not fully updated: {r.Error}", LogKind.Error);
+            else if (r.Done.Count == 0) Append($"{m.Name}: the Workshop page is already right.", LogKind.Ok);
         }
         catch (OperationCanceledException) { Append("Cancelled.", LogKind.Warn); }
         finally { SetBusy(false); _cts.Dispose(); _cts = null; }
@@ -708,6 +720,8 @@ public sealed class MainForm : Form
         _updateTags.CheckedChanged += (_, _) => { _s.UpdateTags = _updateTags.Checked; _s.Save(); };
         _updateRequired.Checked = _s.UpdateRequired;
         _updateRequired.CheckedChanged += (_, _) => { _s.UpdateRequired = _updateRequired.Checked; _s.Save(); };
+        _updatePageExtras.Checked = _s.UpdatePageExtras;
+        _updatePageExtras.CheckedChanged += (_, _) => { _s.UpdatePageExtras = _updatePageExtras.Checked; _s.Save(); };
         _oneSession.Checked = _s.OneSession;
         _oneSession.CheckedChanged += (_, _) => { _s.OneSession = _oneSession.Checked; _s.Save(); };
         _verifyUploads.Checked = _s.VerifyUploads;
@@ -733,6 +747,10 @@ public sealed class MainForm : Form
                 _updateRequired,
                 Hint("Also through the Steam client. Players who subscribe are then offered the items the mod needs. Items this app added are taken off when " +
                      "the mod stops listing them; items you added by hand on Steam stay."),
+                _updatePageExtras,
+                Hint("Also through the Steam client. The gallery folder (RimWorld: Gallery in the mod, never packaged) holds PNG, JPG or GIF images and a videos.txt " +
+                     "of YouTube links; the page's extra images and videos are made to match it. A file such as steam_description.german.txt (or .de.txt) " +
+                     "is the German description, and a first line \"Title: ...\" sets the German title. Only changed images and translations are sent again."),
                 Hint("Upload to test items (next to Dry run) sends each ticked mod to its own private copy on Steam, created on first use and kept in " +
                      ModInfo.TestIdFile + " in the mod folder (keep it out of git). Subscribers get nothing; page changes and records wait for the real upload.")),
             Card("After uploading", new Control[] { FolderTag() },
@@ -2450,7 +2468,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _oneSession, _verifyUploads, _watchBuilds })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _watchBuilds })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -3217,7 +3235,9 @@ public sealed class MainForm : Form
             SentDescriptions = DescriptionSync.DefaultFile,
             SteamCheck = Publisher.LiveSteamCheck,
             TagUpdater = _s.UpdateTags ? WorkshopTags.UpdateOnSteamAsync : null,
-            PageExtras = _s.UpdateRequired ? (r, ct) => WorkshopExtras.ApplyOnSteamAsync(r, ct) : null,
+            PageExtras = _s.UpdateRequired || _s.UpdatePageExtras ? (r, ct) => WorkshopExtras.ApplyOnSteamAsync(r, ct) : null,
+            SetRequired = _s.UpdateRequired,
+            SetGalleryAndLanguages = _s.UpdatePageExtras,
             Credit = _s.UploadCredit,
             NoteTemplate = _s.TemplateFor(_s.RepoPath),
             DescriptionFooter = _s.FooterFor(_s.RepoPath),

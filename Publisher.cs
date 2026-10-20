@@ -100,13 +100,20 @@ public sealed class Publisher
     public Func<string, string, string[], CancellationToken, Task<TagResult>>? TagUpdater { get; init; }
 
     /// <summary>
-    /// When set, after each upload the item's "Required items" on Steam are set from the Workshop links in the mod's
-    /// metadata, through the Steam client (<see cref="WorkshopExtras"/>). The second value is the record of what was set.
+    /// When set, after each upload page changes SteamCMD cannot make go through the Steam client (<see cref="WorkshopExtras"/>):
+    /// the "Required items" from the Workshop links in the mod's metadata (<see cref="SetRequired"/>), and the gallery and
+    /// translated descriptions (<see cref="SetGalleryAndLanguages"/>).
     /// </summary>
     public Func<ExtrasRequest, CancellationToken, Task<ExtrasResult>>? PageExtras { get; init; }
 
+    public bool SetRequired { get; init; } = true;
+    public bool SetGalleryAndLanguages { get; init; } = true;
+
     /// <summary>Where <see cref="PageExtras"/> keeps the required items it set; null for the per-user file.</summary>
     public string? RequiredRecord { get; init; }
+
+    /// <summary>Where <see cref="PageExtras"/> remembers the gallery images and translations it sent; null for the per-user file.</summary>
+    public string? SentRecord { get; init; }
 
     /// <summary>
     /// After each successful upload, download the item back with SteamCMD (as a subscriber gets it) and compare it with
@@ -341,7 +348,7 @@ public sealed class Publisher
             // git archive only has what git tracks, so anything ignored (a built .dll above all) would silently stay behind.
             // From another commit the working folder is a different version, so there is nothing to compare with.
             var gitPackaging = _cfg.UseGitArchive && IsGit;
-            if (gitPackaging && !FromRef) report = report with { LeftOut = PackageCheck.LeftOut(m.Dir, report.Files, _cfg.Exclude ?? Array.Empty<string>()) };
+            if (gitPackaging && !FromRef) report = report with { LeftOut = PackageCheck.LeftOut(m.Dir, report.Files, PackageExclude) };
             Packaged?.Invoke(m, report);
             if (report.Files.Count == 0) return (new PublishResult(false, "The package is empty, so the upload would remove every file from the item on Steam."), null);
             var missing = PackageCheck.MissingRequired(report.Files, _cfg.RequiredInPackage());
@@ -489,15 +496,20 @@ public sealed class Publisher
         }
 
         if (PageExtras != null && !TestItems && (m.WorkshopId ?? newId) is { } parent
-            && WorkshopExtras.RequiredRequest(_cfg.AppId, parent, p.Required, RequiredRecord) is { } req)
+            && WorkshopExtras.For(_cfg.AppId, parent, _cfg, m.Dir, SetRequired ? p.Required : Array.Empty<string>(), SetGalleryAndLanguages, RequiredRecord, SentRecord) is { } req)
         {
-            At("Setting required items...", 98);
-            var x = await PageExtras(req, ct);
-            if (x.RequiredNow != null) WorkshopExtras.Remember(parent, x.RequiredNow, RequiredRecord);
-            foreach (var d in x.Done) Say("Workshop page: " + d + ".");
-            if (!x.Ok) Say($"Warning: the upload went through, but the required items were not all set: {x.Error} " +
-                "(\"Update required items\" on the mod's right-click menu tries again without uploading.)");
-            else if (x.Done.Count == 0) Say("Required items already right.");
+            if (!SetRequired) req.Required = null;
+            if (req.Required != null || req.Gallery != null || req.Languages != null)
+            {
+                At("Updating the Workshop page...", 98);
+                var x = await PageExtras(req, ct);
+                if (x.RequiredNow != null) WorkshopExtras.Remember(parent, x.RequiredNow, RequiredRecord);
+                if (x.Ok && x.PageSent) WorkshopExtras.RememberSent(req, SentRecord);
+                foreach (var d in x.Done) Say("Workshop page: " + d + ".");
+                if (!x.Ok) Say($"Warning: the upload went through, but the Workshop page was not fully updated: {x.Error} " +
+                    "(\"Update required items, gallery and languages\" on the mod's right-click menu tries again without uploading.)");
+                else if (x.Done.Count == 0) Say("Workshop page extras already right.");
+            }
         }
 
         if (VerifyUploads && (m.WorkshopId ?? newId) is { } check) await VerifyAsync(m, check, p.Report.Files, p.Downloaded, ct);
@@ -676,8 +688,10 @@ public sealed class Publisher
         }
         else
         {
-            CopyDir(m.Dir, stage, _cfg.Exclude ?? Array.Empty<string>());
+            CopyDir(m.Dir, stage, PackageExclude);
         }
+        // The gallery is for the Workshop page, not for players.
+        if ((_cfg.GalleryFolder ?? "").Trim() is { Length: > 0 } gallery && Directory.Exists(Path.Combine(stage, gallery))) Directory.Delete(Path.Combine(stage, gallery), true);
 
         // Build outputs usually are not tracked by git, so take them from the working tree. From another commit, ones
         // that commit has are kept; the working tree's would belong to different code.
@@ -695,6 +709,9 @@ public sealed class Publisher
             }
         }
     }
+
+    /// <summary>The layout's Exclude list plus the gallery folder.</summary>
+    string[] PackageExclude => (_cfg.Exclude ?? Array.Empty<string>()).Concat((_cfg.GalleryFolder ?? "").Trim() is { Length: > 0 } g ? new[] { g } : Array.Empty<string>()).ToArray();
 
     static void CopyDir(string src, string dst, string[] exclude)
     {

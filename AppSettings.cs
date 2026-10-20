@@ -58,6 +58,8 @@ public sealed class AppSettings
     public bool UpdateTags { get; set; } = true;
     /// <summary>After an upload, set the item's "Required items" on Steam from the Workshop links in the mod's metadata.</summary>
     public bool UpdateRequired { get; set; } = true;
+    /// <summary>After an upload, send the mod's gallery folder and translated descriptions through the Steam client.</summary>
+    public bool UpdatePageExtras { get; set; } = true;
     /// <summary>Try an update once more after a short wait when Steam was busy or could not be reached.</summary>
     public bool AutoRetry { get; set; } = true;
     /// <summary>Upload a batch with one SteamCMD login instead of one SteamCMD run per mod.</summary>

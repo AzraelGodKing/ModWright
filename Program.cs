@@ -142,7 +142,8 @@ static class Program
                 oneSession: settings.OneSession, verifyUploads: settings.VerifyUploads,
                 ownership: (account, appId, token) => SteamCmd.OwnsAsync(settings.EffectiveSteamCmd, account, appId, token),
                 descriptionFooter: settings.FooterFor(settings.RepoPath),
-                pageExtras: settings.UpdateRequired ? (r, token) => WorkshopExtras.ApplyOnSteamAsync(r, token) : null).GetAwaiter().GetResult();
+                pageExtras: settings.UpdateRequired || settings.UpdatePageExtras ? (r, token) => WorkshopExtras.ApplyOnSteamAsync(r, token) : null,
+                pageExtrasPage: settings.UpdatePageExtras, pageExtrasRequired: settings.UpdateRequired).GetAwaiter().GetResult();
         }
         finally { runLog?.Dispose(); }
     }
