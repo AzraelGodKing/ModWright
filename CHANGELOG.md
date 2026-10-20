@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.0
 
 - **Steam comes back online after uploading.** Steam lets an account sign in once at a time, so SteamCMD's login left
   the Steam client disconnected until you restarted it. When Steam was running before an upload, it is now closed and
