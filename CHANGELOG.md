@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Thunderstore too.** For BepInEx games, a mod whose folder has Thunderstore's manifest.json, icon.png and README.md
+  can be published to Thunderstore from the same package as Steam (right-click > **Publish to Thunderstore**, or
+  after every Steam upload). The version to upload goes into the packaged manifest, what Thunderstore would refuse
+  (name, version, description length, icon size, dependency format) is named first, and a version Thunderstore
+  already has is skipped. Team, community and categories are set per mods folder in **Options > Uploading**; the
+  service account token is kept encrypted for your Windows user.
 - **The app in German, Russian and Chinese.** Options > Appearance > Language switches the windows' buttons, labels,
   menus and tooltips to Deutsch, Русский or 简体中文 from the next start (log lines and messages stay in English).
   **Make a translation file** writes every text the windows showed, filled in where the language has it, so a

@@ -59,6 +59,8 @@ public sealed class Publisher
 
     /// <summary>Raised once a mod is packaged, with what the package holds (also used by "Preview package").</summary>
     public event Action<ModInfo, PackageReport>? Packaged;
+    /// <summary>The staged package's folder and the version it carries, while the folder still exists (Thunderstore zips it from here).</summary>
+    public event Action<ModInfo, string, string>? StageReady;
 
     /// <summary>
     /// When set, each upload's file list is kept in this folder (<see cref="PackageDiffs"/>) and the next package of the
@@ -350,6 +352,7 @@ public sealed class Publisher
             var gitPackaging = _cfg.UseGitArchive && IsGit;
             if (gitPackaging && !FromRef) report = report with { LeftOut = PackageCheck.LeftOut(m.Dir, report.Files, PackageExclude) };
             Packaged?.Invoke(m, report);
+            StageReady?.Invoke(m, stage, version);
             if (report.Files.Count == 0) return (new PublishResult(false, "The package is empty, so the upload would remove every file from the item on Steam."), null);
             var missing = PackageCheck.MissingRequired(report.Files, _cfg.RequiredInPackage());
             if (missing.Count > 0)

@@ -148,6 +148,37 @@ public sealed class AppSettings
         if (!string.IsNullOrWhiteSpace(value)) map[Key(repo)] = value.Trim();
     }
 
+    /// <summary>Thunderstore team (namespace), community and category slugs, per mods folder.</summary>
+    public Dictionary<string, string> ThunderstoreTeams { get; set; } = new();
+    public Dictionary<string, string> ThunderstoreCommunities { get; set; } = new();
+    public Dictionary<string, string> ThunderstoreCategories { get; set; } = new();
+    /// <summary>Mods folders whose mods with a manifest.json are published to Thunderstore after each Steam upload.</summary>
+    public List<string> ThunderstoreRepos { get; set; } = new();
+    /// <summary>The Thunderstore service account token, encrypted for this Windows user (DPAPI), so it is useless on another PC.</summary>
+    public string ThunderstoreToken { get; set; } = "";
+
+    /// <summary>Where this folder's mods go on Thunderstore; null until a team and community are set.</summary>
+    public ThunderstoreTarget? ThunderstoreFor(string repo)
+    {
+        var team = ValueFor(ThunderstoreTeams, repo);
+        var community = ValueFor(ThunderstoreCommunities, repo);
+        return team.Length == 0 || community.Length == 0 ? null : new ThunderstoreTarget(team, community, Thunderstore.Categories(ValueFor(ThunderstoreCategories, repo)));
+    }
+
+    public string ThunderstoreTeamFor(string repo) => ValueFor(ThunderstoreTeams, repo);
+    public string ThunderstoreCommunityFor(string repo) => ValueFor(ThunderstoreCommunities, repo);
+    public string ThunderstoreCategoriesFor(string repo) => ValueFor(ThunderstoreCategories, repo);
+    public bool ThunderstoreAfterUpload(string repo) => ThunderstoreRepos.Any(r => Same(r, repo));
+
+    public void SetThunderstore(string repo, string team, string community, string categories, bool afterUpload)
+    {
+        SetValue(ThunderstoreTeams, repo, team);
+        SetValue(ThunderstoreCommunities, repo, community.Trim().ToLowerInvariant());
+        SetValue(ThunderstoreCategories, repo, categories);
+        ThunderstoreRepos.RemoveAll(r => Same(r, repo));
+        if (afterUpload) ThunderstoreRepos.Add(Key(repo));
+    }
+
     public bool GitHubReleasesFor(string repo) => GitHubReleaseRepos.Any(r => Same(r, repo));
 
     public void SetGitHubReleases(string repo, bool on)
@@ -186,7 +217,7 @@ public sealed class AppSettings
         var all = new List<string> { RepoPath };
         if (recent) all.AddRange(RecentRepos);
         all.AddRange(Profiles.Select(p => p.RepoPath));
-        foreach (var map in new[] { NoteTemplates, DescriptionFooters, BuildCommands, PackageRefs, DiscordWebhooks }) all.AddRange(map.Keys);
+        foreach (var map in new[] { NoteTemplates, DescriptionFooters, BuildCommands, PackageRefs, DiscordWebhooks, ThunderstoreTeams, ThunderstoreCommunities, ThunderstoreCategories }) all.AddRange(map.Keys);
         all.AddRange(GitHubReleaseRepos);
         return all.Where(f => !string.IsNullOrWhiteSpace(f)).Select(Key).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
@@ -211,6 +242,7 @@ public sealed class AppSettings
                 map[to] = v;
             }
         for (var i = 0; i < GitHubReleaseRepos.Count; i++) GitHubReleaseRepos[i] = Move(GitHubReleaseRepos[i]);
+        for (var i = 0; i < ThunderstoreRepos.Count; i++) ThunderstoreRepos[i] = Move(ThunderstoreRepos[i]);
     }
 
     /// <summary>Takes every saved value from <paramref name="other"/> (after an import), keeping this object.</summary>
