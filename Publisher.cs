@@ -54,6 +54,20 @@ public sealed class Publisher
         return MarkdownToSteam && ChangeNotes.IsMarkdown(_cfg.Changelog) ? ChangeNotes.MarkdownToBBCode(shaped) : shaped;
     }
 
+    /// <summary>
+    /// The change note exactly as Steam gets it: <see cref="Shape"/>, then the credit line when <see cref="Credit"/> is
+    /// on, cut to fit Steam's limit with a pointer to the full changelog.
+    /// </summary>
+    public string AsSent(ModInfo m, string notes)
+    {
+        var shaped = Shape(m, notes);
+        var sent = Credit ? shaped + (shaped.Length > 0 ? "\n\n" : "") + CreditLine : shaped;
+        if (sent.Length > 7900)
+            sent = shaped.Substring(0, 7900 - (Credit ? CreditLine.Length + 2 : 0)) + "\n[i]...see the full changelog on the project page.[/i]"
+                + (Credit ? "\n" + CreditLine : "");
+        return sent;
+    }
+
     /// <summary>The line <see cref="Credit"/> adds, in Steam's BBCode, linking to the newest release.</summary>
     public const string CreditLine = "[i]Uploaded via [url=" + UpdateCheck.ReleasesPage + "/latest]SteamCMD Helper[/url][/i]";
 
@@ -338,11 +352,7 @@ public sealed class Publisher
                 Say($"Packaged {m.Name} from {GitRef} (version {(version.Length > 0 ? version : "unknown")}).");
             }
             // The template's {version} is the version sent, which differs from the mod's for an older git ref.
-            var shaped = Shape(version == m.Version ? m : new ModInfo { Name = m.Name, Version = version }, notes);
-            var sent = Credit ? shaped + (shaped.Length > 0 ? "\n\n" : "") + CreditLine : shaped;
-            if (sent.Length > 7900)
-                sent = shaped.Substring(0, 7900 - (Credit ? CreditLine.Length + 2 : 0)) + "\n[i]...see the full changelog on the project page.[/i]"
-                    + (Credit ? "\n" + CreditLine : "");
+            var sent = AsSent(version == m.Version ? m : new ModInfo { Name = m.Name, Version = version }, notes);
 
             foreach (var broken in SteamText.Problems(sent)) Say($"Warning: the change note {broken}, so its formatting will look broken on Steam.");
 

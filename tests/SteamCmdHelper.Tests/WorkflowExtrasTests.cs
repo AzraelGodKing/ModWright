@@ -63,4 +63,40 @@ public sealed class WorkflowExtrasTests : IDisposable
         Assert.NotNull(Cli.Parse(new[] { "list", "--group", "Core" }).Error);
         Assert.Null(Cli.Parse(new[] { "upload", "--group", "Core" }).Error);
     }
+
+    // ------------------------------------------------------------ command palette
+
+    static PaletteEntry E(string name, string where = "") => new(name, where, "", () => { });
+
+    [Fact]
+    public void Palette_finds_actions_by_word_starts_text_and_letters()
+    {
+        var all = new[] { E("Tick all", "Upload"), E("Tick changed", "Upload"), E("Download from Steam", "My Mod"), E("Options: Appearance"), E("Upload history", "My Mod") };
+        Assert.Equal("Tick changed", PaletteSearch.Rank("tick ch", all)[0].Name);
+        Assert.Equal("Download from Steam", PaletteSearch.Rank("steam down", all)[0].Name);
+        Assert.Equal("Download from Steam", PaletteSearch.Rank("dlst", all)[0].Name);
+        Assert.Equal("Options: Appearance", PaletteSearch.Rank("appear", all)[0].Name);
+        Assert.Empty(PaletteSearch.Rank("zzz", all));
+        Assert.Equal(all.Length, PaletteSearch.Rank("", all).Count);
+        Assert.Equal("Tick changed", PaletteSearch.Clean("Tick c&hanged"));
+        Assert.Equal("Groups", PaletteSearch.Clean("Groups ▾"));
+        Assert.Equal("Save as", PaletteSearch.Clean("Sa&ve as..."));
+    }
+
+    // ------------------------------------------------------------ the note as Steam gets it
+
+    [Fact]
+    public void As_sent_applies_template_markdown_credit_and_length()
+    {
+        var cfg = TestConfig.RimWorld(c => c.Changelog = "CHANGELOG.md");
+        var pub = new Publisher(_repo.Root, cfg, "", "") { NoteTemplate = "{version}\n{note}", MarkdownToSteam = true, Credit = true };
+        var sent = pub.AsSent(new ModInfo { Name = "M", Version = "1.2.3" }, "- **Fixed** it");
+        Assert.StartsWith("1.2.3\n[list]\n[*][b]Fixed[/b] it\n[/list]", sent);
+        Assert.EndsWith(Publisher.CreditLine, sent);
+        var big = pub.AsSent(new ModInfo { Name = "M", Version = "1" }, new string('x', 9000));
+        Assert.True(big.Length <= ConfirmUploadForm_MaxNote);
+        Assert.Contains("see the full changelog", big);
+    }
+
+    const int ConfirmUploadForm_MaxNote = 8000;
 }

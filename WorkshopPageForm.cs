@@ -49,7 +49,23 @@ public sealed class WorkshopPageForm : Form
         descPanel.Controls.Add(_description, 0, 0); descPanel.SetColumnSpan(_description, 2);
         var fromFile = new LinkLabel { Text = "Use " + descriptionFile, AutoSize = true, Anchor = AnchorStyles.Left, Enabled = currentDescription != null }.Role(ThemeRole.Keep);
         fromFile.LinkClicked += (_, _) => { if (currentDescription != null) _description.Text = Crlf(currentDescription); };
-        descPanel.Controls.Add(fromFile, 0, 1);
+        var asOnSteam = new LinkLabel { Text = "Preview as on Steam", AutoSize = true, Margin = new Padding(12, 3, 3, 3) }.Role(ThemeRole.Keep);
+        asOnSteam.LinkClicked += (_, _) =>
+        {
+            try
+            {
+                var problems = SteamText.Problems(_description.Text);
+                var file = SteamText.WritePreview(_title.Text.Trim().Length > 0 ? _title.Text.Trim() : mod.Name, _description.Text,
+                    problems.Count > 0 ? "Formatting: the description " + string.Join("; ", problems) : null);
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(file) { UseShellExecute = true });
+            }
+            catch (Exception ex) { MessageBox.Show(this, "Could not open the preview: " + ex.Message, Text); }
+        };
+        var descLinks = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty, Anchor = AnchorStyles.Left };
+        fromFile.Margin = new Padding(0, 3, 3, 3);
+        descLinks.Controls.Add(fromFile);
+        descLinks.Controls.Add(asOnSteam);
+        descPanel.Controls.Add(descLinks, 0, 1);
         descPanel.Controls.Add(_count, 1, 1);
 
         // A new preview image: the mod's own preview file, or any image picked here.
