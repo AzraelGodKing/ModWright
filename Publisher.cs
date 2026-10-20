@@ -125,6 +125,16 @@ public sealed class Publisher
     public bool SetRequired { get; init; } = true;
     public bool SetGalleryAndLanguages { get; init; } = true;
 
+    /// <summary>
+    /// When set, brings the Steam client back online after SteamCMD's login took its place (<see cref="SteamRestart"/>):
+    /// before the first step after an upload that goes through the client, and once a batch ends
+    /// (<see cref="BringSteamBackAsync"/>). Returns a line for the log. Null leaves the Steam client alone.
+    /// </summary>
+    public Func<CancellationToken, Task<string?>>? SteamClientBack { get; init; }
+
+    /// <summary>SteamCMD has logged in since the Steam client was last brought back.</summary>
+    bool _steamTaken;
+
     /// <summary>Where <see cref="PageExtras"/> keeps the required items it set; null for the per-user file.</summary>
     public string? RequiredRecord { get; init; }
 
@@ -195,6 +205,7 @@ public sealed class Publisher
         {
             var started = DateTimeOffset.UtcNow;
             var output = new List<string>();
+            _steamTaken = true;
             var exit = await RunProcAsync(_steamCmd,
                 SteamCmd.FailFast.Concat(new[] { "+login", _account, "+workshop_build_item", p!.VdfPath, "+quit" }),
                 Path.GetDirectoryName(_steamCmd) ?? "",
@@ -266,6 +277,7 @@ public sealed class Publisher
             var gate = new object();
             var started = DateTimeOffset.UtcNow;
             starting?.Invoke(ready[0].Index);
+            _steamTaken = true;
             var exit = await RunProcAsync(_steamCmd, args, Path.GetDirectoryName(_steamCmd) ?? "", line =>
             {
                 Say(line);
@@ -463,6 +475,18 @@ public sealed class Publisher
     }
 
     /// <summary>
+    /// Brings the Steam client back online (<see cref="SteamClientBack"/>) when SteamCMD has logged in since it was last
+    /// brought back. Called before each step that goes through the client, and by <see cref="BatchUpload"/> at the end.
+    /// </summary>
+    public async Task BringSteamBackAsync(CancellationToken ct)
+    {
+        if (!_steamTaken || SteamClientBack == null) return;
+        _steamTaken = false;
+        Say("Bringing the Steam client back online (SteamCMD's login took its place)...");
+        if (await SteamClientBack(ct) is { Length: > 0 } said) Say(said);
+    }
+
+    /// <summary>
     /// Judges one mod's SteamCMD output and does everything after a successful upload. Returns the result and whether
     /// the package should be kept for inspection (a failed upload).
     /// </summary>
@@ -513,6 +537,7 @@ public sealed class Publisher
 
         if (TagUpdater != null && p.Tags.Length > 0 && (m.WorkshopId ?? newId) is { } tagged)
         {
+            await BringSteamBackAsync(ct);
             At("Setting Workshop tags...", 98);
             var t = await TagUpdater(_cfg.AppId, tagged, p.Tags, ct);
             Say(t.Ok ? t.Message : $"Warning: the upload went through, but the Workshop tags were not set: {t.Message} " +
@@ -525,6 +550,7 @@ public sealed class Publisher
             if (!SetRequired) req.Required = null;
             if (req.Required != null || req.Gallery != null || req.Languages != null)
             {
+                await BringSteamBackAsync(ct);
                 At("Updating the Workshop page...", 98);
                 var x = await PageExtras(req, ct);
                 if (x.RequiredNow != null) WorkshopExtras.Remember(parent, x.RequiredNow, RequiredRecord);
@@ -568,6 +594,7 @@ public sealed class Publisher
         else
         {
             Say($"Downloading {m.Name} back from Steam to check it...");
+            _steamTaken = true;
             d = await WorkshopDownload.DownloadAsync(_steamCmd, _account, _cfg.AppId, id, null, ct);
         }
         if (!d.Ok) { Say("Warning: could not download the item back to check it: " + d.Message); return; }

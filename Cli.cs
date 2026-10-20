@@ -427,7 +427,7 @@ public static class Cli
         var p = probes ?? new Doctor.Probes();
         p = new Doctor.Probes
         {
-            ToolRuns = p.ToolRuns, SteamRunning = p.SteamRunning, FreeBytes = p.FreeBytes,
+            ToolRuns = p.ToolRuns, SteamRunning = p.SteamRunning, SteamState = p.SteamState, FreeBytes = p.FreeBytes,
             Login = !o.Login ? null : p.Login ?? (async (cmd, acc, token) => (await SteamLogin.VerifyAsync(cmd, acc, token)).ok),
         };
         var checks = await Doctor.RunAsync(settings, repo, steamCmd, account, p, tempRoot, ct);
@@ -507,6 +507,8 @@ public static class Cli
     /// <param name="pageExtrasRequired">Whether <paramref name="pageExtras"/> sets required items.</param>
     /// <param name="descriptionFooter">The mods folder's shared description footer.</param>
     /// <param name="ownership">Asks whether the account owns the game (account, app id); null skips the check.</param>
+    /// <param name="prepareSteamBack">Looks at the Steam client before SteamCMD logs in as the account, and returns what brings it
+    /// back online afterwards (<see cref="SteamRestart.Prepare"/>); null leaves the Steam client alone.</param>
     public static async Task<int> RunAsync(CliOptions o, string repo, string steamCmd, string account, TextWriter output,
         CancellationToken ct, string? recordPath = null, string? tempRoot = null, bool credit = false,
         string? noteTemplate = null, bool markdown = false, bool syncDescriptions = false,
@@ -516,7 +518,8 @@ public static class Cli
         bool oneSession = false, bool verifyUploads = false,
         Func<string, string, CancellationToken, Task<bool?>>? ownership = null, string? descriptionFooter = null,
         Func<ExtrasRequest, CancellationToken, Task<ExtrasResult>>? pageExtras = null, bool pageExtrasPage = true, bool pageExtrasRequired = true,
-        AppSettings? settings = null, Doctor.Probes? probes = null, DateTime? scheduleNow = null)
+        AppSettings? settings = null, Doctor.Probes? probes = null, DateTime? scheduleNow = null,
+        Func<string, Func<CancellationToken, Task<string?>>?>? prepareSteamBack = null)
     {
         void Say(string s) => output.WriteLine(s);
         var tags = new Dictionary<ModInfo, string>();
@@ -688,6 +691,9 @@ public static class Cli
 
         if (!o.NoBuild && !await BuildStep.RunCheckedAsync(repo, buildCommand, Say, ct)) return ExitFailed;
 
+        // Looked at before SteamCMD's login check, since that login is what takes the Steam client's place.
+        var steamBack = o.DryRun ? null : prepareSteamBack?.Invoke(account);
+
         // ---- one login check for the whole batch
         if (!o.DryRun)
         {
@@ -728,6 +734,7 @@ public static class Cli
             SteamCheck = recordPath == null ? Publisher.LiveSteamCheck : null,
             TagUpdater = tagUpdater,
             PageExtras = pageExtras,
+            SteamClientBack = steamBack,
             SetGalleryAndLanguages = pageExtrasPage,
             SetRequired = pageExtrasRequired,
             RequiredRecord = recordPath == null ? null : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(historyFile))!, "required-items.json"),

@@ -66,6 +66,8 @@ public sealed class AppSettings
     public string ModAuthor { get; set; } = "";
     /// <summary>Try an update once more after a short wait when Steam was busy or could not be reached.</summary>
     public bool AutoRetry { get; set; } = true;
+    /// <summary>After uploading, restart the Steam client when SteamCMD's login took its place, so it is back online (SteamRestart).</summary>
+    public bool SteamBackOnline { get; set; } = true;
     /// <summary>Upload a batch with one SteamCMD login instead of one SteamCMD run per mod.</summary>
     public bool OneSession { get; set; }
     /// <summary>After each upload, download the item back from Steam and compare it with what was sent.</summary>

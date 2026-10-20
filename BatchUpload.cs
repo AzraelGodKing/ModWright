@@ -68,6 +68,15 @@ public sealed class BatchUpload
     /// </summary>
     public async Task<List<BatchItem>> RunAsync(IReadOnlyList<ModInfo> mods, bool upload, CancellationToken ct)
     {
+        var results = await RunBatchAsync(mods, upload, ct);
+        // SteamCMD's login took the Steam client's place; bring it back once, now the batch is done.
+        try { if (!ct.IsCancellationRequested) await _pub.BringSteamBackAsync(ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        return results;
+    }
+
+    async Task<List<BatchItem>> RunBatchAsync(IReadOnlyList<ModInfo> mods, bool upload, CancellationToken ct)
+    {
         if (OneSession && upload && mods.Count > 1) return await RunSessionAsync(mods, ct);
         // The next mods are packaged while the current one is checked and uploaded.
         if (mods.Count > 1) _pub.PackageAhead(mods, ct);
