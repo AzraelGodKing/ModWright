@@ -392,6 +392,69 @@ marked as rolled back. Your working folder is not touched; raise the version for
   the login until it expires, so paste it only into the secret, and keep write access to the repo tight. When CI
   uploads start failing with a login error, log in again in the app and update the secret.
 
+### Required items, gallery and other languages
+
+Three more parts of the Workshop page go through the Steam client after an upload, like tags (the client has to be
+running as the mod's owner). Each can be turned off under **Options > Uploading**, and right-click >
+**Update required items, gallery and languages** sends them without uploading.
+
+- **Required items.** The Workshop links in a mod's metadata (RimWorld's `modDependencies` with a `steamWorkshopUrl`)
+  become the page's "Required items", so subscribers are offered them. Items the app added are taken off when the mod
+  stops listing them; items you added by hand on Steam stay.
+- **Gallery.** The layout's `GalleryFolder` (RimWorld: `Gallery` in the mod) holds PNG, JPG and GIF images plus an
+  optional `videos.txt` of YouTube links. The page's extra images and videos are made to match it. The folder is never
+  packaged.
+- **Descriptions in other languages.** A file next to the description file such as `steam_description.german.txt` (or
+  `.de.txt`, `.zh.txt` and other short codes) is that language's description; a first line `Title: ...` sets the title.
+  Only changed images and translations are sent again.
+
+**Options > Workshop page > Description** has a **footer** for the mods folder: it is added to the end of every
+description sent from a description file (with `{name}`, `{id}` and `{game}` filled in), never twice.
+
+**Workshop pages of ticked mods...** (right-click with several mods ticked) finds and replaces text in, or appends a
+line to, every ticked mod's description, and sets their visibility, all sent with their next upload.
+
+### Checks, stats and new mods
+
+- **RimWorld checks.** Before upload the list flags a missing or repeated `packageId`, XML in `Defs`, `Patches`,
+  `Languages` or `About` that does not parse, `loadFolders.xml` entries pointing at missing folders, and version
+  folders that `supportedVersions` does not list.
+- **Dependency updates.** The upload confirmation says when a Workshop item a mod needs was updated since the mod's
+  last upload, so you can test against it first.
+- **Stats and comments...** (right-click) charts subscribers, favourites, views and lifetime subscribers per mod or for
+  the whole folder from the daily counts, and shows how many comments are new. Comments are counted through the Steam
+  client, on request or at start-up when **Options > Workshop page** says so.
+- **New mod** (Ctrl+N, or the empty list) makes a ready-to-upload folder for the layout. For RimWorld: About.xml with a
+  packageId, the supported versions, a placeholder preview, the first changelog entry, the description file, and
+  optionally a C# project with Harmony that builds into the newest version's `Assemblies` folder.
+- **What's new** opens after the app updates itself, with the changes since the version you had (also under
+  **Options > About**).
+- **Moving to another PC.** **Options > About > Export settings...** saves settings, profiles, per-folder options and
+  upload history in one zip; **Import settings...** on the other PC backs up what is there first and asks where each
+  mods folder is now. The file can contain Discord webhook links, so keep it private.
+
+### Thunderstore
+
+For BepInEx games (Sun Haven, Valheim, Lethal Company and others), a mod can go to [Thunderstore](https://thunderstore.io)
+as well as Steam. A mod takes part when its folder has Thunderstore's `manifest.json`, a 256 x 256 `icon.png` and a
+`README.md`. Under **Options > Uploading > Thunderstore**, set the team, the community (the part after `/c/` in the
+site's address, such as `sun-haven`), optional category slugs and a service account token (thunderstore.io > Teams >
+Service accounts). Then right-click > **Publish to Thunderstore**, or tick **After each Steam upload** to publish with
+every upload.
+
+The package is the same one that goes to Steam, with the version to upload written into the packaged manifest
+(`1.2` becomes `1.2.0`; the mod's own file is not changed). What Thunderstore would refuse (the name, version,
+description length, icon size or a dependency not written as `Author-Name-1.0.0`) is named before anything is sent,
+and a version Thunderstore already has is skipped. The token is kept in your settings encrypted for your Windows user.
+
+### The app in other languages
+
+**Options > Appearance > Language** shows the windows in Deutsch, Русский or 简体中文 from the next start. Log lines and
+messages stay in English, and any text a translation leaves out is shown in English. To fix a translation or add a
+language, press **Make a translation file...**, fill in the empty texts (keep the `&` before a letter: it marks the
+Alt key), and put the file in the folder **Open the languages folder** opens. Open the windows you want covered
+first, so their text is in the file. Translations are welcome as pull requests to `Languages/`.
+
 ### Which Steam login each feature uses
 
 SteamCMD can log in two ways. **Anonymous** needs no account and can only read public information. Everything that
@@ -406,7 +469,8 @@ logged in once in SteamCMD's own window. That account has to own the game.
 | The ownership check | Saved | It reads that account's licenses |
 | Game branches, the new-build notice | Anonymous | A game's branches and build ids are public |
 | Steam version, Updated, subscribers, the game's name | None (Steam's web pages) | Read from public Workshop pages without SteamCMD |
-| Workshop tags | The Steam client | SteamCMD can't set tags, so the running Steam client does it as the signed-in account |
+| Workshop tags, required items, gallery, other languages, comment counts | The Steam client | SteamCMD can't set these, so the running Steam client does it as the signed-in account |
+| Publish to Thunderstore | Thunderstore token | Thunderstore has its own accounts; Steam is not involved |
 | GitHub Actions upload | Saved, copied into a secret | The runner has no one to type a password, so it reuses the saved login |
 
 When you need to log in: the first time you upload, download or install, the app opens SteamCMD's window for your
@@ -444,6 +508,7 @@ The **Generic** layout expects, inside each mod folder: `CHANGELOG.md` (the Work
 | `RequiredFiles` | `[]` | Files every package must contain, as paths or globs (e.g. `["Assemblies/*.dll"]`). The marker file always counts. A package without one is refused |
 | `UseGitArchive` | true | Package with `git archive HEAD` (honours `export-ignore`); false copies the folder using `Exclude` |
 | `Exclude` | `.git`, `bin`, `obj`, ... | Skipped when `UseGitArchive` is false |
+| `GalleryFolder` | empty | Folder in each mod whose images and `videos.txt` become the Workshop page's gallery; never packaged (RimWorld: `Gallery`) |
 
 How the keys are read depends on the marker file's type:
 
@@ -543,6 +608,8 @@ or the person installing or operating it. What it does connect to, and why:
   **Report it** after a crash and then Send). It sends exactly the text shown in the form.
 - **Discord** ([privacy policy](https://discord.com/privacy)): only when you add a webhook link for a mods folder; after
   an upload it posts the mod's name, Workshop link and change note there.
+- **Thunderstore** ([privacy policy](https://thunderstore.io/privacy-policy/)): only when you publish to it; it receives
+  the mod's package and your team's token, and the app reads the package's public page to see which version is there.
 
 ## Accessibility
 
