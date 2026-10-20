@@ -23,6 +23,11 @@ public sealed class CliOptions
     public bool PushTags, RunAfter;
     /// <summary>list and history: print Markdown or CSV instead of plain lines.</summary>
     public bool Markdown, Csv;
+    /// <summary>"doctor --login": really log in with the saved login instead of only looking for it.</summary>
+    public bool Login;
+    /// <summary>"schedule": when to upload (--at), list the scheduled uploads (--list), or cancel one (--cancel).</summary>
+    public string? At, Cancel;
+    public bool ListScheduled;
     /// <summary>download and test-install: the folder to put the files in.</summary>
     public string? To;
     /// <summary>test-install: the game's Steam branch (default public) and its password, if it has one.</summary>
@@ -39,7 +44,7 @@ public static class Cli
 {
     public const int ExitOk = 0, ExitFailed = 1, ExitUsage = 2, ExitSteam = 3;
 
-    static readonly string[] Commands = { "upload", "list", "version", "update", "download", "verify", "game-builds", "test-install", "ci-setup", "login-secret", "game-version", "note", "history", "help" };
+    static readonly string[] Commands = { "upload", "list", "version", "update", "download", "verify", "game-builds", "test-install", "ci-setup", "login-secret", "game-version", "note", "history", "doctor", "schedule", "help" };
 
     public const string Usage = """
         SteamCMD Helper command line
@@ -78,6 +83,15 @@ public static class Cli
           SteamCmdHelper note <mod>... | --all              print each change note exactly as Steam would get
                                                              it (template, Markdown, credit line, length)
           SteamCmdHelper history [<mod>...] [--csv]          this PC's uploads, newest first (--csv: as CSV)
+          SteamCmdHelper doctor [--login]                    check everything an upload needs (folder, layout,
+                                                             SteamCMD, login, git, gh, Steam client, disk) and
+                                                             say what to fix; --login really logs in
+          SteamCmdHelper schedule --at "<time>" <mod>... | --group <name> | --all | --changed
+                                                             upload later through Windows Task Scheduler; the
+                                                             time is "2026-10-21 18:00", "18:00", "tomorrow 09:30"
+                                                             or "+2h" (also --allow-create, --announce)
+          SteamCmdHelper schedule --list | --cancel <number or mod>
+                                                             list or cancel the scheduled uploads
           SteamCmdHelper help                                show this text
 
         Options:
@@ -165,6 +179,10 @@ public static class Cli
                 case "--run-after": o.RunAfter = true; break;
                 case "--markdown": o.Markdown = true; break;
                 case "--csv": o.Csv = true; break;
+                case "--login": o.Login = true; break;
+                case "--at": o.At = Value(); break;
+                case "--list": o.ListScheduled = true; break;
+                case "--cancel": o.Cancel = Value(); break;
                 case "--to": o.To = Value(); break;
                 case "--branch": o.Branch = Value(); break;
                 case "--beta-password": o.BetaPassword = Value(); break;
@@ -197,7 +215,10 @@ public static class Cli
             if (o.Mods.Count == 0 && !o.All) o.Error = "Name the mods whose change note to show, or use --all.";
             return o;
         }
-        if (o.Command == "history") return o; // mod names are optional
+        if ((o.At != null || o.ListScheduled || o.Cancel != null) && o.Command != "schedule") { o.Error = "--at, --list and --cancel only go with \"schedule\"."; return o; }
+        if (o.Command == "schedule") return ParseSchedule(o);
+        if (o.Login && o.Command != "doctor") { o.Error = "--login only goes with \"doctor\"."; return o; }
+        if (o.Command is "history" or "doctor") return o; // mod names are optional (doctor takes none)
         if (o.Command == "game-version")
         {
             if (o.Mods.Count == 0) o.Error = "Give the game version to add, such as 1.7, then the mods or --all.";
@@ -236,6 +257,62 @@ public static class Cli
         else if (o.Command != "upload" && o.Mods.Count > 0) o.Error = $"\"{o.Command}\" does not take mod names.";
         else if (o.CheckOnly && o.Command != "update") o.Error = "--check only goes with \"update\".";
         return o;
+    }
+
+    static CliOptions ParseSchedule(CliOptions o)
+    {
+        var modes = new[] { o.At != null, o.ListScheduled, o.Cancel != null }.Count(x => x);
+        if (modes != 1) o.Error = "Give one of --at <time>, --list and --cancel <which>.";
+        else if (o.At == null && (o.Mods.Count > 0 || o.All || o.Changed || o.Group != null)) o.Error = "Mods go with --at.";
+        else if (o.At != null && new[] { o.Mods.Count > 0, o.All, o.Changed, o.Group != null }.Count(x => x) != 1) o.Error = "Name the mods to upload later, or give one of --group, --all and --changed.";
+        else if (o.DryRun || o.Json || o.Test || o.Tag || o.Note != null || o.NoteFromGit || o.Ref != null) o.Error = "\"schedule\" takes the mods, --at, and only --allow-create and --announce of the upload options.";
+        return o;
+    }
+
+    /// <summary>
+    /// "schedule": uploads later through Windows Task Scheduler (--at), or lists (--list) or cancels (--cancel) the
+    /// scheduled uploads. <paramref name="now"/> is for tests.
+    /// </summary>
+    static async Task<int> ScheduleAsync(CliOptions o, string repo, AppSettings settings, string? file, string? tempRoot, Action<string> say, CancellationToken ct, DateTime? now = null)
+    {
+        var t = now ?? DateTime.Now;
+        var list = ScheduledUploads.Load(t, file);
+        if (o.ListScheduled)
+        {
+            if (list.Count == 0) { say("No uploads are scheduled."); return ExitOk; }
+            for (var i = 0; i < list.Count; i++)
+                say($"  {i + 1}. {list[i].At:yyyy-MM-dd HH:mm}{(list[i].At < t ? " (time passed)" : "")}  |  {list[i].What}  |  {list[i].Repo}");
+            return ExitOk;
+        }
+        if (o.Cancel != null)
+        {
+            var pick = ScheduledUploads.Find(list, o.Cancel);
+            if (pick == null) { say($"Error: no scheduled upload matches \"{o.Cancel}\". See them with: SteamCmdHelper schedule --list"); return ExitUsage; }
+            if (await ScheduledUploads.CancelAsync(pick.Name, t, file, ct) is { } error) { say("Error: " + error); return ExitFailed; }
+            say($"Cancelled the upload of {pick.What} at {pick.At:yyyy-MM-dd HH:mm}.");
+            return ExitOk;
+        }
+
+        if (ScheduledUploads.ParseWhen(o.At!, t) is not { } at) { say($"Error: \"{o.At}\" is not a time. Use \"2026-10-21 18:00\", \"18:00\", \"tomorrow 09:30\" or \"+2h\"."); return ExitUsage; }
+        if (string.IsNullOrWhiteSpace(repo) || !Directory.Exists(repo)) { say("Error: no mods repo. Pass --repo <folder> or pick one in the window."); return ExitUsage; }
+        if (o.Group != null && !settings.GroupsFor(repo).ContainsKey(o.Group)) { say($"Error: no group named \"{o.Group}\" for this mods folder."); return ExitUsage; }
+        if (o.Mods.Count > 0)
+        {
+            var mods = ModScanner.Scan(repo, ProjectConfig.Load(repo));
+            var unknown = o.Mods.Where(n => Find(mods, n) == null).ToList();
+            if (unknown.Count > 0) { say("Error: no such mod in the repo: " + string.Join(", ", unknown) + "."); return ExitUsage; }
+        }
+        var extra = new List<string>();
+        if (o.Changed) extra.Add("--changed");
+        if (o.AllowCreate) extra.Add("--allow-create");
+        if (o.Announce) extra.Add("--announce");
+        var args = ScheduledUploads.UploadArgs(Path.GetFullPath(repo), o.Mods, o.All, o.Group, extra);
+        var what = o.Changed ? "every changed mod" : ScheduledUploads.Describe(o.Mods, o.All, o.Group);
+        var (done, err) = await ScheduledUploads.AddAsync(at, t, Path.GetFullPath(repo), what, args, file: file, tempDir: tempRoot, ct: ct);
+        if (err != null) { say("Error: " + err); return ExitFailed; }
+        say($"Scheduled: {what} uploads at {done!.At:yyyy-MM-dd HH:mm} (Windows Task Scheduler, task \"{done.Name}\"). " +
+            "The PC must be on and you signed in; if it is off then, the upload runs as soon as it can. Its output goes to the past logs.");
+        return ExitOk;
     }
 
     /// <summary>
@@ -343,6 +420,23 @@ public static class Cli
     /// <summary>Steam's limit on a change note.</summary>
     const int ConfirmLimit = 8000;
 
+    /// <summary>"doctor": checks everything an upload needs and says what to fix. Exits 0 when nothing must be fixed.</summary>
+    static async Task<int> RunDoctorAsync(CliOptions o, AppSettings settings, string repo, string steamCmd, string account,
+        Doctor.Probes? probes, string? tempRoot, Action<string> say, CancellationToken ct)
+    {
+        var p = probes ?? new Doctor.Probes();
+        p = new Doctor.Probes
+        {
+            ToolRuns = p.ToolRuns, SteamRunning = p.SteamRunning, FreeBytes = p.FreeBytes,
+            Login = !o.Login ? null : p.Login ?? (async (cmd, acc, token) => (await SteamLogin.VerifyAsync(cmd, acc, token)).ok),
+        };
+        var checks = await Doctor.RunAsync(settings, repo, steamCmd, account, p, tempRoot, ct);
+        foreach (var c in checks) say(c.ToString());
+        say("");
+        say(Doctor.Summary(checks));
+        return checks.Any(c => c.Level == CheckLevel.Fail) ? ExitUsage : ExitOk;
+    }
+
     /// <summary>"history": this PC's uploads, newest first, of the named mods (or all), as lines or CSV.</summary>
     static int ShowHistory(CliOptions o, List<ModInfo> mods, List<UploadEntry> history, TextWriter output, Action<string> say)
     {
@@ -422,7 +516,7 @@ public static class Cli
         bool oneSession = false, bool verifyUploads = false,
         Func<string, string, CancellationToken, Task<bool?>>? ownership = null, string? descriptionFooter = null,
         Func<ExtrasRequest, CancellationToken, Task<ExtrasResult>>? pageExtras = null, bool pageExtrasPage = true, bool pageExtrasRequired = true,
-        AppSettings? settings = null)
+        AppSettings? settings = null, Doctor.Probes? probes = null, DateTime? scheduleNow = null)
     {
         void Say(string s) => output.WriteLine(s);
         var tags = new Dictionary<ModInfo, string>();
@@ -442,6 +536,9 @@ public static class Cli
             Say($"Error: SteamCMD has no saved login at {GitHubActions.ConfigFile(steamCmd)}. Log in once from the window (Options > Account > Log in...), then run this again.");
             return ExitSteam;
         }
+        if (o.Command == "schedule")
+            return await ScheduleAsync(o, repo, settings ?? new AppSettings(), recordPath == null ? null : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(recordPath))!, "scheduled.json"), tempRoot, Say, ct, scheduleNow);
+        if (o.Command == "doctor") return await RunDoctorAsync(o, settings ?? new AppSettings(), repo, steamCmd, account, probes, tempRoot, Say, ct);
 
         if (string.IsNullOrWhiteSpace(repo) || !Directory.Exists(repo))
         {

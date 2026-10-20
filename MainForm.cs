@@ -126,7 +126,7 @@ public sealed class MainForm : Form
 
     Button _changed = null!;
     Button _groups = null!;
-    Button _help = null!, _checkUpdateNow = null!, _editPage = null!, _browse = null!, _refresh = null!, _all = null!, _none = null!, _go = null!, _cancel = null!, _retry = null!,
+    Button _help = null!, _checkUpdateNow = null!, _editPage = null!, _browse = null!, _refresh = null!, _all = null!, _none = null!, _go = null!, _later = null!, _cancel = null!, _retry = null!,
         _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!, _emptyBrowse = null!, _emptyLayout = null!, _emptyClear = null!, _emptyNew = null!;
     NavButton _navUpload = null!, _navOptions = null!;
     Control _uploadPage = null!, _optionsPage = null!, _setup = null!, _progress = null!;
@@ -245,6 +245,7 @@ public sealed class MainForm : Form
         _go = Btn("Upload selected", async (_, _) => await GoAsync()).Role(ThemeRole.Primary);
         _go.Font = new Font(Font, FontStyle.Bold);
         _go.Padding = new Padding(18, 6, 18, 6);
+        _later = Btn("Later...", (_, _) => UploadLater());
         _cancel = Btn("Cancel", (_, _) => Cancel());
         _cancel.Visible = false;
         _retry = Btn("Retr&y failed", async (_, _) => await RetryFailedAsync());
@@ -507,7 +508,8 @@ public sealed class MainForm : Form
         Tip(_allowCreate, "Mods that are not on Steam yet are created as new private Workshop items");
         Tip(_go, "Upload the ticked mods (Ctrl+Enter)");
         Tip(_retry, "Upload again only the mods that failed or were not reached in the last run");
-        var actions = Row(_dry, _allowCreate, _testItems, _loginLink, _retry, _cancel, _go);
+        Tip(_later, "Upload the ticked mods at a time you pick (Windows Task Scheduler), or see and cancel scheduled uploads");
+        var actions = Row(_dry, _allowCreate, _testItems, _loginLink, _retry, _cancel, _later, _go);
         actions.Margin = new Padding(0, 2, 0, 8);
 
         var top = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Margin = Padding.Empty, Padding = Padding.Empty };
@@ -1019,6 +1021,10 @@ public sealed class MainForm : Form
                 Row(_checkUpdates, _checkUpdateNow, Btn("What's new...", (_, _) => ShowAllChanges())),
                 _autoUpdate,
                 _updateReady),
+            Card("Setup check", null,
+                Hint("Goes through everything an upload needs (the mods folder, its layout and app ID, SteamCMD and the saved login, git, gh, " +
+                     "the Steam client, free disk space) and says what to fix. Nothing is changed."),
+                Row(Btn("Check &setup", async (b, _) => await CheckSetupAsync((Control)b!)))),
             Card("Your data", null,
                 Hint(AppSettings.Portable
                     ? $"Portable mode ({AppSettings.PortableMarker} is next to the program): settings, the recent folders list and the upload history are kept in {AppSettings.Folder}, so they travel with it."
@@ -1282,6 +1288,23 @@ public sealed class MainForm : Form
         if (_busy || SelectedMod() is not { } m) return;
         if (e.KeyCode == Keys.Enter && e.Modifiers == Keys.None) { e.SuppressKeyPress = e.Handled = true; EditWorkshopPage(m); }
         else if (e.KeyCode == Keys.F2 && e.Modifiers == Keys.None) { e.SuppressKeyPress = e.Handled = true; ChangeVersion(m); }
+    }
+
+    /// <summary>Options > About > Check setup: runs <see cref="Doctor"/> with the real login check and shows the results.</summary>
+    async Task CheckSetupAsync(Control button)
+    {
+        button.Enabled = false;
+        var old = button.Text;
+        button.Text = "Checking...";
+        try
+        {
+            // SteamCMD runs one at a time, so while an upload runs only the saved login file is looked at.
+            var probes = _busy ? new Doctor.Probes() : new Doctor.Probes { Login = async (cmd, acc, ct) => (await SteamLogin.VerifyAsync(cmd, acc, ct)).ok };
+            var checks = await Task.Run(() => Doctor.RunAsync(_s, _s.RepoPath, _s.EffectiveSteamCmd, _s.Account, probes));
+            using var f = new SetupCheckForm(checks);
+            f.ShowDialog(this);
+        }
+        finally { button.Text = old; button.Enabled = true; }
     }
 
     void ShowShortcuts()
@@ -4037,6 +4060,16 @@ public sealed class MainForm : Form
             _s.SetThunderstore(_s.RepoPath, _tsTeam.Text, _tsCommunity.Text, _tsCategories.Text, _tsAfter.Checked);
         _s.ThunderstoreToken = ThunderstoreToken.Protect(_tsToken.Text.Trim());
         _s.Save();
+    }
+
+    /// <summary>"Later...": schedules the ticked mods to upload at a time picked in the window, or lists the scheduled uploads.</summary>
+    void UploadLater()
+    {
+        var ticked = Selected().Select(m => m.Folder).ToList();
+        var extra = new List<string>();
+        if (_allowCreate.Checked) extra.Add("--allow-create");
+        using var f = new UploadLaterForm(_s.RepoPath, ticked, ScheduledUploads.UploadArgs(_s.RepoPath, ticked, extra: extra));
+        f.ShowDialog(this);
     }
 
     /// <summary>The ticked mods when more than one is ticked, else the selected one.</summary>
