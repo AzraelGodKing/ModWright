@@ -58,6 +58,9 @@ public sealed class MainForm : Form
     readonly CheckBox _countComments = new() { AutoSize = true, Text = "At start-up, count new comments on your mods (at most every 6 hours, only while Steam is running)" };
     readonly ComboBox _descSync = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, AccessibleName = "When a description file differs from Steam" };
     readonly CheckBox _testItems = new() { AutoSize = true, Text = "Upload to t&est items" };
+    readonly TextBox _afterCmd = new() { Width = 420, PlaceholderText = "e.g. copy \"%SCH_MOD_DIR%\" to a backup drive", AccessibleName = "Command after each upload for this mods folder" };
+    readonly CheckBox _pushTags = new() { AutoSize = true, Text = "&Push the tags to the remote straight away (git push origin <tag>)" };
+    readonly CheckBox _keepPackages = new() { AutoSize = true, Text = "&Keep a zip of what each upload sent (the newest " + PackageArchive.Keep + " per mod, in the data folder)" };
     readonly TextBox _buildCmd = new() { Width = 420, PlaceholderText = "e.g. dotnet build -c Release", AccessibleName = "Build step for this mods folder" };
     readonly TextBox _packageRef = new() { Width = 200, PlaceholderText = "the checked-out commit", AccessibleName = "Branch or tag to upload from" };
     readonly CheckBox _updateTags = new() { AutoSize = true, Text = "Set Workshop tags after each upload (RimWorld: Mod and each supported version from About.xml)" };
@@ -293,6 +296,9 @@ public sealed class MainForm : Form
         _loginLink.LinkClicked += (_, _) => ShowOptions(_account);
         _profile.SelectedIndexChanged += (_, _) => { if (!_populating) SwitchProfile(); };
         _webhook.Leave += (_, _) => SaveAnnounce();
+        _afterCmd.Leave += (_, _) => { if (!_populating && Directory.Exists(_s.RepoPath)) { _s.SetAfter(_s.RepoPath, _afterCmd.Text); _s.Save(); } };
+        _pushTags.CheckedChanged += (_, _) => { if (!_populating) { _s.PushTags = _pushTags.Checked; _s.Save(); } };
+        _keepPackages.CheckedChanged += (_, _) => { if (!_populating) { _s.KeepPackages = _keepPackages.Checked; _s.Save(); } };
         _buildCmd.Leave += (_, _) => { if (!_populating && Directory.Exists(_s.RepoPath)) { _s.SetBuild(_s.RepoPath, _buildCmd.Text); _s.Save(); } };
         _packageRef.Leave += (_, _) =>
         {
@@ -652,11 +658,16 @@ public sealed class MainForm : Form
         menu.Items.Add("Stats and comme&nts...", null, (_, _) => ShowStats(SelectedMod()));
         var bulk = menu.Items.Add("Workshop pages of ticked &mods...", null, async (_, _) => await EditTickedPagesAsync());
         var entry = menu.Items.Add("Write the &changelog entry...", null, (_, _) => { if (SelectedMod() is { } m && AskChangelogEntry(m, m.Version)) RefreshAll(); });
-        var bulkVersion = menu.Items.Add("Change the version of tic&ked mods...", null, (_, _) => ChangeTickedVersions());
+        var bulkVersion = menu.Items.Add("Change the versi&on of ticked mods...", null, (_, _) => ChangeTickedVersions());
         var gameVersion = menu.Items.Add("Add a &game version to ticked mods...", null, (_, _) => AddGameVersion());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Upload &history...", null, (_, _) => { if (SelectedMod() is { } m) ShowHistory(m); });
         menu.Items.Add("&Preview package...", null, async (_, _) => { if (SelectedMod() is { } m) await PreviewPackageAsync(m); });
+        var packages = menu.Items.Add("Uploaded p&ackages", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) OpenPath(PackageArchive.FolderFor(PackageArchive.DefaultDir, m.WorkshopId!)); });
+        var copyList = new ToolStripMenuItem("Copy the mod &list as");
+        foreach (var (label, format) in new[] { ("&Markdown table (README)", Reports.Markdown), ("&Steam BBCode (collection or profile)", Reports.BBCode), ("&CSV (spreadsheet)", Reports.Csv) })
+            copyList.DropDownItems.Add(label, null, (_, _) => Copy(Reports.ModList(_rows.Select(it => (ModInfo)it.Tag!), format), "mod list"));
+        menu.Items.Add(copyList);
         var shrink = menu.Items.Add("S&hrink preview image under 1 MB", null, (_, _) => { if (SelectedMod() is { } m) ShrinkPreview(m); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Open mod &folder", null, (_, _) => { if (SelectedMod() is { } m) OpenPath(m.Dir); });
@@ -686,6 +697,7 @@ public sealed class MainForm : Form
             changelog.Enabled = ChangelogOf(SelectedMod()) != null;
             entry.Visible = SelectedMod() is { } m && ModScanner.NeedsChangelogEntry(m, _cfg);
             shrink.Visible = SelectedMod() is { PreviewOk: false, PreviewPath.Length: > 0 };
+            packages.Visible = SelectedMod() is { OnSteam: true } pm && PackageArchive.List(PackageArchive.DefaultDir, pm.WorkshopId!).Count > 0;
         };
         menu.Opening += (_, e) =>
         {
@@ -857,6 +869,8 @@ public sealed class MainForm : Form
                 Hint("Without it, each mod gets its own SteamCMD run and login. With it, every ticked mod is packaged and checked first, then uploaded in one run."),
                 _verifyUploads,
                 Hint("Downloads each item again the way subscribers get it, so it doubles the traffic. A difference is only a warning; the upload has already gone through."),
+                _keepPackages,
+                Hint("For every mods folder. Right-click a mod > Uploaded packages opens its zips: unzip one to look at or restore exactly what went out, without git."),
                 _updateTags,
                 Hint("SteamCMD cannot set tags, so they go through the Steam client: it has to be running and signed in as the account that owns the mod. " +
                      "Version tags the mod no longer lists are taken off; other tags are kept."),
@@ -874,7 +888,11 @@ public sealed class MainForm : Form
                 Hint("After a successful update, its name, version, change note and Workshop link are posted to the Discord channel. " +
                      "New items are created private, so they are not announced. The webhook link is kept in your settings, never in the repo."),
                 _ghReleases,
-                Hint("GitHub releases are made on the uploaded commit, which must be pushed first.")),
+                Hint("GitHub releases are made on the uploaded commit, which must be pushed first."),
+                Row(Lbl("&Then run"), _afterCmd),
+                Hint("Run in the mods folder once for each mod that uploaded, for anything else you do after a release. It gets " +
+                     string.Join(", ", AfterUpload.Variables) + " (the change note is in that file). A failure is only a warning: the upload already went through. " +
+                     "Kept in your settings, never in the repo.")),
             Card("Thunderstore", new Control[] { FolderTag() },
                 Row(Lbl("T&eam"), _tsTeam, Lbl("C&ommunity"), _tsCommunity),
                 Row(Lbl("Categor&ies"), _tsCategories),
@@ -941,14 +959,17 @@ public sealed class MainForm : Form
 
         // ---- Git & GitHub
         _tagUploads.Checked = _s.TagUploads;
+        _pushTags.Checked = _s.PushTags;
+        _keepPackages.Checked = _s.KeepPackages;
         _commitIds.Checked = _s.CommitNewIds;
         var ghActions = Btn("Set up &GitHub Actions upload...", (_, _) => SetUpGitHubActions());
         var copySecret = Btn("Copy login &secret...", (_, _) => CopyLoginSecret());
         AddSection("Git & GitHub", "For a mods folder that is a git repository.",
             Card("Git", null,
                 _tagUploads,
+                _pushTags,
                 _commitIds,
-                Hint("Tags are made on the commit that was uploaded and stay on this PC until you push them (git push --tags).")),
+                Hint("Tags are made on the commit that was uploaded. Without Push they stay on this PC until you push them (git push --tags).")),
             Card("GitHub Actions upload", null,
                 Row(ghActions, copySecret),
                 Hint($"Writes {GitHubActions.WorkflowPath} into the mods folder: pushing a tag such as v1.2.0 then uploads every mod whose version " +
@@ -1003,7 +1024,8 @@ public sealed class MainForm : Form
                     ? $"Portable mode ({AppSettings.PortableMarker} is next to the program): settings, the recent folders list and the upload history are kept in {AppSettings.Folder}, so they travel with it."
                     : $"Settings, the recent folders list and the upload history are kept in %LocalAppData%\\SteamCmdHelper for your Windows user only. To keep them beside the program instead (on a USB stick, say), put an empty file named {AppSettings.PortableMarker} next to SteamCmdHelper.exe."),
                 Row(openData, forget),
-                Row(Btn("E&xport settings...", (_, _) => ExportSettings()), Btn("&Import settings...", (_, _) => ImportSettings())),
+                Row(Btn("E&xport settings...", (_, _) => ExportSettings()), Btn("&Import settings...", (_, _) => ImportSettings()),
+                    Btn("Export upload &history...", (_, _) => ExportHistory(UploadHistory.Load(), "upload-history.csv"))),
                 Hint("Export saves your settings, profiles, per-folder options (including Discord webhook links, so keep the file private) and upload history in one " +
                      "zip, to bring to another PC with Import. SteamCMD and its saved Steam login stay behind: log in once on the new PC.")),
             Card("Help", null,
@@ -2344,14 +2366,32 @@ public sealed class MainForm : Form
             chosen = (at.Ref, e.Version, GitOps.RollbackNote(e.Version, e.ChangeNote));
             f.DialogResult = DialogResult.OK;
         };
+        var export = new Button { Text = "E&xport CSV...", AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
+        export.Click += (_, _) => ExportHistory(entries, m.Folder + "-history.csv", f);
         var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(4) };
         bar.Controls.Add(again);
-        if (entries.Count > 1) f.Controls.Add(bar);
+        bar.Controls.Add(export);
+        again.Visible = entries.Count > 1;
+        if (entries.Count > 0) f.Controls.Add(bar);
         if (entries.Count == 0) f.Controls.Add(empty);
         else list.Items[0].Selected = true;
         f.Load += (_, _) => split.SplitterDistance = split.Height / 2;
         Theme.Apply(f);
         if (f.ShowDialog(this) == DialogResult.OK && chosen is { } go) _ = GoAsync(new List<ModInfo> { m }, go);
+    }
+
+    /// <summary>Saves <paramref name="entries"/> as CSV where the user picks.</summary>
+    void ExportHistory(IReadOnlyCollection<UploadEntry> entries, string name, IWin32Window? owner = null)
+    {
+        if (entries.Count == 0) { MessageBox.Show(owner ?? this, "There are no uploads from this PC to export yet.", Text); return; }
+        using var d = new SaveFileDialog { FileName = name, Filter = "CSV (*.csv)|*.csv", Title = "Export upload history" };
+        if (d.ShowDialog(owner ?? this) != DialogResult.OK) return;
+        try
+        {
+            File.WriteAllText(d.FileName, Reports.HistoryCsv(entries), new System.Text.UTF8Encoding(true)); // a BOM, so Excel reads accents right
+            Append($"Exported {entries.Count} uploads to {d.FileName}.", LogKind.Ok);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { MessageBox.Show(owner ?? this, "Could not save it: " + e.Message, Text); }
     }
 
     void OnListDoubleClick(object? sender, MouseEventArgs e)
@@ -2773,7 +2813,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _tsTeam, _tsCommunity, _tsCategories, _tsToken, _tsAfter, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _groups, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _watchBuilds })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _tsTeam, _tsCommunity, _tsCategories, _tsToken, _tsAfter, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _groups, _afterCmd, _pushTags, _keepPackages, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _watchBuilds })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -3555,6 +3595,7 @@ public sealed class MainForm : Form
             DescriptionFooter = _s.FooterFor(_s.RepoPath),
             MarkdownToSteam = _s.MarkdownNotes,
             VerifyUploads = _s.VerifyUploads,
+            PackageArchiveDir = _s.KeepPackages ? PackageArchive.DefaultDir : null,
         };
         var history = UploadHistory.Load();
         pub.Log += l => BeginInvoke(() => Append(l, Display.KindOf(l)));
@@ -3639,8 +3680,16 @@ public sealed class MainForm : Form
         if (_s.NotifyWhenDone)
             Notify.IfInBackground(this, (dry ? "Dry run finished" : test ? "Test upload finished" : "Upload finished") + (allOk ? "" : " with problems"),
                 counts + (picked.Count <= 3 ? ": " + string.Join(", ", picked.Select(m => m.Name)) : ""), allOk);
-        if (!dry && !test) AfterUploadGit(results, uploadedCommit);
+        var tagged = !dry && !test ? AfterUploadGit(results, uploadedCommit) : new List<string>();
+        if (_s.PushTags && tagged.Count > 0)
+        {
+            Append($"Pushing {string.Join(", ", tagged)}...", LogKind.Note);
+            var pushError = await Task.Run(() => GitOps.PushTags(_s.RepoPath, tagged));
+            Append(pushError == null ? "Pushed the tags." : "Could not push the tags: " + pushError, pushError == null ? LogKind.Ok : LogKind.Warn);
+        }
         if (!dry && !test) await AnnounceAsync(results, NoteSent, uploadedCommit);
+        if (!dry && !test && _s.AfterFor(_s.RepoPath) is { Length: > 0 } after)
+            await AfterUpload.RunAsync(_s.RepoPath, after, results, _cfg.AppId, uploadedCommit, NoteSent, l => BeginInvoke(() => Append(l, Display.KindOf(l))), CancellationToken.None);
         if (!dry && !test && _s.ThunderstoreAfterUpload(_s.RepoPath))
         {
             var sent = results.Where(r => r.Status == BatchStatus.Uploaded && Thunderstore.Has(r.Mod.Dir)).Select(r => r.Mod).ToList();
@@ -3800,9 +3849,10 @@ public sealed class MainForm : Form
     /// After an upload in a git repo: offers to commit the id files of newly created items (so they are never created
     /// twice), and tags what was uploaded when that option is on.
     /// </summary>
-    void AfterUploadGit(List<BatchItem> results, string uploaded)
+    List<string> AfterUploadGit(List<BatchItem> results, string uploaded)
     {
-        if (!RepoIsGit) return;
+        var tagged = new List<string>();
+        if (!RepoIsGit) return tagged;
         var created = results.Where(r => r.Status == BatchStatus.Created).ToList();
         if (created.Count > 0)
         {
@@ -3833,16 +3883,17 @@ public sealed class MainForm : Form
             }
         }
 
-        if (!_s.TagUploads) return;
-        if (!_cfg.UseGitArchive) { Append("Not tagging: this layout copies the working folder, so no commit matches what was uploaded.", LogKind.Note); return; }
+        if (!_s.TagUploads) return tagged;
+        if (!_cfg.UseGitArchive) { Append("Not tagging: this layout copies the working folder, so no commit matches what was uploaded.", LogKind.Note); return tagged; }
         foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created))
         {
             var tag = GitOps.TagName(r.Mod.Folder, r.Version);
             var result = GitOps.Tag(_s.RepoPath, tag, $"{r.Mod.Name} {r.Version} uploaded to Steam Workshop item {r.WorkshopId}", uploaded.Length > 0 ? uploaded : "HEAD");
-            if (result == null) Append($"Tagged {tag}.", LogKind.Ok);
-            else if (result == "exists") Append($"Tag {tag} already exists; left as it is.", LogKind.Note);
+            if (result == null) { Append($"Tagged {tag}.", LogKind.Ok); tagged.Add(tag); }
+            else if (result == "exists") { Append($"Tag {tag} already exists; left as it is.", LogKind.Note); tagged.Add(tag); }
             else Append($"Could not tag {tag}: {result}", LogKind.Warn);
         }
+        return tagged;
     }
 
     // ---------------------------------------------------------------- profiles and announcements
@@ -3911,7 +3962,8 @@ public sealed class MainForm : Form
         _descFooter.Enabled = hasRepo && !_busy;
         _buildCmd.Text = hasRepo ? _s.BuildFor(_s.RepoPath) : "";
         _packageRef.Text = hasRepo ? _s.RefFor(_s.RepoPath) : "";
-        _buildCmd.Enabled = _packageRef.Enabled = hasRepo && !_busy;
+        _afterCmd.Text = hasRepo ? _s.AfterFor(_s.RepoPath) : "";
+        _buildCmd.Enabled = _packageRef.Enabled = _afterCmd.Enabled = hasRepo && !_busy;
         _ghReleases.Checked = hasRepo && _s.GitHubReleasesFor(_s.RepoPath);
         _tsTeam.Text = hasRepo ? _s.ThunderstoreTeamFor(_s.RepoPath) : "";
         _tsCommunity.Text = hasRepo ? _s.ThunderstoreCommunityFor(_s.RepoPath) : "";

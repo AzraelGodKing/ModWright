@@ -137,6 +137,9 @@ public sealed class Publisher
     /// </summary>
     public bool VerifyUploads { get; init; }
 
+    /// <summary>When set, a zip of each successful upload's package is kept here (<see cref="PackageArchive"/>).</summary>
+    public string? PackageArchiveDir { get; init; }
+
     /// <summary>How far Steam's clock and this PC's may disagree when matching Steam's "updated" time to the upload.</summary>
     public static readonly TimeSpan ClockSlack = TimeSpan.FromMinutes(2);
 
@@ -542,6 +545,11 @@ public sealed class Publisher
             WorkshopStatus.Forget(id);
             if (ManifestDir != null) PackageDiffs.Save(ManifestDir, id, new PackageManifest(DateTimeOffset.UtcNow, m.Version, p.Report.Files.ToList()));
             if (SentDescriptions != null && p.Page?.Description != null) DescriptionSync.Remember(id, p.Page.Description, SentDescriptions);
+            if (PackageArchiveDir != null)
+            {
+                try { Say("Kept a copy of the package: " + PackageArchive.Save(PackageArchiveDir, id, version, Path.Combine(p.StageRoot, ProjectConfig.Norm(m.RelPath)))); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Say("Warning: could not keep a copy of the package: " + e.Message); }
+            }
         }
 
         At("Uploaded", 100);

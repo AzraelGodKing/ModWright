@@ -19,6 +19,10 @@ public sealed class CliOptions
     public string? Repo, Account, SteamCmd, LogFile, Note, Ref;
     /// <summary>upload: the saved group of mods (window: Groups) to upload.</summary>
     public string? Group;
+    /// <summary>upload: push the tags --tag makes; run the mods folder's after-upload command.</summary>
+    public bool PushTags, RunAfter;
+    /// <summary>list and history: print Markdown or CSV instead of plain lines.</summary>
+    public bool Markdown, Csv;
     /// <summary>download and test-install: the folder to put the files in.</summary>
     public string? To;
     /// <summary>test-install: the game's Steam branch (default public) and its password, if it has one.</summary>
@@ -35,7 +39,7 @@ public static class Cli
 {
     public const int ExitOk = 0, ExitFailed = 1, ExitUsage = 2, ExitSteam = 3;
 
-    static readonly string[] Commands = { "upload", "list", "version", "update", "download", "verify", "game-builds", "test-install", "ci-setup", "login-secret", "game-version", "help" };
+    static readonly string[] Commands = { "upload", "list", "version", "update", "download", "verify", "game-builds", "test-install", "ci-setup", "login-secret", "game-version", "note", "history", "help" };
 
     public const string Usage = """
         SteamCMD Helper command line
@@ -46,7 +50,8 @@ public static class Cli
           SteamCmdHelper upload --changed [options]          upload every ready mod whose version Steam does not
                                                              have yet (skips the ones already up to date)
           SteamCmdHelper list [--json] [options]             show the mods and whether they are ready
-                                                             (--json: as JSON, for scripts)
+                                                             (--json: as JSON, for scripts; --markdown: a
+                                                             README table; --csv: for a spreadsheet)
           SteamCmdHelper version <mod> [<mod>...] <new>      set the version to upload: patch, minor, major
                 [--note "<text>"]                            or a number such as 1.4.0. --note adds the new
                                                              version's changelog entry where the layout needs one
@@ -70,6 +75,9 @@ public static class Cli
                 [--all] [--no-copy]                          supportedVersions; mods with version folders get
                                                              the newest copied to it and a loadFolders.xml
                                                              entry (--no-copy: only About.xml)
+          SteamCmdHelper note <mod>... | --all              print each change note exactly as Steam would get
+                                                             it (template, Markdown, credit line, length)
+          SteamCmdHelper history [<mod>...] [--csv]          this PC's uploads, newest first (--csv: as CSV)
           SteamCmdHelper help                                show this text
 
         Options:
@@ -95,6 +103,8 @@ public static class Cli
           --json                 print only a JSON summary of the results; progress goes to stderr
           --one-session          upload all the mods with one SteamCMD login (faster for several mods)
           --verify               after each upload, download the item back and compare it with what was sent
+          --push-tags            with --tag: push the new tags to the remote (origin)
+          --run-after            run the after-upload command set in the window for this mods folder
 
         Every upload run's output is also saved with the window's past logs (the newest 50 are kept).
 
@@ -151,6 +161,10 @@ public static class Cli
                 case "--verify": o.Verify = true; break;
                 case "--force": o.Force = true; break;
                 case "--no-copy": o.NoCopy = true; break;
+                case "--push-tags": o.PushTags = true; break;
+                case "--run-after": o.RunAfter = true; break;
+                case "--markdown": o.Markdown = true; break;
+                case "--csv": o.Csv = true; break;
                 case "--to": o.To = Value(); break;
                 case "--branch": o.Branch = Value(); break;
                 case "--beta-password": o.BetaPassword = Value(); break;
@@ -173,6 +187,17 @@ public static class Cli
             return o;
         }
         if (o.NoCopy && o.Command != "game-version") { o.Error = "--no-copy only goes with \"game-version\"."; return o; }
+        if ((o.PushTags || o.RunAfter) && o.Command != "upload") { o.Error = "--push-tags and --run-after only go with \"upload\"."; return o; }
+        if (o.PushTags && !o.Tag) { o.Error = "--push-tags goes with --tag (it pushes the tags that makes)."; return o; }
+        if (o.Markdown && o.Command != "list") { o.Error = "--markdown only goes with \"list\"."; return o; }
+        if (o.Csv && o.Command is not ("list" or "history")) { o.Error = "--csv only goes with \"list\" or \"history\"."; return o; }
+        if (new[] { o.Json, o.Markdown, o.Csv }.Count(x => x) > 1) { o.Error = "Give one of --json, --markdown and --csv."; return o; }
+        if (o.Command == "note")
+        {
+            if (o.Mods.Count == 0 && !o.All) o.Error = "Name the mods whose change note to show, or use --all.";
+            return o;
+        }
+        if (o.Command == "history") return o; // mod names are optional
         if (o.Command == "game-version")
         {
             if (o.Mods.Count == 0) o.Error = "Give the game version to add, such as 1.7, then the mods or --all.";
@@ -196,6 +221,7 @@ public static class Cli
         foreach (var (on, name) in new[] { (o.Tag, "--tag"), (o.CommitIds, "--commit-ids"), (o.Announce, "--announce"), (o.NoteFromGit, "--note-from-git") })
             if (on && o.Command != "upload") { o.Error = $"{name} only goes with \"upload\"."; return o; }
         if (o.NoteFromGit && o.Note != null) { o.Error = "Give --note or --note-from-git, not both."; return o; }
+        if (o.Test && (o.RunAfter || o.PushTags)) { o.Error = "--run-after and --push-tags do not go with --test: test items are private copies."; return o; }
         if (o.Test && (o.Tag || o.CommitIds || o.Announce)) { o.Error = "--tag, --commit-ids and --announce do not go with --test: test items are private copies."; return o; }
         if (o.Command == "version")
         {
@@ -287,6 +313,53 @@ public static class Cli
         }
         var ok = VersionBatch.Apply(picked, cfg, spec, o.Note, l => say(l.StartsWith("  ") && l.Contains("needs one") ? l + " Add it, or run this with --note \"...\"." : l));
         return ok ? ExitOk : ExitFailed;
+    }
+
+    /// <summary>"note": each named mod's change note exactly as Steam would get it, with anything wrong with its formatting.</summary>
+    static int ShowNotes(CliOptions o, ProjectConfig cfg, List<ModInfo> mods, Publisher shaper, Action<string> say)
+    {
+        var picked = new List<ModInfo>();
+        if (o.All) picked.AddRange(mods);
+        foreach (var name in o.Mods)
+        {
+            var m = Find(mods, name);
+            if (m == null) { say($"Error: {name}: no such mod in the repo."); return ExitUsage; }
+            if (!picked.Contains(m)) picked.Add(m);
+        }
+        var ok = true;
+        foreach (var m in picked)
+        {
+            var raw = Publisher.NotesFor(m, cfg);
+            say($"--- {m.Name} v{m.Version} ---");
+            if (raw.Length == 0 && cfg.ChangelogByVersion) { say($"{cfg.Changelog} has no entry for version {m.Version}, so the upload would stop."); ok = false; continue; }
+            var sent = shaper.AsSent(m, raw);
+            say(sent);
+            say($"({sent.Length} of {ConfirmLimit} characters)");
+            foreach (var p in SteamText.Problems(sent)) { say("Warning: the note " + p + "."); ok = false; }
+        }
+        return ok ? ExitOk : ExitFailed;
+    }
+
+    /// <summary>Steam's limit on a change note.</summary>
+    const int ConfirmLimit = 8000;
+
+    /// <summary>"history": this PC's uploads, newest first, of the named mods (or all), as lines or CSV.</summary>
+    static int ShowHistory(CliOptions o, List<ModInfo> mods, List<UploadEntry> history, TextWriter output, Action<string> say)
+    {
+        var ids = new HashSet<string>();
+        foreach (var name in o.Mods)
+        {
+            var m = Find(mods, name);
+            if (m?.WorkshopId is { } id) ids.Add(id);
+            else if (name.All(char.IsDigit)) ids.Add(name);
+            else { say($"Error: {name}: no such mod on Steam in the repo."); return ExitUsage; }
+        }
+        var entries = history.Where(e => ids.Count == 0 || ids.Contains(e.WorkshopId)).OrderByDescending(e => e.Time).ToList();
+        if (o.Csv) { output.Write(Reports.HistoryCsv(entries)); return ExitOk; }
+        if (entries.Count == 0) { say("No uploads from this PC yet."); return ExitOk; }
+        foreach (var e in entries)
+            say($"  {e.Time.ToLocalTime():yyyy-MM-dd HH:mm}  |  {e.Mod}  |  v{e.Version}  |  {(e.Created ? "created" : "update")} {e.WorkshopId}");
+        return ExitOk;
     }
 
     /// <summary>"game-version": adds a RimWorld version to the named mods (or every mod with --all).</summary>
@@ -381,6 +454,7 @@ public static class Cli
         var mods = ModScanner.Scan(repo, cfg);
         // JSON goes out alone, so a script can parse everything printed.
         if (o.Command == "list" && o.Json) { Say(ListJson(repo, cfg, mods)); return ExitOk; }
+        if (o.Command == "list" && (o.Markdown || o.Csv)) { output.Write(Reports.ModList(mods, o.Markdown ? Reports.Markdown : Reports.Csv)); return ExitOk; }
         if (cfg.Error != null) Say("Warning: " + cfg.Error);
         Say($"Repo: {repo}  |  {(cfg.GameName.Length > 0 ? cfg.GameName : "app " + cfg.AppId)}  |  layout: {cfg.Source}");
         // Kept beside the uploaded-versions record, so tests that pass their own record keep their history too.
@@ -388,6 +462,12 @@ public static class Cli
 
         if (o.Command == "version") return SetVersions(o, cfg, mods, Say);
         if (o.Command == "game-version") return AddGameVersion(o, cfg, mods, Say);
+        if (o.Command == "note")
+        {
+            var shaper = new Publisher(repo, cfg, steamCmd, account) { Credit = credit, NoteTemplate = noteTemplate, MarkdownToSteam = markdown };
+            return ShowNotes(o, cfg, mods, shaper, Say);
+        }
+        if (o.Command == "history") return ShowHistory(o, mods, UploadHistory.Load(historyFile), output, Say);
         var dataDir = Path.GetDirectoryName(Path.GetFullPath(historyFile))!;
         switch (o.Command)
         {
@@ -562,6 +642,7 @@ public static class Cli
             GitRef = gitRef,
             TestItems = o.Test,
             VerifyUploads = verifyUploads || o.Verify,
+            PackageArchiveDir = settings?.KeepPackages == true ? (recordPath == null ? PackageArchive.DefaultDir : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(historyFile))!, "packages")) : null,
         };
         pub.Log += l => Say("    " + l);
         var batch = new BatchUpload(pub, recordPath) { RetryAfter = retryAfter, OneSession = oneSession || o.OneSession };
@@ -584,7 +665,19 @@ public static class Cli
         {
             afterOk &= CommitNewIds(o, repo, cfg, results, Say);
             if (o.Tag) afterOk &= TagUploads(repo, results, tags, uploadedCommit, Say);
+            if (o.PushTags && tags.Count > 0)
+            {
+                var pushError = GitOps.PushTags(repo, tags.Values.Distinct().ToList());
+                Say(pushError == null ? $"Pushed {string.Join(", ", tags.Values.Distinct())}." : "Could not push the tags: " + pushError);
+                afterOk &= pushError == null;
+            }
             if (o.Announce) afterOk &= await AnnounceAsync(repo, cfg, results, m => notes.GetValueOrDefault(m) ?? Publisher.NotesFor(m, cfg), uploadedCommit, webhook, gitHubReleases, Say, ct);
+            if (o.RunAfter)
+            {
+                var after = settings?.AfterFor(repo) ?? "";
+                if (after.Length == 0) Say("--run-after: no after-upload command is set for this mods folder (window: Options > Uploading > After uploading).");
+                else afterOk &= await AfterUpload.RunAsync(repo, after, results, cfg.AppId, uploadedCommit, m => notes.GetValueOrDefault(m) ?? Publisher.NotesFor(m, cfg), Say, ct);
+            }
         }
         return End(results.All(r => r.Ok) && afterOk ? ExitOk : ExitFailed, ran: results);
     }
