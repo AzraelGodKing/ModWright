@@ -11,6 +11,7 @@ public sealed class ShortcutsForm : Form
         ("Ctrl+Tab", "Switch between the Upload and Options tabs"),
         ("Ctrl+PageDown, Ctrl+PageUp", "Next or previous Options section (Up and Down in the section list too)"),
         ("Ctrl+O", "Pick the mods folder"),
+        ("Ctrl+N", "Make a new mod folder"),
         ("F5", "Read the mods folder again"),
         ("Ctrl+F", "Filter the mod list (Esc clears the filter)"),
         ("Space", "Tick or untick the selected mod"),

@@ -115,7 +115,7 @@ public sealed class MainForm : Form
 
     Button _changed = null!;
     Button _help = null!, _checkUpdateNow = null!, _editPage = null!, _browse = null!, _refresh = null!, _all = null!, _none = null!, _go = null!, _cancel = null!, _retry = null!,
-        _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!, _emptyBrowse = null!, _emptyLayout = null!, _emptyClear = null!;
+        _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!, _emptyBrowse = null!, _emptyLayout = null!, _emptyClear = null!, _emptyNew = null!;
     NavButton _navUpload = null!, _navOptions = null!;
     Control _uploadPage = null!, _optionsPage = null!, _setup = null!, _progress = null!;
     Tone _loginTone = Tone.Muted;
@@ -235,6 +235,7 @@ public sealed class MainForm : Form
         _retry.Visible = false;
         _emptyBrowse = Btn("Browse...", (_, _) => BrowseRepo()).Role(ThemeRole.Accent);
         _emptyLayout = Btn("Edit layout file...", (_, _) => EditLayout());
+        _emptyNew = Btn("New mod...", async (_, _) => await NewModAsync());
         _emptyClear = Btn("Clear the filter", (_, _) => { _filter.Text = ""; _hideUpToDate.Checked = false; });
         _projectToggle = SmallBtn("Change...", (_, _) => { _projectOpen = !_projectOpen; UpdateProjectCard(); if (_projectOpen) _repo.Focus(); });
         _setupNext = Btn("", (_, _) => _stepActions.FirstOrDefault(a => a != null)?.Invoke()).Role(ThemeRole.Accent);
@@ -450,7 +451,7 @@ public sealed class MainForm : Form
         // The list and its empty state share one spot; only one of them is visible.
         var emptyBox = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Anchor = AnchorStyles.None };
         var emptyButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Anchor = AnchorStyles.None, Margin = new Padding(0, 6, 0, 0) };
-        foreach (var b in new[] { _emptyBrowse, _emptyLayout, _emptyClear }) { b.Margin = new Padding(4, 0, 4, 0); emptyButtons.Controls.Add(b); }
+        foreach (var b in new[] { _emptyBrowse, _emptyNew, _emptyLayout, _emptyClear }) { b.Margin = new Padding(4, 0, 4, 0); emptyButtons.Controls.Add(b); }
         _emptyTitle.Margin = new Padding(0, 0, 0, 2);
         emptyBox.Controls.AddRange(new Control[] { _emptyTitle, _emptyText, emptyButtons });
         var center = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
@@ -598,6 +599,8 @@ public sealed class MainForm : Form
         var steamCopy = menu.Items.Add("Check what Steam &hands out", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await CheckSteamCopyAsync(m); });
         var download = menu.Items.Add("&Download from Steam...", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await DownloadFromSteamAsync(m); });
         menu.Items.Add("Try in a game &beta...", null, async (_, _) => await TryInGameBetaAsync(SelectedMod()));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(new ToolStripMenuItem("&New mod...", null, async (_, _) => await NewModAsync()) { ShortcutKeyDisplayString = "Ctrl+N" });
         menu.Opening += (_, e) =>
         {
             steamCopy.Enabled = download.Enabled = SelectedMod()?.OnSteam == true;
@@ -612,6 +615,37 @@ public sealed class MainForm : Form
         };
         Theme.StyleMenu(menu);
         return menu;
+    }
+
+    /// <summary>"New mod...": makes a ready-to-upload mod folder for the current layout, then selects it.</summary>
+    async Task NewModAsync()
+    {
+        if (_busy) return;
+        if (!Directory.Exists(_s.RepoPath)) { BrowseRepo(); if (!Directory.Exists(_s.RepoPath)) return; }
+        var root = ModScanner.ModsRoot(_s.RepoPath, _cfg);
+        using var f = new NewModForm(root, _cfg, _s.ModAuthor, NewMod.NewestVersion(root));
+        if (f.ShowDialog(this) != DialogResult.OK) return;
+        string dir;
+        try
+        {
+            Directory.CreateDirectory(root);
+            dir = NewMod.Create(root, _cfg, f.Result);
+        }
+        catch (Exception e) { Append("Could not make the new mod: " + e.Message, LogKind.Error); return; }
+        if (f.Result.Author.Length > 0) { _s.ModAuthor = f.Result.Author; _s.Save(); }
+        Append($"Made {f.Result.Name} in {dir}." + (f.Result.CSharp ? " Build the project in Source to put the DLL in the version folder." : "") +
+               " Replace the placeholder preview image before the first upload." +
+               (NewMod.MissingMarker(dir, _cfg) is { } marker ? $" Add {marker} to it so the list shows it." : ""), LogKind.Ok);
+        await RefreshAllAsync();
+        foreach (ListViewItem it in _list.Items)
+            if (it.Tag is ModInfo m && string.Equals(m.Dir, dir, StringComparison.OrdinalIgnoreCase))
+            {
+                _list.SelectedItems.Clear();
+                it.Selected = it.Focused = true;
+                it.EnsureVisible();
+                _list.Focus();
+                break;
+            }
     }
 
     /// <summary>
@@ -1044,6 +1078,8 @@ public sealed class MainForm : Form
                 RefreshAll(); return true;
             case Keys.Control | Keys.O when !_busy:
                 BrowseRepo(); return true;
+            case Keys.Control | Keys.N when !_busy:
+                _ = NewModAsync(); return true;
             case Keys.Control | Keys.F:
                 ShowPage(_uploadPage); _filter.Focus(); _filter.SelectAll(); return true;
             case Keys.Control | Keys.Enter when _go.Enabled:
@@ -1789,7 +1825,7 @@ public sealed class MainForm : Form
         _list.Visible = !empty;
         _detail.Visible = !empty; // nothing to select; the empty state needs the room
         if (!empty) return;
-        _emptyLayout.Visible = _emptyClear.Visible = false;
+        _emptyLayout.Visible = _emptyClear.Visible = _emptyNew.Visible = false;
         _emptyBrowse.Visible = true;
         if (!Directory.Exists(_s.RepoPath))
         {
@@ -1803,6 +1839,7 @@ public sealed class MainForm : Form
                 ? "Pick the folder that contains one sub-folder per mod, or edit the layout file to point at them."
                 : $"Each mod folder needs {_cfg.ModMarker}. Pick the folder that contains the mod folders, or choose a different Layout above.";
             _emptyLayout.Visible = !_cfg.IsBuiltIn;
+            _emptyNew.Visible = !string.IsNullOrWhiteSpace(_cfg.ModMarker);
         }
         else
         {
