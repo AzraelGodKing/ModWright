@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.8
 
 - **Thunderstore too.** For BepInEx games, a mod whose folder has Thunderstore's manifest.json, icon.png and README.md
   can be published to Thunderstore from the same package as Steam (right-click > **Publish to Thunderstore**, or
