@@ -7,6 +7,11 @@
   mod needs. Like tags, this goes through the Steam client, which has to be running as the item's owner. Items this app
   added are taken off when the mod stops listing them; items added by hand on Steam stay. **Update required items** on
   a mod's right-click menu does it without uploading, and **Options > Uploading** can turn it off.
+- **RimWorld mod checks.** Before upload, RimWorld mods are checked for what would give players red errors: an XML file
+  in `Defs`, `Patches`, `Languages` or `About` that does not parse, or a missing `packageId`, stops the upload with the
+  file and line. A `packageId` RimWorld would refuse, two mods with the same `packageId`, a `modDependencies` entry
+  without one, `loadFolders.xml` entries for folders that are not there or versions it leaves out, and version folders
+  that `supportedVersions` does not list are warned about.
 - **Dependency updates are pointed out.** The upload confirmation says when a Workshop item a mod needs (Harmony, a
   framework) was updated on Steam after the mod's own last upload, so it can be tried in game with it first.
 - **Shared description footer** (Options > Workshop page > Description, per mods folder): text such as Discord, Ko-fi

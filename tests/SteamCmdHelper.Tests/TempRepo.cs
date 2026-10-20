@@ -29,7 +29,7 @@ sealed class TempRepo : IDisposable
         var versionEl = version == null ? "" : $"<modVersion>{version}</modVersion>";
         var supported = string.Concat((supportedVersions ?? new[] { "1.6" }).Select(v => $"<li>{v}</li>"));
         Write($"{folder}/About/About.xml",
-            $"<?xml version=\"1.0\"?><ModMetaData><name>{folder} Display</name>{versionEl}<supportedVersions>{supported}</supportedVersions><description>A test mod.</description></ModMetaData>");
+            $"<?xml version=\"1.0\"?><ModMetaData><name>{folder} Display</name><packageId>Test.{System.Text.RegularExpressions.Regex.Replace(folder, "[^A-Za-z0-9]", "")}</packageId>{versionEl}<supportedVersions>{supported}</supportedVersions><description>A test mod.</description></ModMetaData>");
         if (changelog != null) Write($"{folder}/About/changelog.txt", changelog);
         if (workshopId != null) Write($"{folder}/About/PublishedFileId.txt", workshopId);
         if (preview) Write($"{folder}/About/Preview.png", "png");
