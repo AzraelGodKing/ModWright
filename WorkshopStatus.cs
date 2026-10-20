@@ -11,7 +11,10 @@ public sealed record WorkshopItem(
     int Visibility = 0,
     long Size = 0,
     long Subscribers = 0,
-    bool Banned = false)
+    bool Banned = false,
+    long Favorites = 0,
+    long LifetimeSubscribers = 0,
+    long Views = 0)
 {
     /// <summary>Steam's visibility as words. Only public and unlisted items are readable without signing in.</summary>
     public string VisibilityText => Visibility switch { 0 => "public", 1 => "friends only", 2 => "private", 3 => "unlisted", _ => "visibility " + Visibility };
@@ -29,6 +32,7 @@ public sealed record WorkshopItem(
             : $"On Steam: \"{Title}\", {VisibilityText}{(Banned ? ", BANNED" : "")}"
               + (Updated is { } u ? $", updated {u.ToLocalTime():d MMM yyyy HH:mm}" : "")
               + $", {Subscribers:N0} subscriber{(Subscribers == 1 ? "" : "s")}"
+              + (Favorites > 0 ? $", {Favorites:N0} favourite{(Favorites == 1 ? "" : "s")}" : "")
               + (Size > 0 ? $", {Size / 1048576.0:0.##} MB" : "");
 }
 
@@ -68,7 +72,10 @@ public static class WorkshopStatus
                 Visibility: (int)Num(e, "visibility"),
                 Size: Num(e, "file_size"),
                 Subscribers: Num(e, "subscriptions"),
-                Banned: Num(e, "banned") != 0);
+                Banned: Num(e, "banned") != 0,
+                Favorites: Num(e, "favorited"),
+                LifetimeSubscribers: Num(e, "lifetime_subscriptions"),
+                Views: Num(e, "views"));
         }
         return all;
     }

@@ -15,6 +15,8 @@ public sealed class ExtrasRequest
     public string[]? Required { get; set; }
     /// <summary>Required items this app set before, so ones the mod no longer lists can be taken off again.</summary>
     public string[] Managed { get; set; } = Array.Empty<string>();
+    /// <summary>Items to count comments on (the Steam client's statistics); null counts nothing. Needs no ownership.</summary>
+    public string[]? CountComments { get; set; }
 }
 
 /// <summary>What the Steam client did with an <see cref="ExtrasRequest"/>.</summary>
@@ -27,12 +29,14 @@ public sealed class ExtrasResult
     public List<string> Done { get; set; } = new();
     /// <summary>The required items this app now looks after (the wanted ones that are on the page).</summary>
     public string[]? RequiredNow { get; set; }
+    /// <summary>Comment counts by item id, for <see cref="ExtrasRequest.CountComments"/>.</summary>
+    public Dictionary<string, long>? Comments { get; set; }
 
     public static ExtrasResult Fail(string error) => new() { Ok = false, Error = error };
 }
 
 /// <summary>
-/// Page changes SteamCMD cannot make (required items, for now), sent through the Steam client in a child copy of this
+/// Page changes SteamCMD cannot make (required items) and counts only the Steam client gives (comments), sent through the Steam client in a child copy of this
 /// program, like Workshop tags (<see cref="WorkshopTags"/>). The planning is here so it can be tested; the Steam
 /// calls are in SteamworksExtras.cs.
 /// </summary>

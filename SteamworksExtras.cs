@@ -26,7 +26,8 @@ static class SteamworksExtras
         ExtrasRequest? req;
         try { req = args.Length == 1 ? JsonSerializer.Deserialize<ExtrasRequest>(File.ReadAllText(args[0])) : null; }
         catch (Exception e) { return ExtrasResult.Fail("Could not read the request: " + e.Message); }
-        if (req == null || !uint.TryParse(req.AppId, out var appId) || !ulong.TryParse(req.ItemId, out var itemId))
+        var itemId = 0UL;
+        if (req == null || !uint.TryParse(req.AppId, out var appId) || (req.Required != null && !ulong.TryParse(req.ItemId, out itemId)))
             return ExtrasResult.Fail("usage: --steam-page-extras <request.json>");
         try { SteamworksTags.LoadSteamApi(); }
         catch (Exception e) { return ExtrasResult.Fail("Could not load Valve's Steamworks library: " + e.Message); }
@@ -48,6 +49,15 @@ static class SteamworksExtras
 
     static async Task<ExtrasResult> ApplyAsync(ExtrasRequest req, uint appId, ulong itemId)
     {
+        if (req.CountComments is { Length: > 0 } countIds)
+        {
+            var counts = await CommentsAsync(countIds);
+            if (req.Required == null) return new ExtrasResult { Ok = true, Comments = counts };
+            var rest = await ApplyAsync(new ExtrasRequest { AppId = req.AppId, ItemId = req.ItemId, Required = req.Required, Managed = req.Managed }, appId, itemId);
+            rest.Comments = counts;
+            return rest;
+        }
+        if (req.Required == null) return new ExtrasResult { Ok = true };
         var id = new PublishedFileId { Value = itemId };
         var query = Steamworks.Ugc.Query.All.WithFileId(id).WithChildren(true);
         var page = await query.GetPageAsync(1);
@@ -81,6 +91,22 @@ static class SteamworksExtras
             return result;
         }
         finally { pg.Dispose(); }
+    }
+
+    /// <summary>The comment count of each item, read in pages of 50 (Steam's page size).</summary>
+    static async Task<Dictionary<string, long>> CommentsAsync(string[] ids)
+    {
+        var counts = new Dictionary<string, long>();
+        foreach (var chunk in ids.Where(i => ulong.TryParse(i, out _)).Distinct().Chunk(50))
+        {
+            var files = chunk.Select(i => new PublishedFileId { Value = ulong.Parse(i) }).ToArray();
+            var page = await Steamworks.Ugc.Query.All.WithFileId(files).GetPageAsync(1);
+            if (page is not { } pg) continue;
+            using (pg)
+                foreach (var item in pg.Entries)
+                    if (item.Result == Result.OK) counts[item.Id.Value.ToString()] = (long)item.NumComments;
+        }
+        return counts;
     }
 
     static ExtrasResult Partial(ExtrasResult r, string error)
