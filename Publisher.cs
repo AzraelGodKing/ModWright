@@ -100,6 +100,15 @@ public sealed class Publisher
     public Func<string, string, string[], CancellationToken, Task<TagResult>>? TagUpdater { get; init; }
 
     /// <summary>
+    /// When set, after each upload the item's "Required items" on Steam are set from the Workshop links in the mod's
+    /// metadata, through the Steam client (<see cref="WorkshopExtras"/>). The second value is the record of what was set.
+    /// </summary>
+    public Func<ExtrasRequest, CancellationToken, Task<ExtrasResult>>? PageExtras { get; init; }
+
+    /// <summary>Where <see cref="PageExtras"/> keeps the required items it set; null for the per-user file.</summary>
+    public string? RequiredRecord { get; init; }
+
+    /// <summary>
     /// After each successful upload, download the item back with SteamCMD (as a subscriber gets it) and compare it with
     /// what was sent. Off by default: it downloads the whole mod again.
     /// </summary>
@@ -139,6 +148,7 @@ public sealed class Publisher
         public required string Notes { get; init; }
         public required PackageReport Report { get; init; }
         public required string[] Tags { get; init; }
+        public string[] Required { get; init; } = Array.Empty<string>();
         public WorkshopPageEdit? Page { get; init; }
         public required int Visibility { get; init; }
         public required string StageRoot { get; init; }
@@ -354,6 +364,7 @@ public sealed class Publisher
 
             // Read from the package, so an upload from another git ref gets that commit's supported versions.
             var tags = WorkshopTags.LayoutHasTags(_cfg) ? WorkshopTags.For(stage, _cfg) : Array.Empty<string>();
+            var required = Dependencies.FindInFolder(stage, _cfg, m.WorkshopId).ToArray();
 
             // A test item gets no page changes: they are meant for the real item's next upload.
             var page = TestItems ? new WorkshopPageEdit { Title = m.Name + " (test)" } : PageEdits?.Invoke(m);
@@ -410,7 +421,7 @@ public sealed class Publisher
             handedOver = true;
             return (null, new Prepared
             {
-                Mod = m, Version = version, Notes = notes, Report = report, Tags = tags, Page = page, Visibility = visibility,
+                Mod = m, Version = version, Notes = notes, Report = report, Tags = tags, Required = required, Page = page, Visibility = visibility,
                 StageRoot = stageRoot, VdfPath = vdfPath,
             });
         }
@@ -475,6 +486,18 @@ public sealed class Publisher
             var t = await TagUpdater(_cfg.AppId, tagged, p.Tags, ct);
             Say(t.Ok ? t.Message : $"Warning: the upload went through, but the Workshop tags were not set: {t.Message} " +
                 "(\"Update Workshop tags\" on the mod's right-click menu tries again without uploading.)");
+        }
+
+        if (PageExtras != null && !TestItems && (m.WorkshopId ?? newId) is { } parent
+            && WorkshopExtras.RequiredRequest(_cfg.AppId, parent, p.Required, RequiredRecord) is { } req)
+        {
+            At("Setting required items...", 98);
+            var x = await PageExtras(req, ct);
+            if (x.RequiredNow != null) WorkshopExtras.Remember(parent, x.RequiredNow, RequiredRecord);
+            foreach (var d in x.Done) Say("Workshop page: " + d + ".");
+            if (!x.Ok) Say($"Warning: the upload went through, but the required items were not all set: {x.Error} " +
+                "(\"Update required items\" on the mod's right-click menu tries again without uploading.)");
+            else if (x.Done.Count == 0) Say("Required items already right.");
         }
 
         if (VerifyUploads && (m.WorkshopId ?? newId) is { } check) await VerifyAsync(m, check, p.Report.Files, p.Downloaded, ct);

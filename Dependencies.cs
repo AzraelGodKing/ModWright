@@ -12,17 +12,20 @@ public static class Dependencies
     static readonly Regex Link = new(@"(?:CommunityFilePage/|filedetails/\?(?:[^""<\s]*&(?:amp;)?)?id=)(\d{6,})", RegexOptions.IgnoreCase);
 
     /// <summary>The Workshop ids named in the mod's marker file (and Manifest, when the layout has one), without its own id.</summary>
-    public static List<string> Find(ModInfo m, ProjectConfig cfg)
+    public static List<string> Find(ModInfo m, ProjectConfig cfg) => FindInFolder(m.Dir, cfg, m.WorkshopId);
+
+    /// <summary>The same for a mod folder or staged package at <paramref name="dir"/>, leaving out <paramref name="ownId"/>.</summary>
+    public static List<string> FindInFolder(string dir, ProjectConfig cfg, string? ownId)
     {
         var ids = new List<string>();
         foreach (var rel in new[] { cfg.ModMarker, cfg.ManifestFile })
         {
             if (string.IsNullOrWhiteSpace(rel)) continue;
-            var path = Path.Combine(m.Dir, ProjectConfig.Norm(rel));
+            var path = Path.Combine(dir, ProjectConfig.Norm(rel));
             try { if (File.Exists(path)) ids.AddRange(FindIn(File.ReadAllText(path))); }
             catch (IOException) { }
         }
-        return ids.Where(id => id != m.WorkshopId).Distinct().ToList();
+        return ids.Where(id => id != ownId).Distinct().ToList();
     }
 
     public static IEnumerable<string> FindIn(string text) => Link.Matches(text).Select(x => x.Groups[1].Value);

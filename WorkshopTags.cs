@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
@@ -120,35 +119,8 @@ public static class WorkshopTags
     public static async Task<TagResult> UpdateOnSteamAsync(string appId, string workshopId, string[] tags, CancellationToken ct)
     {
         if (!OperatingSystem.IsWindows()) return new TagResult(false, false, tags, "Workshop tags can only be set on Windows.");
-        var exe = Environment.ProcessPath;
-        if (string.IsNullOrEmpty(exe) || !File.Exists(exe)) return new TagResult(false, false, tags, "Could not find this program's own exe to run.");
-        var psi = new ProcessStartInfo(exe)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = System.Text.Encoding.UTF8,
-        };
-        foreach (var a in new[] { ChildArg, appId, workshopId }.Concat(tags)) psi.ArgumentList.Add(a);
-        try
-        {
-            using var p = Process.Start(psi)!;
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(TimeSpan.FromMinutes(2));
-            var read = p.StandardOutput.ReadToEndAsync(timeout.Token);
-            _ = p.StandardError.ReadToEndAsync(timeout.Token);
-            try { await p.WaitForExitAsync(timeout.Token); }
-            catch (OperationCanceledException)
-            {
-                try { p.Kill(true); } catch { }
-                if (ct.IsCancellationRequested) throw;
-                return new TagResult(false, false, tags, "Steam did not answer within two minutes.");
-            }
-            return ParseChild(await read, tags);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception e) { return new TagResult(false, false, tags, e.Message); }
+        var (output, error) = await SteamClientChild.RunAsync(new[] { ChildArg, appId, workshopId }.Concat(tags), TimeSpan.FromMinutes(2), ct);
+        return error != null ? new TagResult(false, false, tags, error) : ParseChild(output!, tags);
     }
 
     // The child writes one line: "OK <tags>" (set), "SAME <tags>" (already right) or "ERROR <why>". Tags are

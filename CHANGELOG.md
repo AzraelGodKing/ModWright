@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Required items are set on the Workshop page.** After each upload, the item's "Required items" on Steam are set from
+  the Workshop links in the mod's metadata (RimWorld's `modDependencies`), so players who subscribe are offered what the
+  mod needs. Like tags, this goes through the Steam client, which has to be running as the item's owner. Items this app
+  added are taken off when the mod stops listing them; items added by hand on Steam stay. **Update required items** on
+  a mod's right-click menu does it without uploading, and **Options > Uploading** can turn it off.
 - **Dependency updates are pointed out.** The upload confirmation says when a Workshop item a mod needs (Harmony, a
   framework) was updated on Steam after the mod's own last upload, so it can be tried in game with it first.
 - **Shared description footer** (Options > Workshop page > Description, per mods folder): text such as Discord, Ko-fi

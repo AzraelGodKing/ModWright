@@ -141,7 +141,8 @@ static class Program
                 tagUpdater: settings.UpdateTags ? WorkshopTags.UpdateOnSteamAsync : null,
                 oneSession: settings.OneSession, verifyUploads: settings.VerifyUploads,
                 ownership: (account, appId, token) => SteamCmd.OwnsAsync(settings.EffectiveSteamCmd, account, appId, token),
-                descriptionFooter: settings.FooterFor(settings.RepoPath)).GetAwaiter().GetResult();
+                descriptionFooter: settings.FooterFor(settings.RepoPath),
+                pageExtras: settings.UpdateRequired ? (r, token) => WorkshopExtras.ApplyOnSteamAsync(r, token) : null).GetAwaiter().GetResult();
         }
         finally { runLog?.Dispose(); }
     }
@@ -173,6 +174,7 @@ static class Program
 
         // Setting one Workshop item's tags through the Steam client, for a window or command line run (see WorkshopTags).
         if (args.Length > 0 && args[0] == WorkshopTags.ChildArg) return SteamworksTags.RunChild(args[1..]);
+        if (args.Length > 0 && args[0] == WorkshopExtras.ChildArg) return SteamworksExtras.RunChild(args[1..]);
 
         if (Cli.IsCommand(args)) return RunCommandLine(args);
 

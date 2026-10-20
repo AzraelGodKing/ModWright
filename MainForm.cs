@@ -53,6 +53,7 @@ public sealed class MainForm : Form
     readonly TextBox _buildCmd = new() { Width = 420, PlaceholderText = "e.g. dotnet build -c Release", AccessibleName = "Build step for this mods folder" };
     readonly TextBox _packageRef = new() { Width = 200, PlaceholderText = "the checked-out commit", AccessibleName = "Branch or tag to upload from" };
     readonly CheckBox _updateTags = new() { AutoSize = true, Text = "Set Workshop tags after each upload (RimWorld: Mod and each supported version from About.xml)" };
+    readonly CheckBox _updateRequired = new() { AutoSize = true, Text = "Set the Workshop page's \"Required items\" from the Workshop links in each mod's metadata (RimWorld: modDependencies)" };
     readonly CheckBox _autoRetry = new() { AutoSize = true, Text = "Try an update once more when Steam is busy or can't be reached (after 30 seconds)" };
     readonly CheckBox _commitIds = new() { AutoSize = true, Text = "Commit a new item's Workshop ID file without asking" };
     readonly CheckBox _oneSession = new() { AutoSize = true, Text = "Upload several mods with one SteamCMD login (faster batches)" };
@@ -587,6 +588,7 @@ public sealed class MainForm : Form
         var copyId = menu.Items.Add("Copy Workshop &ID", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(m.WorkshopId!, "Workshop ID"); });
         var copyLink = menu.Items.Add("Copy Workshop lin&k", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(WorkshopUrl(m), "Workshop link"); });
         var tags = menu.Items.Add("Update Workshop &tags", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await UpdateTagsAsync(m); });
+        var required = menu.Items.Add("Update &required items", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await UpdateRequiredAsync(m); });
         menu.Items.Add(new ToolStripSeparator());
         var steamCopy = menu.Items.Add("Check what Steam &hands out", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await CheckSteamCopyAsync(m); });
         var download = menu.Items.Add("&Download from Steam...", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await DownloadFromSteamAsync(m); });
@@ -597,7 +599,7 @@ public sealed class MainForm : Form
             e.Cancel = _busy || SelectedMod() == null;
             onSteam.Enabled = copyId.Enabled = copyLink.Enabled = SelectedMod()?.OnSteam == true;
             tags.Visible = WorkshopTags.LayoutHasTags(_cfg);
-            tags.Enabled = SelectedMod()?.OnSteam == true;
+            tags.Enabled = required.Enabled = SelectedMod()?.OnSteam == true;
             changelog.Enabled = ChangelogOf(SelectedMod()) != null;
             entry.Visible = SelectedMod() is { } m && ModScanner.NeedsChangelogEntry(m, _cfg);
             shrink.Visible = SelectedMod() is { PreviewOk: false, PreviewPath.Length: > 0 };
@@ -622,6 +624,27 @@ public sealed class MainForm : Form
         {
             var r = await WorkshopTags.UpdateOnSteamAsync(_cfg.AppId, m.WorkshopId, tags, _cts.Token);
             Append($"{m.Name}: " + (r.Ok ? r.Message : "the Workshop tags were not set: " + r.Message), r.Ok ? LogKind.Ok : LogKind.Error);
+        }
+        catch (OperationCanceledException) { Append("Cancelled.", LogKind.Warn); }
+        finally { SetBusy(false); _cts.Dispose(); _cts = null; }
+    }
+
+    /// <summary>Sets the item's "Required items" on Steam from the mod's metadata, without uploading it.</summary>
+    async Task UpdateRequiredAsync(ModInfo m)
+    {
+        if (_busy || m.WorkshopId == null) return;
+        var req = WorkshopExtras.RequiredRequest(_cfg.AppId, m.WorkshopId, Dependencies.Find(m, _cfg));
+        if (req == null) { Append($"{m.Name}: its metadata links no Workshop items it needs, so there are no required items to set.", LogKind.Note); return; }
+        Append($"{m.Name}: setting required items ({(req.Required!.Length == 0 ? "none" : string.Join(", ", req.Required))}) through the Steam client...", LogKind.Note);
+        _cts = new CancellationTokenSource();
+        SetBusy(true);
+        try
+        {
+            var r = await WorkshopExtras.ApplyOnSteamAsync(req, _cts.Token);
+            if (r.RequiredNow != null) WorkshopExtras.Remember(m.WorkshopId, r.RequiredNow);
+            foreach (var d in r.Done) Append($"{m.Name}: {d}.", LogKind.Ok);
+            if (!r.Ok) Append($"{m.Name}: the required items were not all set: {r.Error}", LogKind.Error);
+            else if (r.Done.Count == 0) Append($"{m.Name}: required items already right.", LogKind.Ok);
         }
         catch (OperationCanceledException) { Append("Cancelled.", LogKind.Warn); }
         finally { SetBusy(false); _cts.Dispose(); _cts = null; }
@@ -678,6 +701,8 @@ public sealed class MainForm : Form
         _autoRetry.CheckedChanged += (_, _) => { _s.AutoRetry = _autoRetry.Checked; _s.Save(); };
         _updateTags.Checked = _s.UpdateTags;
         _updateTags.CheckedChanged += (_, _) => { _s.UpdateTags = _updateTags.Checked; _s.Save(); };
+        _updateRequired.Checked = _s.UpdateRequired;
+        _updateRequired.CheckedChanged += (_, _) => { _s.UpdateRequired = _updateRequired.Checked; _s.Save(); };
         _oneSession.Checked = _s.OneSession;
         _oneSession.CheckedChanged += (_, _) => { _s.OneSession = _oneSession.Checked; _s.Save(); };
         _verifyUploads.Checked = _s.VerifyUploads;
@@ -700,6 +725,9 @@ public sealed class MainForm : Form
                 _updateTags,
                 Hint("SteamCMD cannot set tags, so they go through the Steam client: it has to be running and signed in as the account that owns the mod. " +
                      "Version tags the mod no longer lists are taken off; other tags are kept."),
+                _updateRequired,
+                Hint("Also through the Steam client. Players who subscribe are then offered the items the mod needs. Items this app added are taken off when " +
+                     "the mod stops listing them; items you added by hand on Steam stay."),
                 Hint("Upload to test items (next to Dry run) sends each ticked mod to its own private copy on Steam, created on first use and kept in " +
                      ModInfo.TestIdFile + " in the mod folder (keep it out of git). Subscribers get nothing; page changes and records wait for the real upload.")),
             Card("After uploading", new Control[] { FolderTag() },
@@ -2324,7 +2352,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _buildCmd, _packageRef, _autoRetry, _updateTags, _oneSession, _verifyUploads, _watchBuilds })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _oneSession, _verifyUploads, _watchBuilds })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -3091,6 +3119,7 @@ public sealed class MainForm : Form
             SentDescriptions = DescriptionSync.DefaultFile,
             SteamCheck = Publisher.LiveSteamCheck,
             TagUpdater = _s.UpdateTags ? WorkshopTags.UpdateOnSteamAsync : null,
+            PageExtras = _s.UpdateRequired ? (r, ct) => WorkshopExtras.ApplyOnSteamAsync(r, ct) : null,
             Credit = _s.UploadCredit,
             NoteTemplate = _s.TemplateFor(_s.RepoPath),
             DescriptionFooter = _s.FooterFor(_s.RepoPath),
