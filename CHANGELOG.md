@@ -10,6 +10,9 @@
   mod selected it counts the list by status, the ticked mods and the subscribers across them. Drag the bar between the
   list and the panel to resize it (the width is remembered), or turn it off in Options > Appearance. When the window
   is too narrow for both, the panel stays hidden so the columns keep their room.
+- **The Mods card's title row fits again.** Since the Groups button joined it, the row was wider than the window at its
+  default size, so the MODS heading and the start of the filter box were cut off at the left. Its buttons are now the
+  compact kind the Log card uses, and the filter box is a little narrower.
 
 ## 1.5.0
 

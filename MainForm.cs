@@ -84,7 +84,7 @@ public sealed class MainForm : Form
     readonly CheckBox _autoUpdate = new() { AutoSize = true, Text = "Install new versions automatically (downloaded in the background, installed when you close the app)" };
     readonly LinkLabel _updateReady = new LinkLabel { AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Visible = false, Margin = new Padding(0, 4, 0, 0) }.Role(ThemeRole.Keep);
     readonly ListView _list = new() { AccessibleName = "Mods" };
-    readonly TextBox _filter = new() { Width = 170, PlaceholderText = "Filter mods  (Ctrl+F)", AccessibleName = "Filter mods" };
+    readonly TextBox _filter = new() { Width = 150, PlaceholderText = "Filter mods  (Ctrl+F)", AccessibleName = "Filter mods" };
     readonly CheckBox _hideUpToDate = new() { AutoSize = true, Text = "&Hide up to date" };
     readonly CheckBox _showDetails = new() { AutoSize = true, Text = "Show the selected mod's details beside the mod list" };
     readonly FlatProgressBar _modBar = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 6), AccessibleName = "Current mod progress" };
@@ -245,12 +245,13 @@ public sealed class MainForm : Form
         _checkLogin = Btn("&Check login", async (_, _) => { SaveFields(); await VerifyLoginAsync(true); });
         _doLogin = Btn("Log &in...", async (_, _) => { SaveFields(); await LoginFlowAsync(); });
         _install = Btn("In&stall SteamCMD", async (_, _) => await InstallAsync());
-        _refresh = Btn("&Refresh", (_, _) => RefreshAll());
-        _all = Btn("&Tick all", (_, _) => TickAll(true));
-        _none = Btn("Tick &none", (_, _) => TickAll(false));
-        _changed = Btn("Tick c&hanged", (_, _) => TickChanged());
-        _groups = Btn("Groups ▾", (_, _) => ShowGroupsMenu());
-        _editPage = Btn("&Workshop page...", (_, _) => EditWorkshopPage(SelectedMod()));
+        // The Mods card's title row: compact buttons, like the Log card's, so the row fits the default window width.
+        _refresh = SmallBtn("&Refresh", (_, _) => RefreshAll());
+        _all = SmallBtn("&Tick all", (_, _) => TickAll(true));
+        _none = SmallBtn("Tick &none", (_, _) => TickAll(false));
+        _changed = SmallBtn("Tick c&hanged", (_, _) => TickChanged());
+        _groups = SmallBtn("Groups ▾", (_, _) => ShowGroupsMenu());
+        _editPage = SmallBtn("&Workshop page...", (_, _) => EditWorkshopPage(SelectedMod()));
         _go = Btn("Upload selected", async (_, _) => await GoAsync()).Role(ThemeRole.Primary);
         _go.Font = new Font(Font, FontStyle.Bold);
         _go.Padding = new Padding(18, 6, 18, 6);
