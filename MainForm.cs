@@ -48,6 +48,7 @@ public sealed class MainForm : Form
         Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, Width = 520, Height = 64, Font = new Font("Consolas", 9f),
         PlaceholderText = "e.g. [url=https://discord.gg/...]Discord[/url] | [url=https://ko-fi.com/...]Ko-fi[/url]", AccessibleName = "Footer added to every description in this mods folder",
     };
+    readonly CheckBox _countComments = new() { AutoSize = true, Text = "At start-up, count new comments on your mods (at most every 6 hours, only while Steam is running)" };
     readonly ComboBox _descSync = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, AccessibleName = "When a description file differs from Steam" };
     readonly CheckBox _testItems = new() { AutoSize = true, Text = "Upload to t&est items" };
     readonly TextBox _buildCmd = new() { Width = 420, PlaceholderText = "e.g. dotnet build -c Release", AccessibleName = "Build step for this mods folder" };
@@ -170,6 +171,7 @@ public sealed class MainForm : Form
             if (IsDisposed) return;
             if (UpdatedFrom != null) Append($"Updated SteamCMD Helper from {UpdatedFrom} to {UpdateCheck.CurrentVersion}.", LogKind.Ok);
             if (!NoStartupPrompts) ShowWhatsNewAfterUpdate();
+            if (!NoStartupPrompts) _ = StartupCommentsAsync();
             if (!NoStartupPrompts) _ = Task.Run(() => { SelfUpdate.CleanUp(SelfUpdate.AppDir); SelfUpdate.CleanStaging(UpdateCheck.CurrentVersion); }); // what the last update left
             if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { if (!NoStartupPrompts) await OfferInstallAsync(); }
             else _ = StartupSteamAsync(SteamLogin.LooksCached(_s.EffectiveSteamCmd, _s.Account));
@@ -575,6 +577,7 @@ public sealed class MainForm : Form
         var menu = new ContextMenuStrip();
         menu.Items.Add(new ToolStripMenuItem("Edit &Workshop page...", null, (_, _) => EditWorkshopPage(SelectedMod())) { ShortcutKeyDisplayString = "Enter" });
         menu.Items.Add(new ToolStripMenuItem("Change the &version to upload...", null, (_, _) => { if (SelectedMod() is { } m) ChangeVersion(m); }) { ShortcutKeyDisplayString = "F2" });
+        menu.Items.Add("Stats and comme&nts...", null, (_, _) => ShowStats(SelectedMod()));
         var bulk = menu.Items.Add("Workshop pages of ticked &mods...", null, async (_, _) => await EditTickedPagesAsync());
         var entry = menu.Items.Add("Write the &changelog entry...", null, (_, _) => { if (SelectedMod() is { } m && AskChangelogEntry(m, m.Version)) RefreshAll(); });
         menu.Items.Add(new ToolStripSeparator());
@@ -742,6 +745,8 @@ public sealed class MainForm : Form
         // ---- Workshop page: the text that goes to Steam with an upload
         _uploadCredit.Checked = _s.UploadCredit;
         _markdownNotes.Checked = _s.MarkdownNotes;
+        _countComments.Checked = _s.CountCommentsAtStartup;
+        _countComments.CheckedChanged += (_, _) => { _s.CountCommentsAtStartup = _countComments.Checked; _s.Save(); };
         _descSync.Items.AddRange(new object[] { "Ask before sending it", "Always send it", "Never send it" });
         _descSync.SelectedIndex = _s.DescriptionSync switch { DescriptionSync.Always => 1, DescriptionSync.Never => 2, _ => 0 };
         _descSync.SelectedIndexChanged += (_, _) =>
@@ -757,6 +762,10 @@ public sealed class MainForm : Form
                 Hint("The template is for the current mods folder: {note} is the changelog entry, and {name}, {version}, {date} and {game} fill themselves in " +
                      "(e.g. \"{version} ({date})\" on the first line, then {note}). Without {note} the entry goes after it. For RimWorld, start with {version}, " +
                      "so the Steam version column can still read it. All of this changes only the note on Steam; the upload history and Discord announcements keep the entry as written.")),
+            Card("Stats and comments", null,
+                _countComments,
+                Hint("Comments can only be counted by the Steam client, which then briefly shows you playing the game. Mods with new comments are named in the log " +
+                     "and their row tooltip. Right-click a mod > Stats and comments for charts of subscribers, favourites and visitors over time.")),
             Card("Description", null,
                 Row(Lbl("When a mod's &description file differs from Steam"), _descSync),
                 Hint("Checked when you upload a mod that is on Steam and has a description file (steam_description.txt for Generic). " +
@@ -2033,6 +2042,7 @@ public sealed class MainForm : Form
         }
         _list.Invalidate();
 
+        var newComments = WorkshopStats.New(WorkshopStats.LoadComments());
         // One at a time: Steam rate-limits its community pages.
         foreach (var m in mods)
         {
@@ -2048,6 +2058,7 @@ public sealed class MainForm : Form
             var last = history.GetValueOrDefault(m.WorkshopId!);
             if (SubscriberStats.Trend(stats.GetValueOrDefault(m.WorkshopId!), DateOnly.FromDateTime(DateTime.Now),
                     last == null ? null : DateOnly.FromDateTime(last.Time.LocalDateTime)) is { } trend) extra.Add(trend);
+            if (newComments.TryGetValue(m.WorkshopId!, out var unread)) extra.Add($"{unread:N0} new comment{(unread == 1 ? "" : "s")} on Steam (right-click > Stats and comments).");
             it.ToolTipText = string.Join("\n", extra) + "\n" + RowTip(m);
             // Now known to be up to date: drop it from view when those are hidden.
             if (_hideUpToDate.Checked && StateOf(it) == RowState.UpToDate && it.ListView != null)
@@ -2183,6 +2194,44 @@ public sealed class MainForm : Form
             ? $"{m.Name}: Workshop page changes cleared."
             : $"{m.Name}: Workshop page changes ({f.Result.Summary()}) will be sent with the next upload.", LogKind.Note);
         RefreshAll();
+    }
+
+    void ShowStats(ModInfo? selected)
+    {
+        if (!_mods.Any(m => m.OnSteam)) { Append("None of these mods is on Steam yet, so there are no Workshop stats.", LogKind.Note); return; }
+        using var f = new StatsForm(_mods, selected, SubscriberStats.Load(), () => CountCommentsAsync(quiet: false));
+        f.ShowDialog(this);
+    }
+
+    /// <summary>
+    /// Counts the comments on every mod through the Steam client and remembers them; logs which mods have new ones.
+    /// Null when Steam could not be asked. <paramref name="quiet"/> keeps failures out of the log (the start-up check).
+    /// </summary>
+    async Task<Dictionary<string, long>?> CountCommentsAsync(bool quiet)
+    {
+        var mods = _mods.Where(m => m.OnSteam).ToList();
+        if (mods.Count == 0 || !_cfg.AppIdValid) return null;
+        var r = await WorkshopExtras.ApplyOnSteamAsync(new ExtrasRequest { AppId = _cfg.AppId, CountComments = mods.Select(m => m.WorkshopId!).ToArray() }, CancellationToken.None);
+        if (!r.Ok || r.Comments == null)
+        {
+            if (!quiet) Append("Could not count comments: " + r.Error, LogKind.Warn);
+            return null;
+        }
+        _s.CommentsCheckedAt = DateTime.UtcNow;
+        _s.Save();
+        var fresh = WorkshopStats.TakeCounts(r.Comments);
+        foreach (var m in mods)
+            if (fresh.TryGetValue(m.WorkshopId!, out var n)) Append($"{m.Name} has {n:N0} new comment{(n == 1 ? "" : "s")} on Steam (right-click > Stats and comments).", LogKind.Note);
+        if (!quiet && fresh.Count == 0) Append("No new comments on your mods.", LogKind.Ok);
+        return fresh;
+    }
+
+    /// <summary>At start-up, when turned on and Steam is running: count comments, at most every six hours.</summary>
+    async Task StartupCommentsAsync()
+    {
+        if (!_s.CountCommentsAtStartup || DateTime.UtcNow - _s.CommentsCheckedAt < TimeSpan.FromHours(6)) return;
+        if (Process.GetProcessesByName("steam").Length == 0) return;
+        await CountCommentsAsync(quiet: true);
     }
 
     /// <summary>

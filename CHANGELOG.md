@@ -15,6 +15,12 @@
 - **Workshop pages of ticked mods...** (right-click, with two or more mods ticked) sets one visibility, replaces a
   phrase or adds text at the end of every ticked mod's description at once. The changes wait for each mod's next upload
   and show in the upload confirmation, like single edits. An item whose page Steam won't show keeps its description.
+- **Workshop stats.** Right-click a mod > **Stats and comments...** charts current subscribers, favourites, unique
+  visitors and subscribers ever, for one mod or all of them together, with the change over 7 and 30 days. The counts
+  come from Steam's public item details once a day; favourites also show in the row tooltip.
+- **New comments.** **Count comments** in the same window counts the comments on every mod through the Steam client and
+  names the mods with new ones in the log and their row tooltip; **Open comments** opens the item's comments and marks
+  them read. **Options > Workshop page** can count them at start-up while Steam is running (at most every 6 hours).
 - **Dependency updates are pointed out.** The upload confirmation says when a Workshop item a mod needs (Harmony, a
   framework) was updated on Steam after the mod's own last upload, so it can be tried in game with it first.
 - **Shared description footer** (Options > Workshop page > Description, per mods folder): text such as Discord, Ko-fi

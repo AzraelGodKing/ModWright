@@ -46,6 +46,10 @@ public sealed class AppSettings
     public string DescriptionSync { get; set; } = SteamCmdHelper.DescriptionSync.Ask;
     /// <summary>Text added to the end of every Workshop description from a mods folder (see DescriptionSync.WithFooter), per mods folder.</summary>
     public Dictionary<string, string> DescriptionFooters { get; set; } = new();
+    /// <summary>At start-up, count new comments on the mods through the Steam client (at most every 6 hours).</summary>
+    public bool CountCommentsAtStartup { get; set; }
+    /// <summary>When comments were last counted (UTC).</summary>
+    public DateTime CommentsCheckedAt { get; set; }
     /// <summary>A command run in the mods folder before packaging (e.g. "dotnet build -c Release"), per mods folder.</summary>
     public Dictionary<string, string> BuildCommands { get; set; } = new();
     /// <summary>The git branch or tag to upload from instead of the checked-out commit, per mods folder.</summary>

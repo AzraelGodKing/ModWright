@@ -2,8 +2,8 @@ using System.Text.Json;
 
 namespace SteamCmdHelper;
 
-/// <summary>One day's subscriber count for an item.</summary>
-public sealed record SubscriberPoint(DateOnly Day, long Subscribers);
+/// <summary>One day's counts for an item (favourites, views and lifetime subscribers are 0 in days recorded by older versions).</summary>
+public sealed record SubscriberPoint(DateOnly Day, long Subscribers, long Favorites = 0, long Views = 0, long LifetimeSubscribers = 0);
 
 /// <summary>
 /// Remembers each item's subscriber count once a day (from the public details the list already reads), so the row can
@@ -40,7 +40,7 @@ public static class SubscriberStats
             {
                 if (!all.TryGetValue(item.Id, out var points)) all[item.Id] = points = new();
                 points.RemoveAll(p => p.Day == today || p.Day < today.AddDays(-KeepDays));
-                points.Add(new SubscriberPoint(today, item.Subscribers));
+                points.Add(new SubscriberPoint(today, item.Subscribers, item.Favorites, item.Views, item.LifetimeSubscribers));
                 points.Sort((a, b) => a.Day.CompareTo(b.Day));
             }
             try
