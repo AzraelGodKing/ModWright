@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.0
+
+- **The space beside the mod list is put to use.** On a wide window the list's columns ended about halfway across and
+  the rest was empty. A details panel now sits there: the selected mod's preview image at a size you can see, the
+  version to upload and the one on Steam, its subscribers, favourites, views, size and visibility on Steam, its last
+  upload from this PC and its Workshop tags, what it still needs, the change note and description it will upload with,
+  and buttons for its Workshop page, version, Steam page, stats, folder, package preview and upload history. With no
+  mod selected it counts the list by status, the ticked mods and the subscribers across them. Drag the bar between the
+  list and the panel to resize it (the width is remembered), or turn it off in Options > Appearance. When the window
+  is too narrow for both, the panel stays hidden so the columns keep their room.
+
 ## 1.5.0
 
 - **Steam comes back online after uploading.** Steam lets an account sign in once at a time, so SteamCMD's login left
