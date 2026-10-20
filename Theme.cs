@@ -333,6 +333,7 @@ public static class Theme
                 if (role == ThemeRole.Surface) Hook(c, PaintCardEdge);
                 if (role == ThemeRole.Rule) Hook(c, PaintRule);
                 if (role == ThemeRole.Header) Hook(c, PaintBanner);
+                if (c is ModDetailsPanel) Native(c, OnScrollHandle); // its scroll bar follows the theme like the list's
                 c.Invalidate();
                 break;
         }

@@ -86,6 +86,10 @@ public sealed class AppSettings
     public List<string> GitHubReleaseRepos { get; set; } = new();
     /// <summary>The mod list's "Hide up to date" box.</summary>
     public bool HideUpToDate { get; set; }
+    /// <summary>The details panel beside the mod list (shown when the window is wide enough).</summary>
+    public bool ShowDetails { get; set; } = true;
+    /// <summary>Width of the details panel in 96-DPI pixels; 0 = about a third of the list.</summary>
+    public int DetailsWidth { get; set; }
     /// <summary>The main window's place and size in pixels (x, y, width, height) when it last closed; empty = centred.</summary>
     public int[] WindowBounds { get; set; } = Array.Empty<int>();
     public bool WindowMaximized { get; set; }

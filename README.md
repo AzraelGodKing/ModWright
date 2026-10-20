@@ -147,6 +147,14 @@ has, and clicking a column header sorts by it (again to reverse, a third time fo
 to open its folder or changelog, copy its Workshop ID or link, see its upload history, preview its package, or open it
 on Steam. The strip under the list spells out everything the selected mod needs, in full.
 
+When the window is wide enough, a **details panel** sits beside the list: the selected mod's preview image at a size you
+can see, the version to upload and the one on Steam, its subscribers, favourites, views, size and visibility on Steam,
+its last upload from this PC and its Workshop tags, what it still needs, the change note and description it will upload
+with, and buttons for editing its page, changing its version, opening it on Steam or in Explorer, previewing the package
+and its upload history. With nothing selected it counts the list by status. Drag the bar between list and panel to
+resize it, or turn it off in **Options > Appearance** to give the list the whole width; on a narrow window the panel stays out of the way so
+the columns keep their room.
+
 Everything works from the keyboard. **F1** (or **? > Keyboard shortcuts**) lists the shortcuts: **F5** refresh,
 **Ctrl+O** pick the mods folder, **Ctrl+F** filter, **Space** tick the selected mod, **Enter** edit its Workshop page,
 **F2** change its version, **Shift+F10** its right-click menu, **Ctrl+Enter** upload the ticked mods, **Esc** stop a

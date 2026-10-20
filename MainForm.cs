@@ -86,6 +86,7 @@ public sealed class MainForm : Form
     readonly ListView _list = new() { AccessibleName = "Mods" };
     readonly TextBox _filter = new() { Width = 170, PlaceholderText = "Filter mods  (Ctrl+F)", AccessibleName = "Filter mods" };
     readonly CheckBox _hideUpToDate = new() { AutoSize = true, Text = "&Hide up to date" };
+    readonly CheckBox _showDetails = new() { AutoSize = true, Text = "Show the selected mod's details beside the mod list" };
     readonly FlatProgressBar _modBar = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 6), AccessibleName = "Current mod progress" };
     readonly FlatProgressBar _overall = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 2), AccessibleName = "Overall progress" };
     readonly Label _current = new() { AutoSize = true, Text = "Idle", Tag = "fill" };
@@ -101,6 +102,12 @@ public sealed class MainForm : Form
     SplitContainer _split = null!;
 
     /// <summary>Under the mod list: everything the selected mod needs, in full (the Status column has room for one line).</summary>
+    readonly ModDetailsPanel _details = new();
+    /// <summary>The list on the left, the selected mod's details on the right (when the window has room for both).</summary>
+    SplitContainer _listSplit = null!;
+    /// <summary>Steam's public details and this PC's last upload of each item, by Workshop ID, for the details panel.</summary>
+    Dictionary<string, WorkshopItem> _live = new();
+    Dictionary<string, UploadEntry> _history = new();
     readonly Label _detail = new Label { Dock = DockStyle.Bottom, AutoSize = false, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(6, 0, 6, 0), AccessibleName = "Selected mod", UseMnemonic = false }.Role(ThemeRole.Keep);
 
     // The Project card folds into one summary line once it is set up, which gives the mod list its height back.
@@ -458,7 +465,7 @@ public sealed class MainForm : Form
         _list.ItemCheck += OnItemCheck;
         // Windows reports ticks while it is still taking rows in (when the list is filled or its window is created),
         // and a row's tick can't be read until it has its place; so count them once the current message is done.
-        _list.ItemChecked += (_, _) => QueueGoButton();
+        _list.ItemChecked += (_, _) => { QueueGoButton(); if (!_populating && SelectedMod() == null) UpdateDetail(); }; // the panel counts the ticks
         _list.MouseDoubleClick += OnListDoubleClick;
         _list.KeyDown += OnListKey;
         _list.ColumnClick += (_, e) => SortBy(e.Column);
@@ -466,7 +473,7 @@ public sealed class MainForm : Form
         _list.GotFocus += (_, _) => _list.Invalidate();
         _list.LostFocus += (_, _) => _list.Invalidate();
         _list.Resize += (_, _) => StretchLastColumn();
-        _list.ColumnWidthChanged += (_, e) => { if (e.ColumnIndex < _list.Columns.Count - 1) StretchLastColumn(); };
+        _list.ColumnWidthChanged += (_, e) => { if (e.ColumnIndex < _list.Columns.Count - 1) { StretchLastColumn(); PlaceDetails(); } };
         Tip(_editPage, "Change the selected mod's title, description or visibility on Steam with its next upload");
         Tip(_hideUpToDate, "Hide the mods whose version on Steam is already the one to upload");
         Tip(_refresh, "Read the mods folder again (F5)");
@@ -486,9 +493,29 @@ public sealed class MainForm : Form
         _empty.Controls.Add(center);
         var listHost = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
         _detail.Height = 26; // scaled with the window
-        listHost.Controls.Add(_list);
-        listHost.Controls.Add(_empty);
+        // The list and the details panel side by side; drag the bar between them to give either more room.
+        _listSplit = new SplitContainer
+        {
+            Dock = DockStyle.Fill, Orientation = Orientation.Vertical, FixedPanel = FixedPanel.Panel2,
+            SplitterWidth = 6, Margin = Padding.Empty, AccessibleName = "Resize the details panel", Panel2Collapsed = true,
+        };
+        _listSplit.Panel1.Controls.Add(_list);
+        _listSplit.Panel1.Controls.Add(_empty);
+        _details.Dock = DockStyle.Fill;
+        _listSplit.Panel2.Controls.Add(_details);
+        _listSplit.SplitterMoved += (_, _) =>
+        {
+            if (_populating || _placingDetails || _listSplit.Panel2Collapsed || !_listSplit.IsHandleCreated) return;
+            _s.DetailsWidth = (int)Math.Round(_listSplit.Panel2.Width * 96.0 / DeviceDpi / Theme.TextScale);
+            _s.Save();
+        };
+        _listSplit.SizeChanged += (_, _) => PlaceDetails();
+        Tip(_listSplit, "Drag to give the mod list or the details more room");
+        listHost.Controls.Add(_listSplit);
         listHost.Controls.Add(_detail); // docked first, so it keeps its strip under the list
+        AddDetailActions();
+        _showDetails.Checked = _s.ShowDetails;
+        _showDetails.CheckedChanged += (_, _) => { if (_populating) return; _s.ShowDetails = _showDetails.Checked; _s.Save(); PlaceDetails(); };
 
         var mods = Card("Mods", new Control[] { _filter, _hideUpToDate, _editPage, _all, _changed, _groups, _none, _refresh }, listHost);
         mods.AutoSize = false; mods.Dock = DockStyle.Fill;
@@ -561,7 +588,49 @@ public sealed class MainForm : Form
         return page;
     }
 
-    bool _splitPlaced;
+    bool _splitPlaced, _placingDetails;
+
+    /// <summary>
+    /// Shows the details panel beside the list when it is turned on and the list keeps room for its columns, at the
+    /// width it was left at; otherwise the list takes the whole width.
+    /// </summary>
+    void PlaceDetails()
+    {
+        if (_listSplit == null || _placingDetails || _list.Columns.Count == 0) return;
+        var area = _listSplit.Width;
+        var columns = _list.Columns.Cast<ColumnHeader>().Take(_list.Columns.Count - 1).Sum(c => c.Width) + SystemInformation.VerticalScrollBarWidth;
+        var show = _showDetails.Checked && _list.Items.Count > 0 && area > 0
+            && ModDetails.Fits(area - _listSplit.SplitterWidth, columns, U(ModDetails.MinStatusWidth), U(ModDetails.MinPanelWidth));
+        var wasShown = !_listSplit.Panel2Collapsed;
+        _placingDetails = true;
+        try
+        {
+            _listSplit.Panel2Collapsed = !show;
+            if (show)
+            {
+                var width = ModDetails.Width(_s.DetailsWidth > 0 ? U(_s.DetailsWidth) : 0, area - _listSplit.SplitterWidth, columns, U(ModDetails.MinStatusWidth), U(ModDetails.MinPanelWidth));
+                var distance = area - _listSplit.SplitterWidth - width;
+                if (distance > 0 && _listSplit.SplitterDistance != distance) _listSplit.SplitterDistance = distance;
+            }
+        }
+        catch (InvalidOperationException) { } // not laid out yet
+        finally { _placingDetails = false; }
+        if (show && !wasShown) UpdateDetail();
+    }
+
+    /// <summary>The buttons in the details panel: the things done most with the selected mod.</summary>
+    void AddDetailActions()
+    {
+        _details.AddAction("Edit page", "Change the title, description or visibility on Steam with the next upload (Enter)", _tip, () => EditWorkshopPage(SelectedMod()));
+        _details.AddAction("Change version", "Change the version to upload (F2)", _tip, () => { if (SelectedMod() is { } m) ChangeVersion(m); });
+        _details.AddAction("Write change note", "Write the changelog entry this version still needs", _tip,
+            () => { if (SelectedMod() is { } m && AskChangelogEntry(m, m.Version)) RefreshAll(); }, m => ModScanner.NeedsChangelogEntry(m, _cfg));
+        _details.AddAction("Open on Steam", "Open the Workshop page in your browser", _tip, () => { if (SelectedMod() is { OnSteam: true } m) OpenUrl(WorkshopUrl(m)); }, m => m.OnSteam);
+        _details.AddAction("Stats", "Subscribers over time and comments on Steam", _tip, () => ShowStats(SelectedMod()), m => m.OnSteam);
+        _details.AddAction("Folder", "Open the mod's folder", _tip, () => { if (SelectedMod() is { } m) OpenPath(m.Dir); });
+        _details.AddAction("Preview package", "See which files the upload would send, and their sizes", _tip, async () => { if (SelectedMod() is { } m) await PreviewPackageAsync(m); });
+        _details.AddAction("History", "Every upload of this mod from this PC, and rolling back", _tip, () => { if (SelectedMod() is { } m) ShowHistory(m); }, m => m.OnSteam);
+    }
 
     /// <summary>Puts the bar between list and log where it was left (or at a sensible default) once the page has its size.</summary>
     void PlaceSplitter()
@@ -1026,7 +1095,10 @@ public sealed class MainForm : Form
                 _contrastNote,
                 Row(Lbl("Te&xt size"), _textSize),
                 Hint("The theme changes straight away; Match Windows follows Windows' light or dark app mode. " +
-                     "A new text size is used the next time SteamCMD Helper starts.")),
+                     "A new text size is used the next time SteamCMD Helper starts."),
+                Row(_showDetails),
+                Hint("Its preview image, numbers on Steam, change note, description and buttons, on the Upload tab when the window is wide enough " +
+                     "for the list's columns too. Drag the bar between the list and the details to resize them.")),
             Card("Language", null,
                 Row(Lbl("&Language"), _language),
                 Hint("The windows' buttons, labels and menus in another language, from the next start. Log lines and messages stay in English. " +
@@ -1259,6 +1331,7 @@ public sealed class MainForm : Form
         _navUpload.Selected = _uploadPage.Visible;
         _navOptions.Selected = _optionsPage.Visible;
         foreach (var it in _rows) ColorRow(it, (ModInfo)it.Tag!);
+        UpdateDetail();
         SetLogin(_login.Text, _loginTone);
         ShowGame();
         UpdateSetup();
@@ -1754,6 +1827,7 @@ public sealed class MainForm : Form
         _mods = scan.Mods;
         var uploaded = scan.Uploaded;
         var history = scan.History;
+        _history = history;
         _rows.Clear();
         foreach (var m in _mods)
         {
@@ -1847,6 +1921,47 @@ public sealed class MainForm : Form
         _detail.BackColor = Theme.Current.Input;
         _detail.AccessibleDescription = text;
         Tip(_detail, text);
+        UpdateDetailsPanel(m, tone);
+    }
+
+    /// <summary>Fills the panel beside the list with the selected mod, or a summary of the list when none is selected.</summary>
+    void UpdateDetailsPanel(ModInfo? m, Tone tone)
+    {
+        if (_listSplit == null || _listSplit.Panel2Collapsed) return; // filled when it shows
+        if (m == null)
+        {
+            var states = _rows.Select(StateOf).ToList();
+            var facts = new List<(string, string)> { ("Ticked", $"{_rows.Count(i => i.Checked)} of {_rows.Count}") };
+            var known = _mods.Where(x => x.OnSteam && _live.TryGetValue(x.WorkshopId!, out var w) && w.Public).Select(x => _live[x.WorkshopId!]).ToList();
+            if (known.Count > 0) facts.Add(("Subscribers", $"{known.Sum(w => w.Subscribers):N0} across {known.Count} item{(known.Count == 1 ? "" : "s")}"));
+            if (_cfg.GameName.Length > 0) facts.Add(("Game", _cfg.GameName));
+            _details.ShowList(Path.GetFileName(_s.RepoPath.TrimEnd('\\', '/')), ModDetails.Summary(states), facts);
+            return;
+        }
+        var row = _rows.FirstOrDefault(i => ReferenceEquals(i.Tag, m));
+        var state = row != null ? StateOf(row) : RowState.Ready;
+        var onSteam = row?.SubItems[UploadedCol].Text;
+        WorkshopItem? live = m.OnSteam && _live.TryGetValue(m.WorkshopId!, out var item) ? item : null;
+        UploadEntry? last = m.OnSteam && _history.TryGetValue(m.WorkshopId!, out var h) ? h : null;
+        string[] tags;
+        try { tags = WorkshopTags.For(m.Dir, _cfg); } catch { tags = Array.Empty<string>(); }
+        var note = "";
+        if (ChangelogOf(m) is { } changelog)
+            try { note = ModScanner.ReadChangelog(changelog, _cfg, m.Version).notes; } catch { }
+        var description = "";
+        var descFile = string.IsNullOrWhiteSpace(_cfg.SteamDescriptionFile) ? null : Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.SteamDescriptionFile));
+        if (descFile != null && File.Exists(descFile))
+            try { description = ModDetails.PlainText(File.ReadAllText(descFile), 600); } catch { }
+        var line = state switch
+        {
+            RowState.UpToDate => "Steam already has this version",
+            RowState.Changed => "this version is not on Steam yet",
+            RowState.New => _allowCreate.Checked ? "uploading creates a new private item" : "not on Steam yet",
+            RowState.Failed => "the last upload failed; see the log",
+            RowState.Fix => "fix the problems below first",
+            _ => "",
+        };
+        _details.ShowMod(m, ModRows.Label(state), ToneOf(state), line, ModDetails.Facts(m, onSteam, live, last, tags), ModDetails.PlainText(note, 900), description);
     }
 
     static bool SameDir(ListViewItem it, string dir) => it.Tag is ModInfo m && string.Equals(m.Dir, dir, StringComparison.OrdinalIgnoreCase);
@@ -2056,6 +2171,7 @@ public sealed class MainForm : Form
         _empty.Visible = empty;
         _list.Visible = !empty;
         _detail.Visible = !empty; // nothing to select; the empty state needs the room
+        PlaceDetails();
         if (!empty) return;
         _emptyLayout.Visible = _emptyClear.Visible = _emptyNew.Visible = false;
         _emptyBrowse.Visible = true;
@@ -2310,6 +2426,7 @@ public sealed class MainForm : Form
         var (all, cfg) = (_mods, _cfg);
         var deps = await Task.Run(() => all.ToDictionary(m => m, m => Dependencies.Find(m, cfg))); // reads every mod's metadata
         var live = await WorkshopStatus.FetchAsync(mods.Select(m => m.WorkshopId!).Concat(deps.Values.SelectMany(d => d)));
+        if (!IsDisposed && ReferenceEquals(all, _mods)) { _live = live; UpdateDetail(); }
         var stats = SubscriberStats.Record(mods.Where(m => live.ContainsKey(m.WorkshopId!)).Select(m => live[m.WorkshopId!]), DateOnly.FromDateTime(DateTime.Now));
         foreach (var (m, ids) in deps)
             foreach (var w in Dependencies.Problems(ids, live))
@@ -2893,6 +3010,7 @@ public sealed class MainForm : Form
         ApplyLocks();
         _cancel.Visible = busy;
         _cancel.Enabled = busy;
+        _details.SetBusy(busy);
         UpdateGoButton();
         UpdateSelectionButtons();
     }
