@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **The app in German, Russian and Chinese.** Options > Appearance > Language switches the windows' buttons, labels,
+  menus and tooltips to Deutsch, Русский or 简体中文 from the next start (log lines and messages stay in English).
+  **Make a translation file** writes every text the windows showed, filled in where the language has it, so a
+  translation can be fixed or a new language added by putting the file in the data folder's languages folder.
 - **New mod.** Ctrl+N (or **New mod...** on the right-click menu and the empty list) makes a ready-to-upload mod folder
   for the current layout. For RimWorld that is an About.xml with a packageId made from the author and name, the
   supported versions (the newest any of your mods supports by default), a placeholder preview, the changelog entry

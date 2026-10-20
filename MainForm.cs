@@ -29,6 +29,8 @@ public sealed class MainForm : Form
     readonly RadioButton _themeLight = new() { AutoSize = true, Text = "Li&ght" };
     readonly RadioButton _themeSystem = new() { AutoSize = true, Text = "&Match Windows" };
     readonly ComboBox _textSize = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90 };
+    readonly ComboBox _language = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, AccessibleName = "Language" };
+    List<Translation> _languages = new();
     /// <summary>Says that Windows High Contrast is on and wins over the theme choice; hidden otherwise.</summary>
     Label _contrastNote = null!;
     readonly ComboBox _profile = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
@@ -157,6 +159,7 @@ public sealed class MainForm : Form
         if (_s.RecentRepos.Count == 0 && _s.RepoPath.Length > 0) _s.Remember(_s.RepoPath); // settings from before the recent list
         Theme.Set(theme ?? _s.Theme);
         Theme.TextScale = Display.NormalizeTextSize(_s.TextSize) / 100f;
+        Localizer.Use(_s.Language);
         BuildUi();
         FillRecent();
         _account.Text = _s.Account;
@@ -377,7 +380,7 @@ public sealed class MainForm : Form
         _help.Font = new Font(Font, FontStyle.Bold);
         _help.Margin = new Padding(12, 0, 0, 8);
         _help.Anchor = AnchorStyles.None;
-        _tip.SetToolTip(_help, "Keyboard shortcuts (F1), or send a request: support another game, report a bug or suggest a feature");
+        Tip(_help, "Keyboard shortcuts (F1), or send a request: support another game, report a bug or suggest a feature");
         bar.Controls.Add(_help, 4, 0);
         return bar;
     }
@@ -399,7 +402,7 @@ public sealed class MainForm : Form
             steps.Controls.Add(l);
         }
         var setupTitle = new Label { Text = "GET SET UP", AutoSize = true, Font = Theme.SectionFont, AccessibleName = "Get set up" }.Role(ThemeRole.Title);
-        _tip.SetToolTip(setupTitle, "Uploads need all four steps. This box goes away once they are done.");
+        Tip(setupTitle, "Uploads need all four steps. This box goes away once they are done.");
         var setupRow = Row(setupTitle, steps, _setupCount, _setupNext);
         setupTitle.Margin = new Padding(0, 3, 20, 3);
         setupRow.Margin = Padding.Empty;
@@ -407,10 +410,10 @@ public sealed class MainForm : Form
         page.Controls.Add(_setup, 0, 0);
 
         _preset.Items.AddRange(ProjectConfig.PresetNames.Cast<object>().Append("Custom").ToArray());
-        _tip.SetToolTip(_repo, "Your mods folders; pick one you used before, press Browse, or drop a folder onto this window");
-        _tip.SetToolTip(_browse, "Pick the folder that holds your mods (Ctrl+O)");
-        _tip.SetToolTip(_projectToggle, "Show or hide the mods folder, app ID and layout");
-        _tip.SetToolTip(_projectSummary, "Click to change the mods folder, app ID or layout");
+        Tip(_repo, "Your mods folders; pick one you used before, press Browse, or drop a folder onto this window");
+        Tip(_browse, "Pick the folder that holds your mods (Ctrl+O)");
+        Tip(_projectToggle, "Show or hide the mods folder, app ID and layout");
+        Tip(_projectSummary, "Click to change the mods folder, app ID or layout");
         _projectRows = new Control[]
         {
             Row(Lbl("Mods re&po"), _repo, _browse, _branch),
@@ -429,7 +432,7 @@ public sealed class MainForm : Form
         _list.SmallImageList = new ImageList { ImageSize = new Size(1, U(28)) };
         int[] widths = { 200, 105, 110, 90, 105, 70, 190 };
         for (var i = 0; i < ColumnNames.Length; i++)
-            _list.Columns.Add(ColumnNames[i], (int)(widths[i] * Theme.TextScale), i == PreviewCol ? HorizontalAlignment.Center : HorizontalAlignment.Left);
+            _list.Columns.Add(Localizer.T(ColumnNames[i]), (int)(widths[i] * Theme.TextScale), i == PreviewCol ? HorizontalAlignment.Center : HorizontalAlignment.Left);
         _list.PaintCells(PaintCell);
         _list.ItemCheck += OnItemCheck;
         // Windows reports ticks while it is still taking rows in (when the list is filled or its window is created),
@@ -443,9 +446,9 @@ public sealed class MainForm : Form
         _list.LostFocus += (_, _) => _list.Invalidate();
         _list.Resize += (_, _) => StretchLastColumn();
         _list.ColumnWidthChanged += (_, e) => { if (e.ColumnIndex < _list.Columns.Count - 1) StretchLastColumn(); };
-        _tip.SetToolTip(_editPage, "Change the selected mod's title, description or visibility on Steam with its next upload");
-        _tip.SetToolTip(_hideUpToDate, "Hide the mods whose version on Steam is already the one to upload");
-        _tip.SetToolTip(_refresh, "Read the mods folder again (F5)");
+        Tip(_editPage, "Change the selected mod's title, description or visibility on Steam with its next upload");
+        Tip(_hideUpToDate, "Hide the mods whose version on Steam is already the one to upload");
+        Tip(_refresh, "Read the mods folder again (F5)");
         _list.ContextMenuStrip = BuildRowMenu();
 
         // The list and its empty state share one spot; only one of them is visible.
@@ -477,14 +480,14 @@ public sealed class MainForm : Form
             _overall);
         _progress.Visible = false;
 
-        _tip.SetToolTip(_loginLink, "Steam login settings are on the Options tab");
-        _tip.SetToolTip(_all, "Tick every mod that is ready to upload, then upload them in one go");
-        _tip.SetToolTip(_changed, "Tick only the mods whose version Steam does not have yet (Changed, or not known)");
-        _tip.SetToolTip(_testItems, "Send the ticked mods to their private test copies on Steam instead of the real items, to check them in game first");
-        _tip.SetToolTip(_dry, "Check everything and build the upload, but send nothing to Steam");
-        _tip.SetToolTip(_allowCreate, "Mods that are not on Steam yet are created as new private Workshop items");
-        _tip.SetToolTip(_go, "Upload the ticked mods (Ctrl+Enter)");
-        _tip.SetToolTip(_retry, "Upload again only the mods that failed or were not reached in the last run");
+        Tip(_loginLink, "Steam login settings are on the Options tab");
+        Tip(_all, "Tick every mod that is ready to upload, then upload them in one go");
+        Tip(_changed, "Tick only the mods whose version Steam does not have yet (Changed, or not known)");
+        Tip(_testItems, "Send the ticked mods to their private test copies on Steam instead of the real items, to check them in game first");
+        Tip(_dry, "Check everything and build the upload, but send nothing to Steam");
+        Tip(_allowCreate, "Mods that are not on Steam yet are created as new private Workshop items");
+        Tip(_go, "Upload the ticked mods (Ctrl+Enter)");
+        Tip(_retry, "Upload again only the mods that failed or were not reached in the last run");
         var actions = Row(_dry, _allowCreate, _testItems, _loginLink, _retry, _cancel, _go);
         actions.Margin = new Padding(0, 2, 0, 8);
 
@@ -504,11 +507,11 @@ public sealed class MainForm : Form
         var clear = SmallBtn("Clear", (_, _) => { _logLines.Clear(); _pendingLog.Clear(); _logBoxLines = 0; _log.Clear(); });
         var steamLogs = SmallBtn("SteamCMD lo&gs", (_, _) => OpenSteamCmdLogs());
         var pastLogs = SmallBtn("&Past logs", (_, _) => ShowPastLogs());
-        _tip.SetToolTip(copy, "Copy the whole log");
-        _tip.SetToolTip(pastLogs, $"Read the logs of earlier uploads. Every upload run's log is saved; the newest {RunLogs.Keep} are kept.");
-        _tip.SetToolTip(_logFilter, "Show every line, or only the ones that need attention. Copy and Save always take the whole log.");
-        _tip.SetToolTip(_autoScroll, "Keep the newest line in view. Untick to read back while an upload runs.");
-        _tip.SetToolTip(steamLogs, "Open SteamCMD's own log folder (workshop_log.txt and others)");
+        Tip(copy, "Copy the whole log");
+        Tip(pastLogs, $"Read the logs of earlier uploads. Every upload run's log is saved; the newest {RunLogs.Keep} are kept.");
+        Tip(_logFilter, "Show every line, or only the ones that need attention. Copy and Save always take the whole log.");
+        Tip(_autoScroll, "Keep the newest line in view. Untick to read back while an upload runs.");
+        Tip(steamLogs, "Open SteamCMD's own log folder (workshop_log.txt and others)");
         var log = Card("Log", new Control[] { _logFilter, _autoScroll, copy, save, clear, pastLogs, steamLogs }, _log);
         log.AutoSize = false; log.Dock = DockStyle.Fill;
         log.Margin = Padding.Empty;
@@ -529,7 +532,7 @@ public sealed class MainForm : Form
             _s.LogHeight = (int)Math.Round(_split.Panel2.Height * 96.0 / DeviceDpi / Theme.TextScale);
             _s.Save();
         };
-        _tip.SetToolTip(_split, "Drag to give the mod list or the log more room");
+        Tip(_split, "Drag to give the mod list or the log more room");
         page.Controls.Add(_split, 0, 2);
         page.Layout += (_, _) => PlaceSplitter();
         return page;
@@ -866,7 +869,7 @@ public sealed class MainForm : Form
         // ---- Appearance
         _contrastNote = Hint("Windows High Contrast is on, so its colours are used. The theme picked here applies when it is off.");
         foreach (var size in Display.TextSizes) _textSize.Items.Add(size + "%");
-        _tip.SetToolTip(_textSize, "Makes all text, and the layout with it, larger than Windows' own scaling");
+        Tip(_textSize, "Makes all text, and the layout with it, larger than Windows' own scaling");
         ShowThemeChoice();
         AddSection("Appearance", "How SteamCMD Helper looks for your Windows user.",
             Card("Theme and text", null,
@@ -874,7 +877,16 @@ public sealed class MainForm : Form
                 _contrastNote,
                 Row(Lbl("Te&xt size"), _textSize),
                 Hint("The theme changes straight away; Match Windows follows Windows' light or dark app mode. " +
-                     "A new text size is used the next time SteamCMD Helper starts.")));
+                     "A new text size is used the next time SteamCMD Helper starts.")),
+            Card("Language", null,
+                Row(Lbl("&Language"), _language),
+                Hint("The windows' buttons, labels and menus in another language, from the next start. Log lines and messages stay in English. " +
+                     "Anything a translation leaves out is shown in English."),
+                Row(Btn("Make a &translation file...", (_, _) => SaveTranslationTemplate()), Btn("Open the lan&guages folder", (_, _) => OpenLanguagesFolder())),
+                Hint("To fix or add a language, make a translation file, fill in the empty texts, and put it in the languages folder. " +
+                     "Open each window you want covered first, so its text is in the file.")));
+        FillLanguages();
+        _language.SelectedIndexChanged += (_, _) => SetLanguage();
 
         // ---- About
         var version = (typeof(MainForm).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "").Split('+')[0];
@@ -1025,6 +1037,52 @@ public sealed class MainForm : Form
         _textSize.SelectedItem = Display.NormalizeTextSize(_s.TextSize) + "%";
         _populating = false;
         _contrastNote.Visible = Theme.HighContrast;
+    }
+
+    void Tip(Control c, string text) => _tip.SetToolTip(c, Localizer.T(text));
+
+    void FillLanguages()
+    {
+        _languages = Localizer.Available(Localizer.UserFolder);
+        _populating = true;
+        _language.Items.Clear();
+        _language.Items.Add("English");
+        foreach (var t in _languages) _language.Items.Add(t.Language);
+        var at = _languages.FindIndex(t => t.Code.Equals(_s.Language, StringComparison.OrdinalIgnoreCase));
+        _language.SelectedIndex = at + 1;
+        _populating = false;
+    }
+
+    void SetLanguage()
+    {
+        if (_populating || _language.SelectedIndex < 0) return;
+        var code = _language.SelectedIndex == 0 ? "" : _languages[_language.SelectedIndex - 1].Code;
+        if (code == _s.Language) return;
+        _s.Language = code;
+        _s.Save();
+        var name = _language.SelectedItem as string ?? code;
+        Append($"Language set to {name}. It is used the next time SteamCMD Helper starts.", LogKind.Note);
+        Say($"{name} is used the next time SteamCMD Helper starts.");
+    }
+
+    /// <summary>Writes a translation file with every window text seen so far, filled in from the language picked (or empty for a new one).</summary>
+    void SaveTranslationTemplate()
+    {
+        var pick = _language.SelectedIndex > 0 ? _languages[_language.SelectedIndex - 1] : new Translation { Language = "New language", Code = "xx" };
+        using var d = new SaveFileDialog { Filter = "Translation (*.json)|*.json", FileName = pick.Code + ".json", InitialDirectory = Directory.Exists(Localizer.UserFolder) ? Localizer.UserFolder : "" };
+        if (d.ShowDialog(this) != DialogResult.OK) return;
+        List<string> seen;
+        lock (Localizer.Seen) seen = Localizer.Seen.ToList();
+        try { File.WriteAllText(d.FileName, Localizer.Template(pick, seen, _languages)); }
+        catch (Exception e) { Append("Could not write the translation file: " + e.Message, LogKind.Error); return; }
+        Append($"Translation file written to {d.FileName}. Fill in the empty texts (keep the & before a letter, it marks the Alt key), " +
+               $"set \"language\" and \"code\", and put it in {Localizer.UserFolder}.", LogKind.Ok);
+    }
+
+    void OpenLanguagesFolder()
+    {
+        try { Directory.CreateDirectory(Localizer.UserFolder); } catch { }
+        OpenPath(Localizer.UserFolder);
     }
 
     void SetTextSize()
@@ -1239,7 +1297,7 @@ public sealed class MainForm : Form
                          + (_cfg.IsBuiltIn ? " (locked; choose Custom to make your own)" : "");
             _game.ForeColor = Theme.Of(Tone.Muted);
         }
-        _tip.SetToolTip(_game, _game.Text); // full text when it is cut off with "..."
+        Tip(_game, _game.Text); // full text when it is cut off with "..."
         ApplyLocks();
     }
 
@@ -1248,7 +1306,7 @@ public sealed class MainForm : Form
     {
         _editLayout.Enabled = !_busy && !_cfg.IsBuiltIn;
         _appId.Enabled = !_busy && !_cfg.AppIdLocked;
-        _tip.SetToolTip(_editLayout, _cfg.IsBuiltIn ? "Built-in layouts are locked; choose Custom in the Layout box to edit one" : "Open the layout file (" + ProjectConfig.FileName + ") in your editor");
+        Tip(_editLayout, _cfg.IsBuiltIn ? "Built-in layouts are locked; choose Custom in the Layout box to edit one" : "Open the layout file (" + ProjectConfig.FileName + ") in your editor");
     }
 
     static Label Lbl(string t) => new() { Text = t, AutoSize = true };
@@ -1329,7 +1387,7 @@ public sealed class MainForm : Form
         note.Text = text ?? "";
         note.Visible = !string.IsNullOrEmpty(text);
         note.ForeColor = Theme.Of(Tone.Warn);
-        _tip.SetToolTip(note, note.Text);
+        Tip(note, note.Text);
     }
 
     /// <summary>
@@ -1392,7 +1450,7 @@ public sealed class MainForm : Form
         _repo.SelectedIndex = i;
         _repo.EndUpdate();
         _populating = false;
-        _tip.SetToolTip(_repo, _s.RepoPath.Length > 0 ? _s.RepoPath : "Pick the folder that holds your mods");
+        Tip(_repo, _s.RepoPath.Length > 0 ? _s.RepoPath : "Pick the folder that holds your mods");
     }
 
     void BrowseRepo()
@@ -1579,7 +1637,7 @@ public sealed class MainForm : Form
             var game = _cfg.GameName.Length > 0 ? $"{_cfg.GameName} ({_cfg.AppId})" : "app " + _cfg.AppId;
             _projectSummary.Text = string.Join("   ·   ", new[] { Path.GetFileName(_s.RepoPath.TrimEnd('\\', '/')), game, _cfg.PresetName() + " layout", _branch.Text,
                 _s.RefFor(_s.RepoPath) is { Length: > 0 } from ? "uploads from " + from : "" }.Where(t => t.Length > 0));
-            _tip.SetToolTip(_projectSummary, _s.RepoPath + "\n" + _game.Text + "\nClick to change the mods folder, app ID or layout.");
+            Tip(_projectSummary, _s.RepoPath + "\n" + _game.Text + "\nClick to change the mods folder, app ID or layout.");
         }
         ResumeLayout(true);
     }
@@ -1614,7 +1672,7 @@ public sealed class MainForm : Form
         _detail.ForeColor = Theme.Of(tone);
         _detail.BackColor = Theme.Current.Input;
         _detail.AccessibleDescription = text;
-        _tip.SetToolTip(_detail, text);
+        Tip(_detail, text);
     }
 
     static bool SameDir(ListViewItem it, string dir) => it.Tag is ModInfo m && string.Equals(m.Dir, dir, StringComparison.OrdinalIgnoreCase);
@@ -1696,7 +1754,7 @@ public sealed class MainForm : Form
     void ShowSortArrows()
     {
         for (var i = 0; i < _list.Columns.Count; i++)
-            _list.Columns[i].Text = ColumnNames[i] + (i == _sortCol ? (_sortDesc ? "  ▼" : "  ▲") : "");
+            _list.Columns[i].Text = Localizer.T(ColumnNames[i]) + (i == _sortCol ? (_sortDesc ? "  ▼" : "  ▲") : "");
     }
 
     // ---------------------------------------------------------------- remembering the window
@@ -1870,7 +1928,7 @@ public sealed class MainForm : Form
         if (next >= 0)
         {
             _setupNext.Text = (_steps[next].Text[(_steps[next].Text.IndexOf(' ') + 1)..]).Trim();
-            _tip.SetToolTip(_setupNext, "Next step: " + _setupNext.Text);
+            Tip(_setupNext, "Next step: " + _setupNext.Text);
         }
         // The next step is the button, so its link steps aside; the others stay links (any order works).
         for (var i = 0; i < _steps.Length; i++) _steps[i].Visible = i != next;
@@ -2179,7 +2237,7 @@ public sealed class MainForm : Form
         // Roll back: package the commit an old upload came from and send it again, marked as a roll-back.
         var canRollBack = _cfg.UseGitArchive && RepoIsGit;
         var again = new Button { Text = "&Upload this version again...", AutoSize = true, Padding = new Padding(8, 2, 8, 2), Enabled = false };
-        _tip.SetToolTip(again, canRollBack ? "Re-upload the selected version from git, to roll back a bad update"
+        Tip(again, canRollBack ? "Re-upload the selected version from git, to roll back a bad update"
             : "Rolling back needs a git repo and git packaging, to get the old files back");
         list.SelectedIndexChanged += (_, _) => again.Enabled = canRollBack && !_busy && list.SelectedItems.Count == 1 && list.SelectedIndices[0] > 0;
         (string Ref, string Version, string Note)? chosen = null;
@@ -2524,7 +2582,7 @@ public sealed class MainForm : Form
         // rather than hidden, so its column keeps pushing the Upload button to the right.
         _loginLink.Text = SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd) && !string.IsNullOrWhiteSpace(_s.Account) ? text : "";
         _loginLink.LinkColor = _loginLink.VisitedLinkColor = Theme.Of(tone);
-        _tip.SetToolTip(_login, text);
+        Tip(_login, text);
     }
 
     void UpdateLoginHint()
@@ -2533,7 +2591,7 @@ public sealed class MainForm : Form
         var installed = SteamLogin.SteamCmdInstalled(steam);
         _install.Visible = !installed;
         _steamCmdPath.Text = installed ? steam : "Not installed. Install SteamCMD puts it in " + Path.GetDirectoryName(steam);
-        _tip.SetToolTip(_steamCmdPath, steam);
+        Tip(_steamCmdPath, steam);
         if (!installed) SetLogin("SteamCMD is not installed - uploads won't work without it", Tone.Error);
         else if (string.IsNullOrWhiteSpace(_s.Account)) SetLogin("No Steam account set", Tone.Warn);
         else if (SteamLogin.LooksCached(steam, _s.Account)) SetLogin($"Saved login found for {_s.Account} (not checked yet)", Tone.Info);

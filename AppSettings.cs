@@ -22,6 +22,8 @@ public sealed class AppSettings
     public string Theme { get; set; } = Display.Dark;
     /// <summary>Text size in percent (Options > Appearance), on top of Windows' own display scaling.</summary>
     public int TextSize { get; set; } = 100;
+    /// <summary>The language of the app's windows, by code ("de"); "" for English. Used from the next start.</summary>
+    public string Language { get; set; } = "";
     /// <summary>Height of the log on the Upload tab, in 96-DPI pixels; 0 = the default.</summary>
     public int LogHeight { get; set; }
     /// <summary>Look for a newer release on GitHub at start-up.</summary>
