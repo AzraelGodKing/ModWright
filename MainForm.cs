@@ -121,6 +121,7 @@ public sealed class MainForm : Form
     readonly LinkLabel[] _steps = Enumerable.Range(0, 4).Select(_ => new LinkLabel { AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(0, 2, 24, 2) }.Role(ThemeRole.Keep)).ToArray();
 
     Button _changed = null!;
+    Button _groups = null!;
     Button _help = null!, _checkUpdateNow = null!, _editPage = null!, _browse = null!, _refresh = null!, _all = null!, _none = null!, _go = null!, _cancel = null!, _retry = null!,
         _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!, _emptyBrowse = null!, _emptyLayout = null!, _emptyClear = null!, _emptyNew = null!;
     NavButton _navUpload = null!, _navOptions = null!;
@@ -233,6 +234,7 @@ public sealed class MainForm : Form
         _all = Btn("&Tick all", (_, _) => TickAll(true));
         _none = Btn("Tick &none", (_, _) => TickAll(false));
         _changed = Btn("Tick c&hanged", (_, _) => TickChanged());
+        _groups = Btn("Groups ▾", (_, _) => ShowGroupsMenu());
         _editPage = Btn("&Workshop page...", (_, _) => EditWorkshopPage(SelectedMod()));
         _go = Btn("Upload selected", async (_, _) => await GoAsync()).Role(ThemeRole.Primary);
         _go.Font = new Font(Font, FontStyle.Bold);
@@ -476,7 +478,7 @@ public sealed class MainForm : Form
         listHost.Controls.Add(_empty);
         listHost.Controls.Add(_detail); // docked first, so it keeps its strip under the list
 
-        var mods = Card("Mods", new Control[] { _filter, _hideUpToDate, _editPage, _all, _changed, _none, _refresh }, listHost);
+        var mods = Card("Mods", new Control[] { _filter, _hideUpToDate, _editPage, _all, _changed, _groups, _none, _refresh }, listHost);
         mods.AutoSize = false; mods.Dock = DockStyle.Fill;
 
         // Only while uploading and afterwards (with the result); nothing to show before the first run.
@@ -490,6 +492,7 @@ public sealed class MainForm : Form
         Tip(_loginLink, "Steam login settings are on the Options tab");
         Tip(_all, "Tick every mod that is ready to upload, then upload them in one go");
         Tip(_changed, "Tick only the mods whose version Steam does not have yet (Changed, or not known)");
+        Tip(_groups, "Tick a saved group of mods, or save the ticked mods as a group");
         Tip(_testItems, "Send the ticked mods to their private test copies on Steam instead of the real items, to check them in game first");
         Tip(_dry, "Check everything and build the upload, but send nothing to Steam");
         Tip(_allowCreate, "Mods that are not on Steam yet are created as new private Workshop items");
@@ -2607,6 +2610,63 @@ public sealed class MainForm : Form
         UpdateGoButton();
     }
 
+    /// <summary>The Groups button's menu: each saved group of this mods folder (click to tick it), then save and delete.</summary>
+    void ShowGroupsMenu()
+    {
+        if (_busy) return;
+        var groups = _s.GroupsFor(_s.RepoPath);
+        var menu = new ContextMenuStrip();
+        foreach (var (name, mods) in groups)
+            menu.Items.Add($"{name}  ({mods.Count})", null, (_, _) => TickGroup(name));
+        if (groups.Count > 0) menu.Items.Add(new ToolStripSeparator());
+        var save = menu.Items.Add("&Save the ticked mods as a group...", null, (_, _) => SaveGroup());
+        save.Enabled = Selected().Any();
+        if (groups.Count > 0)
+        {
+            var delete = new ToolStripMenuItem("&Delete a group");
+            foreach (var name in groups.Keys) delete.DropDownItems.Add(name, null, (_, _) =>
+            {
+                _s.SetGroup(_s.RepoPath, name, Array.Empty<string>());
+                _s.Save();
+                Append($"Deleted the group {name}.", LogKind.Note);
+            });
+            menu.Items.Add(delete);
+        }
+        Theme.StyleMenu(menu);
+        menu.Show(_groups, new Point(0, _groups.Height));
+    }
+
+    /// <summary>Ticks exactly the mods of the group <paramref name="name"/>; mods that left the folder are named in the log.</summary>
+    void TickGroup(string name)
+    {
+        if (!_s.GroupsFor(_s.RepoPath).TryGetValue(name, out var paths)) return;
+        var want = paths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _list.BeginUpdate();
+        var ticked = 0;
+        foreach (var it in _rows)
+        {
+            var m = (ModInfo)it.Tag!;
+            it.Checked = want.Contains(m.RelPath) && CanTick(m);
+            if (it.Checked) ticked++;
+        }
+        _list.EndUpdate();
+        UpdateGoButton();
+        var gone = paths.Where(p => !_rows.Any(it => ((ModInfo)it.Tag!).RelPath.Equals(p, StringComparison.OrdinalIgnoreCase))).ToList();
+        Append($"Ticked {ticked} of the {paths.Count} mods in {name}." + (gone.Count > 0 ? $" Not in this folder any more: {string.Join(", ", gone)}." : "")
+            + (ticked < paths.Count - gone.Count ? " The others can't be uploaded right now (see their Status)." : ""), LogKind.Note);
+    }
+
+    void SaveGroup()
+    {
+        var ticked = Selected().ToList();
+        if (ticked.Count == 0) return;
+        var name = Prompt($"Name for this group of {ticked.Count} mod{(ticked.Count == 1 ? "" : "s")}:", "");
+        if (string.IsNullOrWhiteSpace(name)) return;
+        _s.SetGroup(_s.RepoPath, name, ticked.Select(m => m.RelPath));
+        _s.Save();
+        Append($"Saved the group {name.Trim()}: {string.Join(", ", ticked.Select(m => m.Name))}. From a script: SteamCmdHelper upload --group \"{name.Trim()}\"", LogKind.Ok);
+    }
+
     void TickAll(bool on)
     {
         if (_busy) return;
@@ -2646,7 +2706,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _tsTeam, _tsCommunity, _tsCategories, _tsToken, _tsAfter, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _watchBuilds })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _tsTeam, _tsCommunity, _tsCategories, _tsToken, _tsAfter, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _groups, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _watchBuilds })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;

@@ -17,6 +17,8 @@ public sealed class CliOptions
     /// <summary>game-version: only add the version to About.xml, without copying version folders.</summary>
     public bool NoCopy;
     public string? Repo, Account, SteamCmd, LogFile, Note, Ref;
+    /// <summary>upload: the saved group of mods (window: Groups) to upload.</summary>
+    public string? Group;
     /// <summary>download and test-install: the folder to put the files in.</summary>
     public string? To;
     /// <summary>test-install: the game's Steam branch (default public) and its password, if it has one.</summary>
@@ -82,6 +84,7 @@ public static class Cli
           --test                 upload to each mod's private test item instead of the real one
           --no-build             skip the mods folder's build step (Options > Uploading)
           --log <file>           also write everything printed to this file
+          --group <name>         upload: the mods of a group saved in the window (Groups)
 
         Upload options:
           --note "<text>"        use this change note for every mod, instead of its changelog entry
@@ -137,6 +140,7 @@ public static class Cli
                 case "--note": o.Note = Value(); break;
                 case "--check": o.CheckOnly = true; break;
                 case "--ref": o.Ref = Value(); break;
+                case "--group": o.Group = Value(); break;
                 case "--test": o.Test = true; break;
                 case "--no-build": o.NoBuild = true; break;
                 case "--tag": o.Tag = true; break;
@@ -200,8 +204,9 @@ public static class Cli
         }
         if (o.Note != null && o.Command != "upload") { o.Error = "--note only goes with \"version\" or \"upload\"."; return o; }
         if (o.Note != null && string.IsNullOrWhiteSpace(o.Note)) { o.Error = "--note needs some text."; return o; }
-        if (o.Command == "upload" && (o.All || o.Changed) && o.Mods.Count > 0) o.Error = $"Give mod names or {(o.Changed ? "--changed" : "--all")}, not both.";
-        else if (o.Command == "upload" && !o.All && !o.Changed && o.Mods.Count == 0) o.Error = "Name at least one mod to upload, or use --all or --changed.";
+        if (o.Group != null && o.Command != "upload") { o.Error = "--group only goes with \"upload\"."; return o; }
+        if (o.Command == "upload" && (o.All || o.Changed) && (o.Mods.Count > 0 || o.Group != null)) o.Error = $"Give mod names, --group or {(o.Changed ? "--changed" : "--all")}, not more than one.";
+        else if (o.Command == "upload" && !o.All && !o.Changed && o.Mods.Count == 0 && o.Group == null) o.Error = "Name at least one mod to upload, or use --group, --all or --changed.";
         else if (o.Command != "upload" && o.Mods.Count > 0) o.Error = $"\"{o.Command}\" does not take mod names.";
         else if (o.CheckOnly && o.Command != "update") o.Error = "--check only goes with \"update\".";
         return o;
@@ -343,7 +348,8 @@ public static class Cli
         Func<string, string, string[], CancellationToken, Task<TagResult>>? tagUpdater = null,
         bool oneSession = false, bool verifyUploads = false,
         Func<string, string, CancellationToken, Task<bool?>>? ownership = null, string? descriptionFooter = null,
-        Func<ExtrasRequest, CancellationToken, Task<ExtrasResult>>? pageExtras = null, bool pageExtrasPage = true, bool pageExtrasRequired = true)
+        Func<ExtrasRequest, CancellationToken, Task<ExtrasResult>>? pageExtras = null, bool pageExtrasPage = true, bool pageExtrasRequired = true,
+        AppSettings? settings = null)
     {
         void Say(string s) => output.WriteLine(s);
         var tags = new Dictionary<ModInfo, string>();
@@ -401,6 +407,18 @@ public static class Cli
         }
 
         // ---- upload: pick the mods
+        if (o.Group != null)
+        {
+            var groups = (settings ?? new AppSettings()).GroupsFor(repo);
+            if (!groups.TryGetValue(o.Group, out var members))
+            {
+                var why = $"no group named \"{o.Group}\" for this mods folder." + (groups.Count > 0 ? " Groups: " + string.Join(", ", groups.Keys) + "." : " Save one in the window (Groups > Save the ticked mods as a group).");
+                Say("Error: " + why);
+                return End(ExitUsage, why);
+            }
+            Say($"Group {o.Group}: {string.Join(", ", members)}");
+            o.Mods.AddRange(members);
+        }
         var picked = new List<ModInfo>();
         if (o.All || o.Changed)
         {
