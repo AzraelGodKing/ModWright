@@ -53,6 +53,7 @@ static class Program
             Directory.CreateDirectory(about);
             File.WriteAllText(Path.Combine(about, "About.xml"), $"<?xml version=\"1.0\"?><ModMetaData><name>{name}</name><packageId>Demo.{folder.Replace(" ", "")}</packageId><modVersion>{version}</modVersion><supportedVersions><li>1.6</li></supportedVersions><description>Demo.</description></ModMetaData>");
             if (changelogVersion != null) File.WriteAllText(Path.Combine(about, "changelog.txt"), $"{changelogVersion}\n- Demo change.");
+            File.WriteAllText(Path.Combine(about, "steam_description.txt"), $"[h1]{name}[/h1]\nA demo mod for the screenshots.\n[list][*]Works with saves in progress[*]No other mods needed[/list]");
             if (id != null) File.WriteAllText(Path.Combine(about, "PublishedFileId.txt"), id);
             if (preview is { } c)
             {
@@ -249,6 +250,14 @@ static class Program
                 var large = new MainForm(theme, new AppSettings { RepoPath = DemoRepo(), Account = "demo_account", AllowCreate = true, TextSize = 125, DoNotSave = true }) { NoStartupPrompts = true };
                 large.Shown += (_, _) => large.SelectFirstMod();
                 Snap(large, Path.Combine(args[sh + 1], $"main-mods-125{suffix}.png"));
+                // A wide window, where the details panel shows beside the list (as wide as the screen allows).
+                var wide = new MainForm(theme, new AppSettings { RepoPath = DemoRepo(), Account = "demo_account", AllowCreate = true, DoNotSave = true }) { NoStartupPrompts = true };
+                var screen = Screen.PrimaryScreen!.WorkingArea;
+                wide.Shown += (_, _) => { wide.Size = new Size(Math.Min(1700, screen.Width - 40), Math.Min(1000, screen.Height - 40)); wide.SelectFirstMod(); };
+                Snap(wide, Path.Combine(args[sh + 1], $"main-details{suffix}.png"));
+                var wideList = new MainForm(theme, new AppSettings { RepoPath = DemoRepo(), Account = "demo_account", AllowCreate = true, DoNotSave = true }) { NoStartupPrompts = true };
+                wideList.Shown += (_, _) => wideList.Size = new Size(Math.Min(1700, screen.Width - 40), Math.Min(1000, screen.Height - 40));
+                Snap(wideList, Path.Combine(args[sh + 1], $"main-details-list{suffix}.png"));
                 // The Options tab once per section: options.png is the first, then options-<section>.png for the rest.
                 for (var s = 0; ; s++)
                 {
