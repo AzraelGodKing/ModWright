@@ -34,6 +34,11 @@ public sealed class MainForm : Form
     /// <summary>Says that Windows High Contrast is on and wins over the theme choice; hidden otherwise.</summary>
     Label _contrastNote = null!;
     readonly ComboBox _profile = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
+    readonly TextBox _tsTeam = new() { Width = 200, AccessibleName = "Thunderstore team" };
+    readonly TextBox _tsCommunity = new() { Width = 200, PlaceholderText = "e.g. sun-haven", AccessibleName = "Thunderstore community" };
+    readonly TextBox _tsCategories = new() { Width = 260, PlaceholderText = "e.g. mods, tweaks", AccessibleName = "Thunderstore categories" };
+    readonly TextBox _tsToken = new() { Width = 320, UseSystemPasswordChar = true, AccessibleName = "Thunderstore service account token" };
+    readonly CheckBox _tsAfter = new() { AutoSize = true, Text = "After each Steam upload, also publish the mods that have a Thunderstore manifest.json" };
     readonly TextBox _webhook = new() { Width = 420, PlaceholderText = "https://discord.com/api/webhooks/..." };
     readonly CheckBox _ghReleases = new() { AutoSize = true, Text = "Make a GitHub &release for each upload (needs the gh tool, logged in with \"gh auth login\")" };
     Button _profileSave = null!, _profileDelete = null!, _webhookTest = null!;
@@ -295,6 +300,8 @@ public sealed class MainForm : Form
             UpdateProjectCard();
         };
         _ghReleases.CheckedChanged += (_, _) => { if (!_populating) SaveAnnounce(); };
+        foreach (var box in new[] { _tsTeam, _tsCommunity, _tsCategories, _tsToken }) box.Leave += (_, _) => SaveThunderstore();
+        _tsAfter.CheckedChanged += (_, _) => SaveThunderstore();
         _tagUploads.CheckedChanged += (_, _) => { if (!_populating) { _s.TagUploads = _tagUploads.Checked; _s.Save(); } };
         _commitIds.CheckedChanged += (_, _) => { if (!_populating) { _s.CommitNewIds = _commitIds.Checked; _s.Save(); } };
         _uploadCredit.CheckedChanged += (_, _) => { if (!_populating) { _s.UploadCredit = _uploadCredit.Checked; _s.Save(); } };
@@ -597,6 +604,7 @@ public sealed class MainForm : Form
         var copyId = menu.Items.Add("Copy Workshop &ID", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(m.WorkshopId!, "Workshop ID"); });
         var copyLink = menu.Items.Add("Copy Workshop lin&k", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(WorkshopUrl(m), "Workshop link"); });
         var tags = menu.Items.Add("Update Workshop &tags", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await UpdateTagsAsync(m); });
+        var thunder = menu.Items.Add("Publish to Th&understore", null, async (_, _) => await PublishThunderstoreAsync(TickedOrSelected().Where(x => Thunderstore.Has(x.Dir)).ToList()));
         var required = menu.Items.Add("Update &required items, gallery and languages", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await UpdatePageExtrasAsync(m); });
         menu.Items.Add(new ToolStripSeparator());
         var steamCopy = menu.Items.Add("Check what Steam &hands out", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await CheckSteamCopyAsync(m); });
@@ -612,6 +620,7 @@ public sealed class MainForm : Form
             tags.Visible = WorkshopTags.LayoutHasTags(_cfg);
             tags.Enabled = required.Enabled = SelectedMod()?.OnSteam == true;
             bulk.Visible = Selected().Count() > 1;
+            thunder.Visible = TickedOrSelected().Any(x => Thunderstore.Has(x.Dir));
             changelog.Enabled = ChangelogOf(SelectedMod()) != null;
             entry.Visible = SelectedMod() is { } m && ModScanner.NeedsChangelogEntry(m, _cfg);
             shrink.Visible = SelectedMod() is { PreviewOk: false, PreviewPath.Length: > 0 };
@@ -795,7 +804,17 @@ public sealed class MainForm : Form
                 Hint("After a successful update, its name, version, change note and Workshop link are posted to the Discord channel. " +
                      "New items are created private, so they are not announced. The webhook link is kept in your settings, never in the repo."),
                 _ghReleases,
-                Hint("GitHub releases are made on the uploaded commit, which must be pushed first.")));
+                Hint("GitHub releases are made on the uploaded commit, which must be pushed first.")),
+            Card("Thunderstore", new Control[] { FolderTag() },
+                Row(Lbl("T&eam"), _tsTeam, Lbl("C&ommunity"), _tsCommunity),
+                Row(Lbl("Categor&ies"), _tsCategories),
+                Row(Lbl("To&ken"), _tsToken),
+                _tsAfter,
+                Hint("For BepInEx games (Sun Haven, Valheim, Lethal Company and others): a mod with Thunderstore's manifest.json, icon.png (256 x 256) and " +
+                     "README.md in its folder can be published there too, from the same package as Steam, with the version to upload written into the manifest. " +
+                     "Publish to Thunderstore is on the right-click menu. The team, community (the part after /c/ in the site's address) and categories are " +
+                     "for this mods folder. The token is a service account token (thunderstore.io > Teams > Service accounts); it is kept encrypted for your " +
+                     "Windows user, so an exported settings file does not carry a usable copy.")));
 
         // ---- Workshop page: the text that goes to Steam with an upload
         _uploadCredit.Checked = _s.UploadCredit;
@@ -2563,7 +2582,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _watchBuilds })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _tsTeam, _tsCommunity, _tsCategories, _tsToken, _tsAfter, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _watchBuilds })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -3421,6 +3440,11 @@ public sealed class MainForm : Form
         Taskbar.FlashIfInBackground(this);
         if (!dry && !test) AfterUploadGit(results, uploadedCommit);
         if (!dry && !test) await AnnounceAsync(results, NoteSent, uploadedCommit);
+        if (!dry && !test && _s.ThunderstoreAfterUpload(_s.RepoPath))
+        {
+            var sent = results.Where(r => r.Status == BatchStatus.Uploaded && Thunderstore.Has(r.Mod.Dir)).Select(r => r.Mod).ToList();
+            if (sent.Count > 0) await PublishThunderstoreAsync(sent);
+        }
         SaveRunLog(logFrom, started, RunLogs.Label(dry ? "dry run" : test ? "test upload" : "upload", picked.Select(m => m.Name).ToList()));
         await RefreshAllAsync();
         if (!allOk)
@@ -3688,6 +3712,12 @@ public sealed class MainForm : Form
         _packageRef.Text = hasRepo ? _s.RefFor(_s.RepoPath) : "";
         _buildCmd.Enabled = _packageRef.Enabled = hasRepo && !_busy;
         _ghReleases.Checked = hasRepo && _s.GitHubReleasesFor(_s.RepoPath);
+        _tsTeam.Text = hasRepo ? _s.ThunderstoreTeamFor(_s.RepoPath) : "";
+        _tsCommunity.Text = hasRepo ? _s.ThunderstoreCommunityFor(_s.RepoPath) : "";
+        _tsCategories.Text = hasRepo ? _s.ThunderstoreCategoriesFor(_s.RepoPath) : "";
+        _tsAfter.Checked = hasRepo && _s.ThunderstoreAfterUpload(_s.RepoPath);
+        _tsToken.Text = ThunderstoreToken.Unprotect(_s.ThunderstoreToken);
+        _tsTeam.Enabled = _tsCommunity.Enabled = _tsCategories.Enabled = _tsAfter.Enabled = hasRepo && !_busy;
         _webhook.Enabled = _ghReleases.Enabled = _webhookTest.Enabled = hasRepo && !_busy;
         _populating = false;
     }
@@ -3744,6 +3774,90 @@ public sealed class MainForm : Form
                 Append($"GitHub release {tag}: {link}", LogKind.Ok);
             }
             catch (Exception e) { Append($"Could not make the GitHub release {tag}: {e.Message}", LogKind.Warn); }
+        }
+    }
+
+    void SaveThunderstore()
+    {
+        if (_populating) return;
+        if (Directory.Exists(_s.RepoPath))
+            _s.SetThunderstore(_s.RepoPath, _tsTeam.Text, _tsCommunity.Text, _tsCategories.Text, _tsAfter.Checked);
+        _s.ThunderstoreToken = ThunderstoreToken.Protect(_tsToken.Text.Trim());
+        _s.Save();
+    }
+
+    /// <summary>The ticked mods when more than one is ticked, else the selected one.</summary>
+    List<ModInfo> TickedOrSelected()
+    {
+        var ticked = Selected().ToList();
+        return ticked.Count > 1 ? ticked : SelectedMod() is { } m ? new() { m } : ticked;
+    }
+
+    /// <summary>
+    /// Publishes mods to Thunderstore: each is packaged as for Steam (nothing goes to Steam), checked against what
+    /// Thunderstore accepts, zipped with the version to upload in its manifest, and sent unless Thunderstore already has that version.
+    /// </summary>
+    async Task PublishThunderstoreAsync(List<ModInfo> mods)
+    {
+        if (mods.Count == 0) return;
+        SaveThunderstore();
+        var target = _s.ThunderstoreFor(_s.RepoPath);
+        var token = ThunderstoreToken.Unprotect(_s.ThunderstoreToken);
+        if (target == null || token.Length == 0)
+        {
+            Append("Thunderstore: set the team, community and token in Options > Uploading > Thunderstore first.", LogKind.Warn);
+            ShowOptions(target == null ? _tsTeam : _tsToken);
+            return;
+        }
+        var wasBusy = _busy;
+        _cts ??= new CancellationTokenSource();
+        var ct = _cts.Token;
+        if (!wasBusy) SetBusy(true);
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("SteamCmdHelper");
+        try
+        {
+            foreach (var m in mods)
+            {
+                var zip = Path.Combine(Path.GetTempPath(), $"steamcmd_helper_thunderstore_{Guid.NewGuid():N}.zip");
+                string version = "", name = Thunderstore.NameOf(m.Dir) ?? m.Folder;
+                List<string>? problems = null;
+                var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account) { GitRef = _s.RefFor(_s.RepoPath) is { Length: > 0 } r ? r : null };
+                pub.StageReady += (_, stage, v) =>
+                {
+                    try
+                    {
+                        var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(stage, Thunderstore.ManifestFile)))!;
+                        version = Thunderstore.VersionFor(v, manifest);
+                        problems = Thunderstore.Check(stage, version);
+                        if (problems.Count == 0) Thunderstore.Zip(stage, zip, version);
+                    }
+                    catch (Exception e) { problems = new() { e.Message }; }
+                };
+                Append($"{m.Name}: packaging for Thunderstore...", LogKind.Note);
+                var res = await Task.Run(() => pub.RunAsync(m, false, ct));
+                try
+                {
+                    if (problems == null) { Append($"{m.Name}: not published to Thunderstore, the package could not be built: {res.Message}", LogKind.Error); continue; }
+                    if (problems.Count > 0) { Append($"{m.Name}: not published to Thunderstore: the package {string.Join("; ", problems)}.", LogKind.Error); continue; }
+                    if (await Thunderstore.LatestAsync(http, target.Team, name, ct) == version)
+                    {
+                        Append($"{m.Name}: Thunderstore already has {version}.", LogKind.Note);
+                        continue;
+                    }
+                    var error = await Thunderstore.PublishAsync(http, token, target, zip, ct, line => Append($"{m.Name}: {line}", LogKind.Note));
+                    Append(error == null
+                        ? $"{m.Name}: published {version} to Thunderstore: {Thunderstore.PackageUrl(target.Community, target.Team, name)}"
+                        : $"{m.Name}: not published to Thunderstore: {error}", error == null ? LogKind.Ok : LogKind.Error);
+                }
+                finally { try { File.Delete(zip); } catch { } }
+            }
+        }
+        catch (OperationCanceledException) { Append("Cancelled.", LogKind.Warn); }
+        catch (HttpRequestException e) { Append("Could not reach Thunderstore: " + e.Message, LogKind.Error); }
+        finally
+        {
+            if (!wasBusy) { SetBusy(false); _cts?.Dispose(); _cts = null; }
         }
     }
 
