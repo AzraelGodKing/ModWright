@@ -51,7 +51,7 @@ static class Program
         {
             var about = Path.Combine(root, folder, "About");
             Directory.CreateDirectory(about);
-            File.WriteAllText(Path.Combine(about, "About.xml"), $"<?xml version=\"1.0\"?><ModMetaData><name>{name}</name><modVersion>{version}</modVersion><supportedVersions><li>1.6</li></supportedVersions><description>Demo.</description></ModMetaData>");
+            File.WriteAllText(Path.Combine(about, "About.xml"), $"<?xml version=\"1.0\"?><ModMetaData><name>{name}</name><packageId>Demo.{folder.Replace(" ", "")}</packageId><modVersion>{version}</modVersion><supportedVersions><li>1.6</li></supportedVersions><description>Demo.</description></ModMetaData>");
             if (changelogVersion != null) File.WriteAllText(Path.Combine(about, "changelog.txt"), $"{changelogVersion}\n- Demo change.");
             if (id != null) File.WriteAllText(Path.Combine(about, "PublishedFileId.txt"), id);
             if (preview is { } c)

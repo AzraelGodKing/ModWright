@@ -30,7 +30,7 @@ public sealed class UploadControlTests : IDisposable
     void WriteMod(string version, string changelog)
     {
         Directory.CreateDirectory(Path.Combine(_modDir, "About"));
-        File.WriteAllText(Path.Combine(_modDir, "About", "About.xml"), $"<ModMetaData><name>My Mod</name><modVersion>{version}</modVersion></ModMetaData>");
+        File.WriteAllText(Path.Combine(_modDir, "About", "About.xml"), $"<ModMetaData><name>My Mod</name><packageId>Test.MyMod</packageId><modVersion>{version}</modVersion></ModMetaData>");
         File.WriteAllText(Path.Combine(_modDir, "About", "changelog.txt"), changelog);
     }
 

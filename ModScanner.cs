@@ -488,6 +488,13 @@ public static class ModScanner
             if (built.Length > 0 && built.All(glob => MatchGlob(dir, glob).Count == 0))
                 m.Warnings.Add($"not built (nothing matches {string.Join(" or ", built)})");
 
+            if (RimWorldLint.Applies(cfg))
+            {
+                var (problems, warnings) = RimWorldLint.Check(dir);
+                m.Problems.AddRange(problems);
+                m.Warnings.AddRange(warnings);
+            }
+
             if (dirtyLines.Any(p => p.StartsWith(rel + "/", StringComparison.OrdinalIgnoreCase)))
             {
                 m.Dirty = true;
@@ -496,6 +503,9 @@ public static class ModScanner
 
             list.Add(m);
         }
+        if (RimWorldLint.Applies(cfg))
+            foreach (var (m, w) in RimWorldLint.DuplicatePackageIds(list.Select(m => (m, RimWorldLint.PackageIdOf(m.Dir)))))
+                m.Warnings.Add(w);
         return list;
     }
 

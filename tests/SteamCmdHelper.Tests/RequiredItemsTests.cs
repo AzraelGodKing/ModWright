@@ -68,7 +68,7 @@ public sealed class RequiredItemsTests : IDisposable
         if (OperatingSystem.IsWindows()) return;
         var dir = _repo.AddMod("Alpha", workshopId: "1111111");
         File.WriteAllText(Path.Combine(dir, "About", "About.xml"), """
-            <ModMetaData><name>Alpha</name><modVersion>1.2.3</modVersion><supportedVersions><li>1.6</li></supportedVersions><description>A test mod.</description>
+            <ModMetaData><name>Alpha</name><packageId>Test.Alpha</packageId><modVersion>1.2.3</modVersion><supportedVersions><li>1.6</li></supportedVersions><description>A test mod.</description>
             <modDependencies><li><packageId>brrainz.harmony</packageId><steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl></li></modDependencies></ModMetaData>
             """);
         var calls = new List<ExtrasRequest>();
