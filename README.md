@@ -568,6 +568,10 @@ starts the release below. It never changes the version: bump it on `test` first.
 run if `test` declares a different one, and **dry run** does every check and the tests but pushes nothing. If `test`
 does not rebase cleanly, or someone pushes to `test` during the run, nothing is pushed.
 
+Merging a `test` -> `main` pull request instead also works, but with **Automatically delete head branches** turned on
+GitHub deletes `test` afterwards. `.github/workflows/keep-test-branch.yml` then recreates it at the new `main`. To stop
+the deletion outright, add a ruleset for `test` under **Settings > Rules > Rulesets** with **Restrict deletions** on.
+
 It needs a `RELEASE_TOKEN` secret: a fine-grained personal access token for this repository with **Contents** and
 **Workflows** set to read and write. The built-in Actions token cannot push commits that change workflow files, and a
 tag it pushes does not start other workflows. If `main` has branch protection or a ruleset, the token's owner must be
