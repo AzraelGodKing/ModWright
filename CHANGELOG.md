@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased
+
+- **Secrets never ship.** Every package is searched before upload for things that must never become public: Steam's
+  own saved login (`ssfn*` files, a `config.vdf` with a login cache), private keys and key stores, `.env` files, the
+  request key, and tokens with a known shape (GitHub, Discord webhooks, Slack, AWS, Google, Linear, Anthropic). One of
+  those stops the upload and names the file and line, never the secret. Looser shapes (an OpenAI-style key, a Steam
+  Web API key) are warned about.
+- **The confirmation warns about more.** With git packaging it says when the branch is behind its upstream (you would
+  upload older work) or has commits that are not pushed while GitHub releases are on. Unclosed or stray Steam BBCode
+  tags in a change note or a new description are pointed out, and a new item's preview whose real format Steam does
+  not take (a WebP, BMP or TIFF, whatever its extension says), that is tiny, or whose extension does not match is
+  flagged in the list.
+- **Preview as on Steam.** The upload confirmation and the Workshop page editor open the change note or description
+  in the browser the way Steam shows BBCode: headings, lists, links, quotes, code, spoilers and tables.
+- **RimWorld: translation gaps and Harmony.** Keys the English `Keyed` files have and a language lacks (players see
+  the raw key), and keys English no longer has, are warned about per language. So are a mod that ships its own
+  `0Harmony.dll` and one whose code uses Harmony without listing `brrainz.harmony` in `modDependencies`.
+- **Add a game version to ticked mods.** When a new RimWorld version comes out, one action adds it to
+  `supportedVersions` of every ticked mod, copies the newest version folder to it and adds it to `loadFolders.xml`
+  (`SteamCmdHelper game-version 1.7 --all`, `--no-copy` for About.xml only).
+- **Change the version of ticked mods** at once (patch, minor, major or a number), each with its changelog line.
+- **Mod groups.** **Groups** in the Mods card saves the ticked mods as a named group for that mods folder and ticks a
+  group in one click; `upload --group Core` on the command line.
+- **Command palette.** Ctrl+K (or Ctrl+Shift+P) finds any button, menu item or Options section by name and runs it.
+- **A notification when a run ends** while the window is in the background, with how it went (Options > Uploading).
+- **After uploading.** Upload tags can be pushed to the remote straight away (Options > Git & GitHub;
+  `upload --tag --push-tags`). A command per mods folder runs after each successful upload with the mod's name,
+  folder, version, Workshop id and link, commit and change note in `SCH_*` environment variables
+  (`upload --run-after`). And a zip of exactly what each upload sent can be kept (the newest 5 per mod; **Uploaded
+  packages** on the right-click menu).
+- **Lists and history out.** **Copy the mod list as** Markdown, Steam BBCode or CSV (`list --markdown`, `list --csv`),
+  and the upload history as CSV from the history window, Options > About or `history --csv`.
+  `SteamCmdHelper note MyMod` prints the change note exactly as Steam would get it.
+- **Check setup.** Options > About > **Check setup** (and `SteamCmdHelper doctor`) goes through everything an upload
+  needs: the mods folder, its layout and app ID, how many mods need fixing, SteamCMD and the saved login (really
+  logging in from the window, or with `doctor --login`), git when the layout packages with it, gh when GitHub releases
+  are on, the Discord link, the Steam client when tags or required items go through it, the Thunderstore token, free
+  disk space and the data folder. It says what to fix and changes nothing.
+- **Upload later.** **Later...** next to Upload schedules the ticked mods for a time you pick through Windows Task
+  Scheduler, which runs the command line with your saved login, so the window need not stay open; if the PC is off
+  then, it runs as soon as it can. The same window lists and cancels scheduled uploads
+  (`SteamCmdHelper schedule --at "2026-10-21 18:00" MyMod`, `schedule --list`, `schedule --cancel 1`).
+
 ## 1.3.8
 
 - **Thunderstore too.** For BepInEx games, a mod whose folder has Thunderstore's manifest.json, icon.png and README.md
