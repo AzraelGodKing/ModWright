@@ -18,7 +18,9 @@ public sealed class ConfirmUploadForm : Form
     readonly Label _count = new Label { AutoSize = true, Anchor = AnchorStyles.Right }.Role(ThemeRole.Muted);
     readonly LinkLabel _reset = new() { Text = "Use the changelog entry", AutoSize = true, Anchor = AnchorStyles.Left, LinkBehavior = LinkBehavior.HoverUnderline };
     readonly LinkLabel _fromGit = new() { Text = "Draft from git commits", AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(12, 3, 3, 3) };
+    readonly LinkLabel _preview = new() { Text = "Preview as on Steam", AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(12, 3, 3, 3) };
     readonly Func<ModInfo, GitOps.CommitNote?>? _draft;
+    readonly Func<ModInfo, string, string>? _asSent;
     readonly CheckBox _commitFirst = new() { AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
     ModInfo? _shown;
 
@@ -36,9 +38,11 @@ public sealed class ConfirmUploadForm : Form
     /// <param name="warnings">Things to check before sending (such as a version Steam already has), shown above the note.</param>
     public ConfirmUploadForm(string heading, IReadOnlyList<ModInfo> mods, IReadOnlyDictionary<string, string> actions,
         IReadOnlyDictionary<string, string> notes, bool dry, bool offerCommit, Func<ModInfo, GitOps.CommitNote?>? draft = null,
-        IReadOnlyList<string>? warnings = null)
+        IReadOnlyList<string>? warnings = null, Func<ModInfo, string, string>? asSent = null)
     {
         _draft = draft;
+        _asSent = asSent;
+        _preview.Visible = asSent != null;
         _fromGit.Visible = draft != null;
         _mods = mods.ToList();
         foreach (var m in _mods) { _original[m.Dir] = notes.TryGetValue(m.Dir, out var n) ? n : ""; _notes[m.Dir] = _original[m.Dir]; }
@@ -75,6 +79,7 @@ public sealed class ConfirmUploadForm : Form
         _reset.Margin = new Padding(0, 3, 3, 3);
         links.Controls.Add(_reset);
         links.Controls.Add(_fromGit);
+        links.Controls.Add(_preview);
         noteRow.Controls.Add(links, 0, 0);
         noteRow.Controls.Add(_count, 1, 0);
 
@@ -123,6 +128,16 @@ public sealed class ConfirmUploadForm : Form
             _note.Text = Crlf(n.Note);
             _noteTitle.Text = $"Change note for {_shown.Name} (drafted from {n.Source})";
             _note.Focus();
+        };
+        _preview.LinkClicked += (_, _) =>
+        {
+            if (_shown == null || _asSent == null) return;
+            try
+            {
+                var file = SteamText.WritePreview(_shown.Name, _asSent(_shown, _notes[_shown.Dir]), $"Change note for version {_shown.Version}, as Steam will show it");
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(file) { UseShellExecute = true });
+            }
+            catch (Exception ex) { MessageBox.Show(this, "Could not open the preview: " + ex.Message, Text); }
         };
         go.Click += (_, e) =>
         {

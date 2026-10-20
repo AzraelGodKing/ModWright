@@ -6,6 +6,7 @@ public sealed class ShortcutsForm : Form
     public static readonly (string Keys, string What)[] All =
     {
         ("F1", "Show this list"),
+        ("Ctrl+K", "Find any action by name and run it (also Ctrl+Shift+P)"),
         ("Alt + underlined letter", "Press that button, or go to the box whose label has the letter underlined"),
         ("Alt+U, Alt+O", "Go to the Upload or Options tab"),
         ("Ctrl+Tab", "Switch between the Upload and Options tabs"),

@@ -66,6 +66,7 @@ public sealed class MainForm : Form
     readonly CheckBox _autoRetry = new() { AutoSize = true, Text = "Try an update once more when Steam is busy or can't be reached (after 30 seconds)" };
     readonly CheckBox _commitIds = new() { AutoSize = true, Text = "Commit a new item's Workshop ID file without asking" };
     readonly CheckBox _oneSession = new() { AutoSize = true, Text = "Upload several mods with one SteamCMD login (faster batches)" };
+    readonly CheckBox _notifyDone = new() { AutoSize = true, Text = "Show a Windows notification when an upload ends while the window is in the background" };
     readonly CheckBox _verifyUploads = new() { AutoSize = true, Text = "Check each upload by downloading it back from Steam and comparing the files" };
     readonly CheckBox _watchBuilds = new() { AutoSize = true, Text = "At start-up, say when the game gets a new build or beta (checked at most every 12 hours)" };
     /// <summary>The game's Steam branches, once SteamCMD has listed them this session.</summary>
@@ -197,6 +198,8 @@ public sealed class MainForm : Form
         };
         FormClosed += (_, _) => SaveWindow();
         FormClosed += (_, _) => InstallPendingUpdate(restart: false);
+        FormClosed += (_, _) => Notify.Hide();
+        Activated += (_, _) => Notify.Hide(); // back at the window: the notification has done its job
         // "Match Windows" and High Contrast follow Windows while the app is open.
         SystemEvents.UserPreferenceChanged += OnWindowsPreference;
         Disposed += (_, _) => SystemEvents.UserPreferenceChanged -= OnWindowsPreference;
@@ -587,6 +590,60 @@ public sealed class MainForm : Form
     /// <summary>A length in 96-DPI pixels at this screen's DPI and the chosen text size.</summary>
     int U(int logical) => LogicalToDeviceUnits((int)Math.Round(logical * Theme.TextScale));
 
+    /// <summary>Sets which items of the mod's right-click menu apply to the selected mod (also before the command palette lists them).</summary>
+    Action _refreshRowMenu = () => { };
+
+    /// <summary>
+    /// Ctrl+K: every button of the Upload tab, the selected mod's menu, the Options sections and their buttons and
+    /// settings, searchable by name. The picked one runs once the palette has closed.
+    /// </summary>
+    void ShowPalette()
+    {
+        if (ActiveForm != this) return; // not over another dialog
+        var entries = new List<PaletteEntry>();
+        void AddButtons(Control root, string where, Func<ButtonBase, bool> include, Func<ButtonBase, Action> run)
+        {
+            foreach (Control c in root.Controls)
+            {
+                if (c is ButtonBase { Enabled: true } b && include(b) && PaletteSearch.Clean(b.Text) is { Length: > 1 } name && !entries.Any(e => e.Name == name && e.Where == where))
+                    entries.Add(new PaletteEntry(name, where, "", run(b)));
+                AddButtons(c, where, include, run);
+            }
+        }
+        // The Upload tab's buttons and boxes. While Options is showing nothing there reads as visible, so the two
+        // buttons that come and go are judged by what they are for.
+        bool OnUpload(ButtonBase b) => _uploadPage.Visible ? b.Visible : b == _cancel ? _busy : b == _retry ? _retrySet.Count > 0 && !_busy : true;
+        AddButtons(_uploadPage, "Upload", OnUpload, b => () =>
+        {
+            ShowPage(_uploadPage);
+            if (b is CheckBox x) x.Checked = !x.Checked;
+            else if (b is Button btn) btn.PerformClick();
+        });
+        if (SelectedMod() is { } sel && _list.ContextMenuStrip is { } rowMenu && !_busy)
+        {
+            _refreshRowMenu();
+            foreach (ToolStripItem item in rowMenu.Items)
+                if (item is ToolStripMenuItem { Available: true, Enabled: true } mi)
+                    entries.Add(new PaletteEntry(PaletteSearch.Clean(mi.Text ?? ""), sel.Name, mi.ShortcutKeyDisplayString ?? "", mi.PerformClick));
+        }
+        for (var i = 0; i < _sections.Count; i++)
+        {
+            var (tab, page) = _sections[i];
+            var index = i;
+            entries.Add(new PaletteEntry("Options: " + tab.Text, "", "", () => ShowOptionSection(index)));
+            AddButtons(page, "Options › " + tab.Text, _ => true, b => () =>
+            {
+                ShowOptions(b);
+                if (b is Button btn) btn.PerformClick();
+                else b.Focus(); // a setting: show it and let the user decide
+            });
+        }
+        entries.Add(new PaletteEntry("Keyboard shortcuts", "", "F1", ShowShortcuts));
+        using var f = new CommandPaletteForm(entries);
+        f.Location = PointToScreen(new Point(Math.Max(0, (ClientSize.Width - f.Width) / 2), LogicalToDeviceUnits(60)));
+        if (f.ShowDialog(this) == DialogResult.OK) f.Picked?.Run();
+    }
+
     ContextMenuStrip BuildRowMenu()
     {
         var menu = new ContextMenuStrip();
@@ -617,10 +674,9 @@ public sealed class MainForm : Form
         menu.Items.Add("Try in a game &beta...", null, async (_, _) => await TryInGameBetaAsync(SelectedMod()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("&New mod...", null, async (_, _) => await NewModAsync()) { ShortcutKeyDisplayString = "Ctrl+N" });
-        menu.Opening += (_, e) =>
+        _refreshRowMenu = () =>
         {
             steamCopy.Enabled = download.Enabled = SelectedMod()?.OnSteam == true;
-            e.Cancel = _busy || SelectedMod() == null;
             onSteam.Enabled = copyId.Enabled = copyLink.Enabled = SelectedMod()?.OnSteam == true;
             tags.Visible = WorkshopTags.LayoutHasTags(_cfg);
             tags.Enabled = required.Enabled = SelectedMod()?.OnSteam == true;
@@ -630,6 +686,11 @@ public sealed class MainForm : Form
             changelog.Enabled = ChangelogOf(SelectedMod()) != null;
             entry.Visible = SelectedMod() is { } m && ModScanner.NeedsChangelogEntry(m, _cfg);
             shrink.Visible = SelectedMod() is { PreviewOk: false, PreviewPath.Length: > 0 };
+        };
+        menu.Opening += (_, e) =>
+        {
+            e.Cancel = _busy || SelectedMod() == null;
+            _refreshRowMenu();
         };
         Theme.StyleMenu(menu);
         return menu;
@@ -776,6 +837,8 @@ public sealed class MainForm : Form
         _updatePageExtras.CheckedChanged += (_, _) => { _s.UpdatePageExtras = _updatePageExtras.Checked; _s.Save(); };
         _oneSession.Checked = _s.OneSession;
         _oneSession.CheckedChanged += (_, _) => { _s.OneSession = _oneSession.Checked; _s.Save(); };
+        _notifyDone.Checked = _s.NotifyWhenDone;
+        _notifyDone.CheckedChanged += (_, _) => { _s.NotifyWhenDone = _notifyDone.Checked; _s.Save(); };
         _verifyUploads.Checked = _s.VerifyUploads;
         _verifyUploads.CheckedChanged += (_, _) => { _s.VerifyUploads = _verifyUploads.Checked; _s.Save(); };
         _webhookTest = Btn("Send t&est", async (_, _) => await TestWebhookAsync());
@@ -789,6 +852,7 @@ public sealed class MainForm : Form
                      "The version and change note are then read from that branch.")),
             Card("While uploading", null,
                 _autoRetry,
+                _notifyDone,
                 _oneSession,
                 Hint("Without it, each mod gets its own SteamCMD run and login. With it, every ticked mod is packaged and checked first, then uploaded in one run."),
                 _verifyUploads,
@@ -1169,6 +1233,9 @@ public sealed class MainForm : Form
                 _go.PerformClick(); return true;
             case Keys.F1:
                 ShowShortcuts(); return true;
+            case Keys.Control | Keys.K:
+            case Keys.Control | Keys.Shift | Keys.P:
+                ShowPalette(); return true;
             case Keys.Control | Keys.Tab:
             case Keys.Control | Keys.Shift | Keys.Tab:
                 ShowPage(_uploadPage.Visible ? _optionsPage : _uploadPage);
@@ -3432,7 +3499,11 @@ public sealed class MainForm : Form
             : $"Publish to the Steam Workshop ({(_cfg.GameName.Length > 0 ? _cfg.GameName : "app " + _cfg.AppId)}):";
         Dictionary<string, string> edited;
         bool commitFirst;
-        using (var confirm = new ConfirmUploadForm(heading, picked, actions, notes, dry, gitPackaging, DraftNoteFn(), checkFirst))
+        var shaper = new Publisher(_s.RepoPath, _cfg, "", "")
+        {
+            Credit = _s.UploadCredit, NoteTemplate = _s.TemplateFor(_s.RepoPath), MarkdownToSteam = _s.MarkdownNotes,
+        };
+        using (var confirm = new ConfirmUploadForm(heading, picked, actions, notes, dry, gitPackaging, DraftNoteFn(), checkFirst, shaper.AsSent))
         {
             if (confirm.ShowDialog(this) != DialogResult.OK) return;
             edited = confirm.EditedNotes;
@@ -3565,6 +3636,9 @@ public sealed class MainForm : Form
         Append(BatchUpload.Summary(results), allOk ? LogKind.Ok : LogKind.Warn);
         Taskbar.Progress(this, 100, allOk ? Taskbar.State.None : Taskbar.State.Error);
         Taskbar.FlashIfInBackground(this);
+        if (_s.NotifyWhenDone)
+            Notify.IfInBackground(this, (dry ? "Dry run finished" : test ? "Test upload finished" : "Upload finished") + (allOk ? "" : " with problems"),
+                counts + (picked.Count <= 3 ? ": " + string.Join(", ", picked.Select(m => m.Name)) : ""), allOk);
         if (!dry && !test) AfterUploadGit(results, uploadedCommit);
         if (!dry && !test) await AnnounceAsync(results, NoteSent, uploadedCommit);
         if (!dry && !test && _s.ThunderstoreAfterUpload(_s.RepoPath))
