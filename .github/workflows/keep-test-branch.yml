@@ -1,0 +1,36 @@
+name: Keep test branch
+
+# Releasing by merging a test -> main pull request (instead of Promote test and release) lets GitHub's "Automatically
+# delete head branches" setting delete test. This puts test back at the new main right after such a merge, so feature
+# PRs always have a test branch to target. If test still exists and still sits at the merged commit, it is reset to
+# main the same way Promote test and release does; if someone pushed to it since, it is left alone.
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  recreate:
+    if: ${{ github.event.pull_request.merged && github.event.pull_request.head.ref == 'test' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Point test at main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          MERGED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          main=$(gh api "repos/$REPO/git/ref/heads/main" --jq .object.sha)
+          test=$(gh api "repos/$REPO/git/ref/heads/test" --jq .object.sha 2>/dev/null || true)
+          if [ -z "$test" ]; then
+            gh api "repos/$REPO/git/refs" -f ref=refs/heads/test -f sha="$main" > /dev/null
+            echo "test was deleted after the merge; recreated it at main ($main)." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$test" = "$MERGED_HEAD" ]; then
+            gh api -X PATCH "repos/$REPO/git/refs/heads/test" -f sha="$main" -F force=true > /dev/null
+            echo "Reset test to main ($main)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "test moved since the merge ($test); left it alone." >> "$GITHUB_STEP_SUMMARY"
+          fi
