@@ -180,7 +180,31 @@ public sealed class WhatsNewTests
     public void Shown_only_after_an_update(string last, string current, bool expected) => Assert.Equal(expected, WhatsNew.ShouldShow(last, current));
 
     [Fact]
-    public void Markdown_reads_as_plain_text() =>
-        Assert.Equal("• Big thing. See docs.", WhatsNew.Plain("- **Big thing.** See [docs](https://x.test)."));
+    public void Wrapped_items_are_joined_into_one_bullet_each()
+    {
+        var notes = "- **Secrets never ship.** Every package is searched\n  before upload (`ssfn*` files).\n- Second\n  item.\n\nA paragraph\nover two lines.\n\n### Fixes\n\n* Third";
+        var b = WhatsNew.Blocks(new[] { ("1.4.0", notes) });
+        Assert.Equal(new[] { NoteKind.Version, NoteKind.Bullet, NoteKind.Bullet, NoteKind.Text, NoteKind.Heading, NoteKind.Bullet }, b.Select(x => x.Kind));
+        Assert.Equal("Version 1.4.0", b[0].Text);
+        Assert.Equal("Secrets never ship. Every package is searched before upload (ssfn* files).", b[1].Text);
+        Assert.Equal("Second item.", b[2].Text);
+        Assert.Equal("A paragraph over two lines.", b[3].Text);
+        Assert.Equal("Fixes", b[4].Text);
+        Assert.Equal("Third", b[5].Text);
+    }
 
+    [Fact]
+    public void Bold_code_and_links_become_runs()
+    {
+        var s = WhatsNew.Spans("**Big `thing`.** Run `doctor`, see [docs](https://x.test).");
+        Assert.Equal(new NoteSpan[] { new("Big thing.", Bold: true), new(" Run "), new("doctor", Code: true), new(", see docs.") }, s);
+    }
+
+    [Fact]
+    public void The_built_in_changelog_has_no_line_left_unjoined()
+    {
+        var all = WhatsNew.Blocks(WhatsNew.Between(WhatsNew.BuiltIn(), "0", "999.0"));
+        Assert.True(all.Count(x => x.Kind == NoteKind.Version) >= 14);
+        Assert.DoesNotContain(all, x => x.Text.Contains('\n') || x.Text.Contains("**") || x.Text.Contains('`') || x.Text.StartsWith(' '));
+    }
 }

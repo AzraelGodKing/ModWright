@@ -38,11 +38,16 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME does not match <Version>$csproj</Version> in SteamCmdHelper.csproj"
             exit 1
           fi
+          # CHANGELOG.md wraps long items onto indented lines; GitHub shows every line break in release notes, so those
+          # lines are joined back onto their item (a nested "- " item stays on its own line).
           awk -v v="$version" '
             { sub(/\r$/, "") }
             $0 == "## " v { on = 1; next }
             on && /^## / { exit }
-            on { print }
+            !on { next }
+            held && /^[ \t]+[^ \t]/ && !/^[ \t]+[-*+][ \t]/ { sub(/^[ \t]+/, ""); buf = buf " " $0; next }
+            { if (held) print buf; buf = $0; held = /[^ \t]/; if (!held) print }
+            END { if (held) print buf }
           ' CHANGELOG.md > notes.md
           if ! grep -q '[^[:space:]]' notes.md; then
             echo "::error::CHANGELOG.md has no '## $version' section"
