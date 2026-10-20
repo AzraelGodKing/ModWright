@@ -306,6 +306,13 @@ SteamCmdHelper game-builds                    # the game's public build and beta
 SteamCmdHelper test-install --to D:\rw-beta --branch unstable MyMod   # game beta install with MyMod and its dependencies
 SteamCmdHelper ci-setup                       # write a GitHub Actions workflow that uploads on a v* tag
 SteamCmdHelper login-secret                   # SteamCMD's saved login, for that workflow's secret
+SteamCmdHelper upload --group Core --tag --push-tags --run-after   # a saved group; push the tags; run the after-upload command
+SteamCmdHelper list --markdown                # every mod with its version and Workshop link (also --csv)
+SteamCmdHelper history --csv                  # this PC's uploads as CSV
+SteamCmdHelper note MyMod                     # the change note exactly as Steam would get it
+SteamCmdHelper game-version 1.7 --all         # add a RimWorld version to every mod (version folder and loadFolders.xml too)
+SteamCmdHelper doctor --login                 # check everything an upload needs and say what to fix
+SteamCmdHelper schedule --at "tomorrow 18:00" MyMod   # upload later through Windows Task Scheduler (--list, --cancel 1)
 SteamCmdHelper help                           # every option
 ```
 
@@ -417,8 +424,11 @@ line to, every ticked mod's description, and sets their visibility, all sent wit
 ### Checks, stats and new mods
 
 - **RimWorld checks.** Before upload the list flags a missing or repeated `packageId`, XML in `Defs`, `Patches`,
-  `Languages` or `About` that does not parse, `loadFolders.xml` entries pointing at missing folders, and version
-  folders that `supportedVersions` does not list.
+  `Languages` or `About` that does not parse, `loadFolders.xml` entries pointing at missing folders, version
+  folders that `supportedVersions` does not list, `Keyed` translations missing keys English has (or keeping ones it
+  dropped), a bundled `0Harmony.dll`, and Harmony used without `brrainz.harmony` in `modDependencies`.
+- **Before you confirm** the upload, it says when the git branch is behind its upstream or not pushed, points out
+  unclosed BBCode tags in the note or description, and **Preview as on Steam** opens the note as Steam shows it.
 - **Dependency updates.** The upload confirmation says when a Workshop item a mod needs was updated since the mod's
   last upload, so you can test against it first.
 - **Stats and comments...** (right-click) charts subscribers, favourites, views and lifetime subscribers per mod or for
@@ -432,6 +442,37 @@ line to, every ticked mod's description, and sets their visibility, all sent wit
 - **Moving to another PC.** **Options > About > Export settings...** saves settings, profiles, per-folder options and
   upload history in one zip; **Import settings...** on the other PC backs up what is there first and asks where each
   mods folder is now. The file can contain Discord webhook links, so keep it private.
+
+### Groups, the command palette and uploading later
+
+- **Groups** (Mods card) saves the ticked mods as a named group for the mods folder and ticks a group again in one
+  click. `upload --group <name>` uploads one from the command line.
+- **Ctrl+K** (or Ctrl+Shift+P) opens a search over every button, menu item and Options section, with its shortcut.
+- **Later...** next to Upload schedules the ticked mods for a time you pick. Windows Task Scheduler runs the command
+  line (`upload ... --repo ...`) as you, with the saved Steam login, so the window need not stay open; the PC must be
+  on and you signed in, and if it was off it runs as soon as it can. The same window lists and cancels them. Its
+  output goes to the past logs.
+- **Ticked mods, all at once** (right-click with two or more ticked): change their version, or (RimWorld) add a new
+  game version to `supportedVersions`, copying the newest version folder and adding it to `loadFolders.xml`.
+- A Windows notification says how a run went when the window is in the background (Options > Uploading).
+
+### After uploading: tags, a command and kept packages
+
+- **Push the tags** made by **Tag each upload in git** to the remote straight away (Options > Git & GitHub).
+- **Command after uploading** (Options > Uploading, per mods folder) runs after each successful upload, in the mods
+  folder, with these environment variables: `SCH_MOD_NAME`, `SCH_MOD_FOLDER`, `SCH_MOD_DIR`, `SCH_VERSION`,
+  `SCH_WORKSHOP_ID`, `SCH_WORKSHOP_URL`, `SCH_CREATED`, `SCH_APP_ID`, `SCH_COMMIT` and `SCH_NOTE_FILE` (a file with
+  the change note as sent). Like the build step it comes from this PC's settings, never from the repo.
+- **Keep a zip of what each upload sent** (Options > Uploading) saves exactly what was sent (the newest 5 per mod); **Uploaded packages**
+  on the right-click menu opens the folder.
+- **Copy the mod list as** Markdown, Steam BBCode or CSV, and **Export CSV** in the history window.
+
+### Check setup
+
+**Options > About > Check setup** (or `SteamCmdHelper doctor`) checks the mods folder, its layout and app ID, how many
+mods need fixing, SteamCMD and the saved login, git and gh when they are used, the Discord link, the Steam client when
+tags or required items go through it, the Thunderstore token, free disk space and the data folder, and says what to
+fix. The window really logs in with the saved login; on the command line add `--login` for that. Nothing is changed.
 
 ### Thunderstore
 
@@ -580,6 +621,10 @@ The key is stored masked, but anyone with the exe could still extract it. Keep i
   and `login-secret` hand that file out (base64) only when you ask, for a GitHub secret.
 - The layout file holds no secrets, but it is a new file in your repo: commit it or git-ignore it.
 - Uploads publish immediately to subscribers. Use Dry run first when unsure.
+- Every package is searched for secrets before upload: Steam's saved login, private keys and key stores, `.env`
+  files and tokens with a known shape (GitHub, Discord webhooks, Slack, AWS, Google, Linear, Anthropic) stop it, and
+  only the file and line are named, never the value. Leave such files out with the layout's Exclude list or an
+  `export-ignore` rule.
 - Install SteamCMD only installs a download that arrived whole and whose `steamcmd.exe` is signed by Valve.
 - An upload counts as done only when SteamCMD exits cleanly and confirms it with `Success.` (and, for a new item,
   returns its id). Otherwise the row is marked failed and the package is kept in `%TEMP%\steamcmd_helper_*` to inspect.
