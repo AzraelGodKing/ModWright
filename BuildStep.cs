@@ -14,12 +14,13 @@ public static class BuildStep
     /// Runs <paramref name="command"/> through the system shell (cmd on Windows, sh elsewhere) in <paramref name="repo"/>,
     /// passing each line it prints to <paramref name="onLine"/>. Returns its exit code. Cancelling stops it.
     /// </summary>
-    public static async Task<int> RunAsync(string repo, string command, Action<string> onLine, CancellationToken ct)
+    public static async Task<int> RunAsync(string repo, string command, Action<string> onLine, CancellationToken ct, IReadOnlyDictionary<string, string>? env = null)
     {
         var psi = OperatingSystem.IsWindows()
             ? new ProcessStartInfo("cmd.exe") { ArgumentList = { "/d", "/s", "/c", command } }
             : new ProcessStartInfo("/bin/sh") { ArgumentList = { "-c", command } };
         psi.WorkingDirectory = repo;
+        if (env != null) foreach (var (k, v) in env) psi.Environment[k] = v;
         psi.RedirectStandardOutput = psi.RedirectStandardError = psi.RedirectStandardInput = true;
         psi.StandardOutputEncoding = psi.StandardErrorEncoding = Encoding.UTF8;
         psi.UseShellExecute = false;
