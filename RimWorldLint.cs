@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
@@ -64,7 +65,128 @@ public static class RimWorldLint
 
         foreach (var (file, error) in BrokenXml(modDir))
             problems.Add($"{Path.GetRelativePath(modDir, file).Replace('\\', '/')} is not valid XML ({error}): every player would get red errors");
+        warnings.AddRange(TranslationGaps(modDir));
+        warnings.AddRange(HarmonyWarnings(modDir, meta));
         return (problems, warnings);
+    }
+
+    // ------------------------------------------------------------ translations
+
+    /// <summary>Languages folders RimWorld reads: the mod's own and those in its version folders.</summary>
+    static IEnumerable<string> LanguagesFolders(string modDir)
+    {
+        var root = Path.Combine(modDir, "Languages");
+        if (Directory.Exists(root)) yield return root;
+        string[] dirs;
+        try { dirs = Directory.GetDirectories(modDir); } catch { yield break; }
+        foreach (var d in dirs.Where(d => VersionFolder.IsMatch(Path.GetFileName(d)) || Path.GetFileName(d).Equals("Common", StringComparison.OrdinalIgnoreCase)).OrderBy(d => d))
+        {
+            var langs = Path.Combine(d, "Languages");
+            if (Directory.Exists(langs)) yield return langs;
+        }
+    }
+
+    /// <summary>The keys of every Keyed file in <paramref name="keyed"/> (the element names under LanguageData).</summary>
+    public static HashSet<string> KeyedKeys(string keyed)
+    {
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        if (!Directory.Exists(keyed)) return keys;
+        foreach (var file in Directory.GetFiles(keyed, "*.xml", SearchOption.AllDirectories))
+        {
+            try
+            {
+                if (XDocument.Load(file).Root is { } root)
+                    foreach (var e in root.Elements()) keys.Add(e.Name.LocalName);
+            }
+            catch (XmlException) { } // reported with the other broken XML
+            catch (IOException) { }
+        }
+        return keys;
+    }
+
+    /// <summary>
+    /// For each language with a Keyed folder: English keys it doesn't have (players see the raw key, such as
+    /// "MyMod_Setting") and keys English no longer has (leftovers from renamed texts).
+    /// </summary>
+    public static List<string> TranslationGaps(string modDir)
+    {
+        var w = new List<string>();
+        foreach (var languages in LanguagesFolders(modDir))
+        {
+            var englishDir = Directory.GetDirectories(languages).FirstOrDefault(d => Path.GetFileName(d).Equals("English", StringComparison.OrdinalIgnoreCase));
+            if (englishDir == null) continue;
+            var english = KeyedKeys(Path.Combine(englishDir, "Keyed"));
+            if (english.Count == 0) continue;
+            var where = Path.GetRelativePath(modDir, languages).Replace('\\', '/');
+            foreach (var lang in Directory.GetDirectories(languages).Where(d => d != englishDir).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+            {
+                var keyedDir = Path.Combine(lang, "Keyed");
+                if (!Directory.Exists(keyedDir)) continue;
+                var have = KeyedKeys(keyedDir);
+                var name = Path.GetFileName(lang);
+                var missing = english.Where(k => !have.Contains(k)).OrderBy(k => k, StringComparer.Ordinal).ToList();
+                var extra = have.Where(k => !english.Contains(k)).OrderBy(k => k, StringComparer.Ordinal).ToList();
+                if (missing.Count > 0)
+                    w.Add($"{where}/{name} is missing {missing.Count} of {english.Count} English Keyed texts, so players see the raw key: {PackageCheck.Examples(missing)}");
+                if (extra.Count > 0)
+                    w.Add($"{where}/{name} has {extra.Count} Keyed text{(extra.Count == 1 ? "" : "s")} English no longer has (left over from a rename?): {PackageCheck.Examples(extra)}");
+            }
+        }
+        return w;
+    }
+
+    // ------------------------------------------------------------ Harmony
+
+    /// <summary>The Harmony mod's packageId, which a mod that uses Harmony should list in modDependencies.</summary>
+    public const string HarmonyId = "brrainz.harmony";
+
+    static readonly byte[] HarmonyRef = Encoding.ASCII.GetBytes("0Harmony");
+    static readonly Dictionary<string, (DateTime Time, long Size, bool Uses)> UsesCache = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>True when the assembly references Harmony (its metadata names the 0Harmony assembly).</summary>
+    public static bool UsesHarmony(string dll)
+    {
+        FileInfo info;
+        try { info = new FileInfo(dll); } catch { return false; }
+        lock (UsesCache)
+            if (UsesCache.TryGetValue(dll, out var hit) && hit.Time == info.LastWriteTimeUtc && hit.Size == info.Length) return hit.Uses;
+        bool uses;
+        try { uses = File.ReadAllBytes(dll).AsSpan().IndexOf(HarmonyRef) >= 0; }
+        catch (IOException) { return false; }
+        lock (UsesCache) UsesCache[dll] = (info.LastWriteTimeUtc, info.Length, uses);
+        return uses;
+    }
+
+    /// <summary>
+    /// A mod that ships its own 0Harmony.dll (two copies of Harmony break other mods; depend on the Harmony mod
+    /// instead), or whose code uses Harmony without listing it in modDependencies.
+    /// </summary>
+    public static List<string> HarmonyWarnings(string modDir, XElement meta)
+    {
+        var w = new List<string>();
+        var assemblies = new List<string>();
+        var rootAsm = Path.Combine(modDir, "Assemblies");
+        if (Directory.Exists(rootAsm)) assemblies.Add(rootAsm);
+        try
+        {
+            foreach (var d in Directory.GetDirectories(modDir).Where(d => VersionFolder.IsMatch(Path.GetFileName(d)) || Path.GetFileName(d).Equals("Common", StringComparison.OrdinalIgnoreCase)))
+                if (Directory.Exists(Path.Combine(d, "Assemblies"))) assemblies.Add(Path.Combine(d, "Assemblies"));
+        }
+        catch (IOException) { }
+        var shipped = new List<string>();
+        var uses = false;
+        foreach (var dir in assemblies)
+            foreach (var dll in Directory.GetFiles(dir, "*.dll"))
+            {
+                if (Path.GetFileName(dll).Equals("0Harmony.dll", StringComparison.OrdinalIgnoreCase)) shipped.Add(Path.GetRelativePath(modDir, dll).Replace('\\', '/'));
+                else if (!uses && UsesHarmony(dll)) uses = true;
+            }
+        if (shipped.Count > 0)
+            w.Add($"ships its own {PackageCheck.Examples(shipped)}: two copies of Harmony break other mods, so list {HarmonyId} in modDependencies and leave the dll out (in your .csproj, set Private to false on the Lib.Harmony reference)");
+        var deps = meta.Element("modDependencies")?.Elements("li").Select(li => li.Element("packageId")?.Value.Trim() ?? "") ?? Enumerable.Empty<string>();
+        if ((uses || shipped.Count > 0) && !deps.Any(d => d.Equals(HarmonyId, StringComparison.OrdinalIgnoreCase)))
+            w.Add($"uses Harmony, but About.xml's modDependencies doesn't list {HarmonyId}, so players without the Harmony mod get errors");
+        return w;
     }
 
     static void CheckLoadFolders(string modDir, string file, List<string> supported, List<string> problems, List<string> warnings)
