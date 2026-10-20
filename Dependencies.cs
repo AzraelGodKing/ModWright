@@ -39,4 +39,30 @@ public static class Dependencies
         }
         return w;
     }
+
+    /// <summary>
+    /// One line per dependency Steam updated after <paramref name="since"/> (the mod's own last upload), newest first,
+    /// so the author can try the mod with it before sending: a Harmony or framework update can break a mod that
+    /// worked when it was last uploaded.
+    /// </summary>
+    public static List<string> UpdatedSince(string modName, IEnumerable<string> ids, DateTimeOffset? since,
+        IReadOnlyDictionary<string, WorkshopItem> live, DateTimeOffset now)
+    {
+        if (since is not { } last) return new();
+        return ids
+            .Select(id => live.TryGetValue(id, out var item) ? item : null)
+            .Where(item => item is { Public: true, Updated: { } u } && u > last)
+            .OrderByDescending(item => item!.Updated)
+            .Select(item => $"{modName} needs \"{(item!.Title.Length > 0 ? item.Title : item.Id)}\", which Steam updated {Ago(now - item.Updated!.Value)} "
+                + $"(after {modName}'s last upload). Worth a try in game with it before sending.")
+            .ToList();
+    }
+
+    /// <summary>"3 days ago", "5 hours ago", "just now".</summary>
+    public static string Ago(TimeSpan t) =>
+        t.TotalDays >= 2 ? $"{(int)t.TotalDays} days ago"
+        : t.TotalHours >= 2 ? $"{(int)t.TotalHours} hours ago"
+        : t.TotalHours >= 1 ? "an hour ago"
+        : t.TotalMinutes >= 2 ? $"{(int)t.TotalMinutes} minutes ago"
+        : "just now";
 }

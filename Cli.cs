@@ -315,6 +315,7 @@ public static class Cli
     /// <param name="json">Where "upload --json" writes its JSON; null for <paramref name="output"/>.</param>
     /// <param name="oneSession">Upload a batch with one SteamCMD login (Options; --one-session turns it on for one run).</param>
     /// <param name="verifyUploads">Download each upload back and compare it (Options; --verify turns it on for one run).</param>
+    /// <param name="descriptionFooter">The mods folder's shared description footer.</param>
     /// <param name="ownership">Asks whether the account owns the game (account, app id); null skips the check.</param>
     public static async Task<int> RunAsync(CliOptions o, string repo, string steamCmd, string account, TextWriter output,
         CancellationToken ct, string? recordPath = null, string? tempRoot = null, bool credit = false,
@@ -323,7 +324,7 @@ public static class Cli
         string webhook = "", bool gitHubReleases = false, TextWriter? json = null,
         Func<string, string, string[], CancellationToken, Task<TagResult>>? tagUpdater = null,
         bool oneSession = false, bool verifyUploads = false,
-        Func<string, string, CancellationToken, Task<bool?>>? ownership = null)
+        Func<string, string, CancellationToken, Task<bool?>>? ownership = null, string? descriptionFooter = null)
     {
         void Say(string s) => output.WriteLine(s);
         var tags = new Dictionary<ModInfo, string>();
@@ -492,7 +493,7 @@ public static class Cli
         var sentDescriptions = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(historyFile))!, "descriptions.json");
         if (syncDescriptions && !o.DryRun && !o.Test)
         {
-            var changed = await DescriptionSync.FindChangedAsync(picked, cfg, recordPath == null ? DescriptionSync.FetchFromSteam : (_, _) => Task.FromResult<string?>(null), sentDescriptions, ct);
+            var changed = await DescriptionSync.FindChangedAsync(picked, cfg, recordPath == null ? DescriptionSync.FetchFromSteam : (_, _) => Task.FromResult<string?>(null), sentDescriptions, ct, footer: descriptionFooter);
             DescriptionSync.Stage(changed);
             foreach (var (m, _) in changed) Say($"{m.Folder}: {cfg.SteamDescriptionFile} changed, so the new description goes out with the upload.");
         }
@@ -511,6 +512,7 @@ public static class Cli
             TagUpdater = tagUpdater,
             Credit = credit,
             NoteTemplate = noteTemplate,
+            DescriptionFooter = descriptionFooter,
             MarkdownToSteam = markdown,
             GitRef = gitRef,
             TestItems = o.Test,

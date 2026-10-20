@@ -41,6 +41,9 @@ public sealed class Publisher
     /// <summary>Wraps each change note sent to Steam (see <see cref="ChangeNotes.Apply"/>); null or empty sends the note as it is.</summary>
     public string? NoteTemplate { get; init; }
 
+    /// <summary>The mods folder's shared footer, added to the description a new item is created with.</summary>
+    public string? DescriptionFooter { get; init; }
+
     /// <summary>Turns Markdown in change notes into Steam's BBCode when the layout's changelog is a .md file.</summary>
     public bool MarkdownToSteam { get; init; }
 
@@ -360,6 +363,7 @@ public sealed class Publisher
             if (!m.OnSteam)
             {
                 var desc = page?.Description ?? ReadDescription(m);
+                if (page?.Description == null && desc.Length > 0) desc = DescriptionSync.WithFooter(desc, DescriptionFooter, m.Name, "", _cfg.GameName);
                 if (desc.Length < 20) return (new PublishResult(false, $"No description found. Add {_cfg.SteamDescriptionFile}."), null);
                 var preview = page?.Preview ?? (string.IsNullOrWhiteSpace(_cfg.Preview) ? null : Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Preview)));
                 extra = WorkshopPage.VdfLines(page?.Title ?? m.Name, desc, null, preview) + WorkshopPage.VdfLines(null, null, visibility);

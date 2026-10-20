@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **Dependency updates are pointed out.** The upload confirmation says when a Workshop item a mod needs (Harmony, a
+  framework) was updated on Steam after the mod's own last upload, so it can be tried in game with it first.
+- **Shared description footer** (Options > Workshop page > Description, per mods folder): text such as Discord, Ko-fi
+  or GitHub links added to the end of every description sent from a description file, with `{name}`, `{id}` and
+  `{game}` filled in. Changing it counts as a changed description, so each mod offers its new text at its next upload.
+  New items are created with it too.
+- **Move to another PC.** **Options > About > Export settings...** saves the settings, profiles, per-folder options and
+  upload history in one zip; **Import settings...** on the new PC asks where each mods folder is now and keeps a backup
+  of what it replaces. SteamCMD and its saved login are never included.
+- **What's new.** The first start after an update shows the changelog of the versions just installed, once, and
+  **Options > About > What's new...** shows every version's changes.
+
 ## 1.3.7
 
 - **Refresh keeps your place.** Refreshing (F5, or the refresh after an upload, a version change or a changelog entry)

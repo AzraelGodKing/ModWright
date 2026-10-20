@@ -28,6 +28,7 @@
   <ItemGroup>
     <!-- The same icon for every window (Theme.AppIcon); ApplicationIcon above is the exe's own icon. -->
     <EmbeddedResource Include="Assets\app.ico" LogicalName="SteamCmdHelper.app.ico" />
+    <EmbeddedResource Include="CHANGELOG.md" LogicalName="SteamCmdHelper.CHANGELOG.md" />
     <!-- Valve's Steamworks library, written out next to the settings when tags are set, so every build (single file,
          portable, installer) has it without a loose file to ship. -->
     <EmbeddedResource Include="$(PkgFacepunch_Steamworks)\content\steam_api64.dll" LogicalName="SteamCmdHelper.steam_api64.dll" />

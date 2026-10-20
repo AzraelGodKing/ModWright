@@ -28,6 +28,8 @@ public sealed class AppSettings
     public bool CheckForUpdates { get; set; } = true;
     /// <summary>Opt-in: download a newer release in the background and install it when the window closes.</summary>
     public bool AutoUpdate { get; set; }
+    /// <summary>The app version that ran last, so the first start after an update can say what's new.</summary>
+    public string LastRunVersion { get; set; } = "";
     /// <summary>A release version the user said not to be reminded about again.</summary>
     public string SkippedUpdate { get; set; } = "";
     /// <summary>Mods folders opened before, newest first (the drop-down next to Mods repo).</summary>
@@ -42,6 +44,8 @@ public sealed class AppSettings
     public Dictionary<string, string> NoteTemplates { get; set; } = new();
     /// <summary>When a mod's description file differs from its Workshop page: "Ask", "Always" (send it) or "Never".</summary>
     public string DescriptionSync { get; set; } = SteamCmdHelper.DescriptionSync.Ask;
+    /// <summary>Text added to the end of every Workshop description from a mods folder (see DescriptionSync.WithFooter), per mods folder.</summary>
+    public Dictionary<string, string> DescriptionFooters { get; set; } = new();
     /// <summary>A command run in the mods folder before packaging (e.g. "dotnet build -c Release"), per mods folder.</summary>
     public Dictionary<string, string> BuildCommands { get; set; } = new();
     /// <summary>The git branch or tag to upload from instead of the checked-out commit, per mods folder.</summary>
@@ -105,6 +109,15 @@ public sealed class AppSettings
         if (!string.IsNullOrWhiteSpace(template)) NoteTemplates[Key(repo)] = template.Replace("\r\n", "\n").Trim('\n');
     }
 
+    /// <summary>The shared description footer for <paramref name="repo"/>, or "" for none.</summary>
+    public string FooterFor(string repo) => DescriptionFooters.FirstOrDefault(kv => Same(kv.Key, repo)).Value ?? "";
+
+    public void SetFooter(string repo, string footer)
+    {
+        foreach (var k in DescriptionFooters.Keys.Where(k => Same(k, repo)).ToList()) DescriptionFooters.Remove(k);
+        if (!string.IsNullOrWhiteSpace(footer)) DescriptionFooters[Key(repo)] = footer.Replace("\r\n", "\n").Trim('\n');
+    }
+
     /// <summary>The build step for <paramref name="repo"/>, or "" for none.</summary>
     public string BuildFor(string repo) => ValueFor(BuildCommands, repo);
 
@@ -154,6 +167,47 @@ public sealed class AppSettings
         Same(p.RepoPath, RepoPath) &&
         string.Equals(p.Account, Account, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(p.SteamCmdPath, SteamCmdPath, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Every mods folder these settings mention: the current one, profiles, per-folder options and (with <paramref name="recent"/>) recent ones.</summary>
+    public List<string> Folders(bool recent = true)
+    {
+        var all = new List<string> { RepoPath };
+        if (recent) all.AddRange(RecentRepos);
+        all.AddRange(Profiles.Select(p => p.RepoPath));
+        foreach (var map in new[] { NoteTemplates, DescriptionFooters, BuildCommands, PackageRefs, DiscordWebhooks }) all.AddRange(map.Keys);
+        all.AddRange(GitHubReleaseRepos);
+        return all.Where(f => !string.IsNullOrWhiteSpace(f)).Select(Key).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>
+    /// Moves everything kept for the mods folder <paramref name="from"/> to <paramref name="to"/> (after importing
+    /// settings from a PC where the folder was somewhere else).
+    /// </summary>
+    public void MoveFolder(string from, string to)
+    {
+        to = Key(to);
+        string Move(string path) => Same(path, from) ? to : path;
+        RepoPath = Move(RepoPath);
+        for (var i = 0; i < RecentRepos.Count; i++) RecentRepos[i] = Move(RecentRepos[i]);
+        RecentRepos = RecentRepos.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        foreach (var p in Profiles) p.RepoPath = Move(p.RepoPath);
+        foreach (var map in new[] { NoteTemplates, DescriptionFooters, BuildCommands, PackageRefs, DiscordWebhooks })
+            foreach (var k in map.Keys.Where(k => Same(k, from)).ToList())
+            {
+                var v = map[k];
+                map.Remove(k);
+                map[to] = v;
+            }
+        for (var i = 0; i < GitHubReleaseRepos.Count; i++) GitHubReleaseRepos[i] = Move(GitHubReleaseRepos[i]);
+    }
+
+    /// <summary>Takes every saved value from <paramref name="other"/> (after an import), keeping this object.</summary>
+    public void CopyFrom(AppSettings other)
+    {
+        foreach (var p in typeof(AppSettings).GetProperties().Where(p => p.CanRead && p.CanWrite && p.SetMethod!.IsPublic
+                     && !Attribute.IsDefined(p, typeof(System.Text.Json.Serialization.JsonIgnoreAttribute))))
+            p.SetValue(this, p.GetValue(other));
+    }
 
     /// <summary>Settings for a screenshot run: used but never written over the real file.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
