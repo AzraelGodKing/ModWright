@@ -344,6 +344,8 @@ public sealed class Publisher
                 sent = shaped.Substring(0, 7900 - (Credit ? CreditLine.Length + 2 : 0)) + "\n[i]...see the full changelog on the project page.[/i]"
                     + (Credit ? "\n" + CreditLine : "");
 
+            foreach (var broken in SteamText.Problems(sent)) Say($"Warning: the change note {broken}, so its formatting will look broken on Steam.");
+
             var report = PackageCheck.Inspect(stage, hash: ManifestDir != null || VerifyUploads);
             var last = ManifestDir != null && m.OnSteam ? PackageDiffs.Load(ManifestDir, m.WorkshopId!) : null;
             if (last != null) report = report with { Diff = PackageDiffs.Compare(last, report.Files) };
@@ -363,6 +365,10 @@ public sealed class Publisher
                 return (new PublishResult(false, $"The package leaves out {PackageCheck.Examples(code)}, which {(code.Count == 1 ? "is" : "are")} in the mod folder but not in git " +
                     "(ignored by .gitignore or not committed), so players would get the mod without its code. Commit it, or add where the build lands to the " +
                     "layout's BuiltFiles (for example \"1.6/Assemblies/*.dll\"), or delete it if it is left over."), null);
+            var secrets = SecretScan.Find(stage, report.Files);
+            var certain = secrets.Where(h => h.Certain).ToList();
+            if (certain.Count > 0) return (new PublishResult(false, SecretScan.StopMessage(certain)), null);
+            foreach (var h in secrets) Say($"Warning: the package has {h.Describe()}. Check it is not a real key before players get it.");
             if (report.LeftOut.Count > 0)
                 Say($"Warning: the package leaves out {report.LeftOut.Count} file{(report.LeftOut.Count == 1 ? "" : "s")} in the mod folder that git does not have (ignored or not committed): {PackageCheck.Examples(report.LeftOut)}.");
             foreach (var w in report.Warnings) Say("Warning: the package " + w + ".");
@@ -379,6 +385,8 @@ public sealed class Publisher
             // A test item gets no page changes: they are meant for the real item's next upload.
             var page = TestItems ? new WorkshopPageEdit { Title = m.Name + " (test)" } : PageEdits?.Invoke(m);
             if (page != null && WorkshopPage.Validate(page) is { } bad) return (new PublishResult(false, "Workshop page: " + bad), null);
+            if (page?.Description is { } newDesc)
+                foreach (var b in SteamText.Problems(newDesc)) Say($"Warning: the new description {b}, so its formatting will look broken on Steam.");
             string extra;
             var visibility = page?.Visibility ?? WorkshopPage.Private;
             if (!m.OnSteam)

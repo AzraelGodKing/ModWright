@@ -80,6 +80,10 @@ public static class WorkshopPage
         if (!f.Exists) return $"The preview image {path} no longer exists.";
         if (f.Length > ModScanner.MaxPreviewBytes)
             return $"The preview image is {f.Length / 1024} KB; Steam allows {ModScanner.MaxPreviewBytes / 1024} KB. Shrink it first (right-click the mod > Shrink preview image).";
+        var head = new byte[Math.Min(f.Length, 64 * 1024)];
+        using (var s = f.OpenRead()) s.ReadExactly(head);
+        if (ImageHeader.Read(head) is { } img && !ImageHeader.SteamFormats.Contains(img.Format))
+            return $"The preview image is really a {img.Format} image with a {f.Extension} name, which Steam doesn't take. Save it as a PNG or JPG.";
         return null;
     }
 

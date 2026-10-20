@@ -3287,6 +3287,8 @@ public sealed class MainForm : Form
             : _rows.Where(it => it.Checked && StateOf(it) == RowState.UpToDate).Select(it => (ModInfo)it.Tag!).ToList();
         var checkFirst = sameVersion.Select(m => $"Steam already has {m.Name} v{m.Version}. Raise the version first (F2) if this upload changes anything, or players can't tell the updates apart.").ToList();
         if (!test && rollback == null) checkFirst.AddRange(await DependencyUpdatesAsync(picked));
+        if (gitPackaging && rollback == null && gitRef == null)
+            checkFirst.AddRange(GitOps.SyncWarnings(await Task.Run(() => GitOps.Sync(_s.RepoPath)), !dry && !test && _s.GitHubReleasesFor(_s.RepoPath)));
         foreach (var m in picked)
         {
             var pageEdit = WorkshopPage.Get(m.Dir);
@@ -3299,6 +3301,7 @@ public sealed class MainForm : Form
                     + (m.Warnings.Count > 0 ? "  (" + m.Warnings[0] + ")" : "");
             notes[m.Dir] = rollback?.Note ?? Publisher.NotesFor(m, _cfg);
             if (sameVersion.Contains(m)) actions[m.Dir] = "same version as on Steam; " + actions[m.Dir];
+            foreach (var bad in SteamText.Problems(notes[m.Dir])) checkFirst.Add($"{m.Name}'s change note {bad}, so its formatting will look broken on Steam.");
         }
         var heading = dry ? "Dry run for:"
             : test ? "Upload to TEST items (private copies on Steam; subscribers get nothing):"
