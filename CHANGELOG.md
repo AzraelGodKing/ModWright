@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.3.7
+
+- **Refresh keeps your place.** Refreshing (F5, or the refresh after an upload, a version change or a changelog entry)
+  keeps the mods you ticked, the selected mod and the scroll position, instead of ticking every mod again. Mods that
+  just uploaded are unticked, so pressing Upload again doesn't send them twice.
+- **One Steam login per upload.** When the login worked in the last 15 minutes, Upload goes straight to SteamCMD instead
+  of starting it once more just to check. If Steam refuses the login after all, **Log in again and retry** appears as
+  before.
+- **The window never freezes on Refresh.** Every refresh reads the mods folder and git in the background.
+- **A faster log.** New lines are drawn about ten times a second instead of one by one, so SteamCMD's output no longer
+  slows the window down, and the log box is trimmed so a long session stays quick.
+- **Upload checks ride along.** With **Check uploads** and one login per batch, Steam's copies are downloaded back in
+  the same SteamCMD run as the uploads, so a batch of ten logs in once instead of eleven times.
+- **Packages are built ahead.** A batch packages the next mods (up to three at a time) while the current one is
+  checked and uploaded.
+- **The list refreshes by itself.** When you come back to the window and a mod was changed, added or removed, or a
+  commit was made, the list refreshes. It never does this during an upload or while a dialog is open.
+- **The window is remembered.** Its size and place (and whether it was maximised), the list's column widths, the sort
+  column and the last Options section come back the next time the app starts.
+- **The list stays usable during an upload.** You can scroll it, select mods, read their details and use the search
+  box and **Hide up to date** while an upload runs. Ticks and edits still wait until it's done.
+- **Less waiting on git.** Whether the folder is a git repo is asked once per refresh or upload instead of for every mod.
+
 ## 1.3.6
 
 - **Options are sorted into sections.** The Options tab now works like Steam's own settings window: a list down the

@@ -9,6 +9,24 @@ public class ModScannerTests : IDisposable
 
     public void Dispose() => _repo.Dispose();
 
+    [Fact]
+    public void Folder_stamp_changes_only_when_the_mods_change()
+    {
+        var dir = _repo.AddMod("Alpha", workshopId: "1111111");
+        var first = ModScanner.FolderStamp(_repo.Root, _cfg);
+        Assert.NotEqual("", first);
+        Assert.Equal(first, ModScanner.FolderStamp(_repo.Root, _cfg));
+
+        var about = Path.Combine(dir, "About", "About.xml");
+        File.SetLastWriteTimeUtc(about, File.GetLastWriteTimeUtc(about).AddMinutes(1)); // edited elsewhere
+        var edited = ModScanner.FolderStamp(_repo.Root, _cfg);
+        Assert.NotEqual(first, edited);
+
+        _repo.AddMod("Beta");
+        Assert.NotEqual(edited, ModScanner.FolderStamp(_repo.Root, _cfg));
+        Assert.Equal("", ModScanner.FolderStamp(Path.Combine(_repo.Root, "missing"), _cfg));
+    }
+
     ModInfo ScanOne()
     {
         var mods = ModScanner.Scan(_repo.Root, _cfg);

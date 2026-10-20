@@ -116,6 +116,8 @@ public sealed class MainForm : Form
     /// <summary>Every row, shown or filtered out; the list view holds only the shown ones.</summary>
     readonly List<ListViewItem> _rows = new();
     /// <summary>Mod folders whose upload failed in the last run (badge "Failed"), and those to try again (failed or not run).</summary>
+    /// <summary>The folder the list shows, and the mod to select again while a refresh rebuilds it.</summary>
+    string? _shownRepo, _keepSelected;
     readonly HashSet<string> _failed = new(StringComparer.OrdinalIgnoreCase), _retrySet = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Each mod's problems as last written to the log, so a refresh only logs what changed (by mod folder).</summary>
     readonly Dictionary<string, string> _loggedProblems = new(StringComparer.OrdinalIgnoreCase);
@@ -154,9 +156,10 @@ public sealed class MainForm : Form
         _allowCreate.Checked = _s.AllowCreate;
         _hideUpToDate.Checked = _s.HideUpToDate;
         _populating = false;
+        RestoreWindow();
         Shown += async (_, _) =>
         {
-            if (NoStartupPrompts) RefreshAll(); // --shot expects the list filled as soon as the window shows
+            if (NoStartupPrompts) RefreshNow(); // --shot expects the list filled as soon as the window shows
             else await RefreshAllAsync();
             if (IsDisposed) return;
             if (UpdatedFrom != null) Append($"Updated SteamCMD Helper from {UpdatedFrom} to {UpdateCheck.CurrentVersion}.", LogKind.Ok);
@@ -166,12 +169,14 @@ public sealed class MainForm : Form
             if (_s.CheckForUpdates && !NoStartupPrompts) await CheckForUpdateAsync(false);
         };
         Activated += (_, _) => { if (!_busy) Taskbar.Progress(this, 0, Taskbar.State.None); };
+        Activated += async (_, _) => await RefreshIfChangedAsync();
         FormClosing += (_, e) =>
         {
             if (!_busy) return;
             if (MessageBox.Show(this, "An upload is running. Stop it and close?", Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) { e.Cancel = true; return; }
             Cancel();
         };
+        FormClosed += (_, _) => SaveWindow();
         FormClosed += (_, _) => InstallPendingUpdate(restart: false);
         // "Match Windows" and High Contrast follow Windows while the app is open.
         SystemEvents.UserPreferenceChanged += OnWindowsPreference;
@@ -269,7 +274,7 @@ public sealed class MainForm : Form
         {
             if (_populating || !Directory.Exists(_s.RepoPath)) return;
             var r = _packageRef.Text.Trim();
-            if (r.Length > 0 && ModScanner.IsGitRepo(_s.RepoPath) && !GitOps.RefExists(_s.RepoPath, r))
+            if (r.Length > 0 && RepoIsGit && !GitOps.RefExists(_s.RepoPath, r))
                 Append($"\"{r}\" is not a branch or tag in this repo yet; uploads will stop until it exists.", LogKind.Warn);
             _s.SetRef(_s.RepoPath, r);
             _s.Save();
@@ -287,6 +292,7 @@ public sealed class MainForm : Form
             _s.Save();
         };
         _clock.Tick += (_, _) => ShowClock();
+        _logTimer.Tick += (_, _) => FlushLog();
         _checkUpdates.CheckedChanged += (_, _) =>
         {
             _autoUpdate.Enabled = _checkUpdates.Checked;
@@ -478,7 +484,7 @@ public sealed class MainForm : Form
         _logFilter.SelectedIndex = 0;
         var copy = SmallBtn("Copy", (_, _) => CopyLog());
         var save = SmallBtn("&Save...", (_, _) => SaveLog());
-        var clear = SmallBtn("Clear", (_, _) => { _logLines.Clear(); _log.Clear(); });
+        var clear = SmallBtn("Clear", (_, _) => { _logLines.Clear(); _pendingLog.Clear(); _logBoxLines = 0; _log.Clear(); });
         var steamLogs = SmallBtn("SteamCMD lo&gs", (_, _) => OpenSteamCmdLogs());
         var pastLogs = SmallBtn("&Past logs", (_, _) => ShowPastLogs());
         _tip.SetToolTip(copy, "Copy the whole log");
@@ -850,6 +856,7 @@ public sealed class MainForm : Form
     void ShowSection(int index)
     {
         _section = Math.Clamp(index, 0, _sections.Count - 1);
+        if (_windowRestored && _s.OptionsSection != _section) { _s.OptionsSection = _section; _s.Save(); }
         for (var i = 0; i < _sections.Count; i++)
         {
             _sections[i].Page.Visible = i == _section;
@@ -1309,20 +1316,25 @@ public sealed class MainForm : Form
 
     /// <summary>What reading a mods folder found: everything <see cref="RefreshAll"/> shows that needs the disk or git.</summary>
     sealed record FolderScan(string Repo, ProjectConfig Cfg, string? Branch, List<ModInfo> Mods,
-        Dictionary<string, string> Uploaded, Dictionary<string, UploadEntry> History);
+        Dictionary<string, string> Uploaded, Dictionary<string, UploadEntry> History, string Stamp, bool IsGit);
 
     /// <summary>Reads the mods folder, its layout, git branch and this PC's upload records. Touches no controls.</summary>
     static FolderScan ScanFolder(string repo)
     {
         var cfg = ProjectConfig.Load(repo);
         var branch = ModScanner.GitBranch(repo);
+        var isGit = branch != null || ModScanner.IsGitRepo(repo); // a repo with no commits yet has no branch to name
         var mods = ModScanner.Scan(repo, cfg);
         foreach (var m in mods)
             if (WorkshopPage.Get(m.Dir) is { } page) m.Warnings.Add("Workshop page changes go out with the next upload: " + page.Summary());
-        return new FolderScan(repo, cfg, branch, mods, UploadedVersions.LoadRecord(), UploadHistory.Latest(UploadHistory.Load()));
+        return new FolderScan(repo, cfg, branch, mods, UploadedVersions.LoadRecord(), UploadHistory.Latest(UploadHistory.Load()), ModScanner.FolderStamp(repo, cfg), isGit);
     }
 
-    void RefreshAll()
+    /// <summary>Reads the mods folder again without holding up the window (see <see cref="RefreshAllAsync"/>).</summary>
+    void RefreshAll() => _ = RefreshAllAsync();
+
+    /// <summary><see cref="RefreshAll"/> with the folder read right here, for --shot, which needs the list filled at once.</summary>
+    void RefreshNow()
     {
         SaveFields();
         ShowProfiles();
@@ -1330,9 +1342,38 @@ public sealed class MainForm : Form
         ShowScan(ScanFolder(_s.RepoPath));
     }
 
+    bool _repoIsGit;
+
+    /// <summary>Whether the mods folder is a git repo: known from the last scan, so git is not started again to ask.</summary>
+    bool RepoIsGit => string.Equals(_shownRepo, _s.RepoPath, StringComparison.OrdinalIgnoreCase) ? _repoIsGit : ModScanner.IsGitRepo(_s.RepoPath);
+
+    /// <summary>The fingerprint of the folder as the list shows it (<see cref="ModScanner.FolderStamp"/>).</summary>
+    string _folderStamp = "";
+    bool _stampChecking;
+
     /// <summary>
-    /// <see cref="RefreshAll"/> with the folder read on a worker thread, so the window is drawn and responds while git and
-    /// the disk are slow (used at start-up).
+    /// When the window comes back to the front, refreshes the list if the mods folder changed while it was away (a mod
+    /// edited in another program, a version raised, a commit made). Never during an upload or while a dialog is open.
+    /// </summary>
+    async Task RefreshIfChangedAsync()
+    {
+        if (_stampChecking || _busy || _inUpload || NoStartupPrompts || OwnedForms.Length > 0 || _folderStamp.Length == 0) return;
+        var (repo, cfg) = (_s.RepoPath, _cfg);
+        _stampChecking = true;
+        string now;
+        try { now = await Task.Run(() => ModScanner.FolderStamp(repo, cfg)); }
+        finally { _stampChecking = false; }
+        if (IsDisposed || _busy || _inUpload || repo != _s.RepoPath || now.Length == 0 || now == _folderStamp) return;
+        Append("The mods folder changed, so the list was refreshed.", LogKind.Note);
+        await RefreshAllAsync();
+    }
+
+    /// <summary>Counts refreshes, so a slow scan that finishes after a newer one has started is thrown away.</summary>
+    int _scanNo;
+
+    /// <summary>
+    /// Reads the mods folder on a worker thread, so the window is drawn and responds while git and the disk are slow.
+    /// Only the newest of several overlapping refreshes is shown.
     /// </summary>
     async Task RefreshAllAsync()
     {
@@ -1340,8 +1381,12 @@ public sealed class MainForm : Form
         ShowProfiles();
         ShowAnnounce();
         var repo = _s.RepoPath;
-        var scan = await Task.Run(() => ScanFolder(repo));
-        if (IsDisposed || repo != _s.RepoPath) return; // closed, or another folder was opened meanwhile
+        var no = ++_scanNo;
+        UseWaitCursor = true;
+        FolderScan scan;
+        try { scan = await Task.Run(() => ScanFolder(repo)); }
+        finally { if (no == _scanNo && !IsDisposed) UseWaitCursor = false; }
+        if (IsDisposed || no != _scanNo || repo != _s.RepoPath) return; // closed, refreshed again, or another folder was opened meanwhile
         ShowScan(scan);
     }
 
@@ -1352,6 +1397,16 @@ public sealed class MainForm : Form
         ShowGame();
         if (_cfg.Error != null) Append(_cfg.Error, LogKind.Warn);
 
+        // A refresh of the same folder keeps what the reader had: the ticks, the selected mod and the scroll position.
+        // The rescan makes new mod objects, so they are matched by folder.
+        var sameFolder = string.Equals(_shownRepo, scan.Repo, StringComparison.OrdinalIgnoreCase);
+        var ticks = sameFolder ? _rows.ToDictionary(it => ((ModInfo)it.Tag!).Dir, it => it.Checked, StringComparer.OrdinalIgnoreCase) : new();
+        _keepSelected = sameFolder ? SelectedMod()?.Dir : null;
+        var top = sameFolder && _list.Items.Count > 0 ? (_list.TopItem?.Tag as ModInfo)?.Dir : null;
+        _shownRepo = scan.Repo;
+
+        _folderStamp = scan.Stamp;
+        _repoIsGit = scan.IsGit;
         _mods = scan.Mods;
         var uploaded = scan.Uploaded;
         var history = scan.History;
@@ -1367,7 +1422,7 @@ public sealed class MainForm : Form
             it.SubItems.Add("");
             it.ToolTipText = RowTip(m);
             it.Tag = m;
-            it.Checked = CanTick(m) && m.OnSteam;
+            it.Checked = CanTick(m) && (ticks.TryGetValue(m.Dir, out var was) ? was : m.OnSteam);
             UpdateRowState(it);
             _rows.Add(it);
             var problems = string.Join("; ", m.Problems);
@@ -1379,6 +1434,9 @@ public sealed class MainForm : Form
             }
         }
         ApplyFilter();
+        _keepSelected = null;
+        if (top != null && _list.Items.Cast<ListViewItem>().FirstOrDefault(i => SameDir(i, top)) is { } topRow)
+            try { _list.TopItem = topRow; } catch { } // only works once the list has a handle and is in details view
         _ = LoadUploadedVersionsAsync(_mods.Where(m => m.OnSteam).ToList(), uploaded, history);
 
         UpdateLoginHint();
@@ -1447,6 +1505,8 @@ public sealed class MainForm : Form
         _tip.SetToolTip(_detail, text);
     }
 
+    static bool SameDir(ListViewItem it, string dir) => it.Tag is ModInfo m && string.Equals(m.Dir, dir, StringComparison.OrdinalIgnoreCase);
+
     bool CanTick(ModInfo m) => m.Ready && (m.OnSteam || _allowCreate.Checked);
 
     RowState StateOf(ListViewItem it)
@@ -1483,12 +1543,12 @@ public sealed class MainForm : Form
             visible.Sort(CompareRows);
             if (_sortDesc) visible.Reverse();
         }
-        var selected = SelectedMod();
+        var selected = _keepSelected ?? SelectedMod()?.Dir;
         _populating = true;
         _list.BeginUpdate();
         _list.Items.Clear();
         _list.Items.AddRange(visible.ToArray());
-        foreach (var it in visible) it.Selected = ReferenceEquals(it.Tag, selected);
+        foreach (var it in visible) it.Selected = selected != null && SameDir(it, selected);
         _list.EndUpdate();
         _populating = false;
         UpdateEmptyState();
@@ -1515,9 +1575,57 @@ public sealed class MainForm : Form
         if (_sortCol != col) { _sortCol = col; _sortDesc = false; }
         else if (!_sortDesc) _sortDesc = true;
         else _sortCol = -1;
+        (_s.SortColumn, _s.SortDescending) = (_sortCol, _sortDesc);
+        _s.Save();
+        ShowSortArrows();
+        ApplyFilter();
+    }
+
+    void ShowSortArrows()
+    {
         for (var i = 0; i < _list.Columns.Count; i++)
             _list.Columns[i].Text = ColumnNames[i] + (i == _sortCol ? (_sortDesc ? "  ▼" : "  ▲") : "");
-        ApplyFilter();
+    }
+
+    // ---------------------------------------------------------------- remembering the window
+
+    bool _windowRestored;
+
+    string ColumnLayoutKey => $"{DeviceDpi}|{_s.TextSize}";
+
+    /// <summary>Puts the window, the list's columns and sort, and the Options section back the way they were left.</summary>
+    void RestoreWindow()
+    {
+        var b = _s.WindowBounds;
+        if (b.Length == 4 && b[2] > 0 && b[3] > 0)
+        {
+            var rect = new Rectangle(b[0], b[1], b[2], b[3]);
+            // Only where enough of its title bar is on a screen that is still there (a monitor may have been unplugged).
+            var titleBar = new Rectangle(rect.X, rect.Y, rect.Width, 40);
+            if (Screen.AllScreens.FirstOrDefault(sc => { var i = Rectangle.Intersect(sc.WorkingArea, titleBar); return i.Width >= 120 && i.Height >= 20; }) is { } on)
+            {
+                StartPosition = FormStartPosition.Manual;
+                Bounds = new Rectangle(rect.Location, new Size(Math.Min(rect.Width, on.WorkingArea.Width), Math.Min(rect.Height, on.WorkingArea.Height)));
+            }
+        }
+        if (_s.WindowMaximized) WindowState = FormWindowState.Maximized;
+        if (_s.ColumnWidths.Length == _list.Columns.Count && _s.ColumnLayout == ColumnLayoutKey)
+            for (var i = 0; i < _list.Columns.Count - 1; i++) // the last column stretches to fill
+                _list.Columns[i].Width = Math.Max(U(30), _s.ColumnWidths[i]);
+        if (_s.SortColumn >= 0 && _s.SortColumn < _list.Columns.Count) (_sortCol, _sortDesc) = (_s.SortColumn, _s.SortDescending);
+        ShowSortArrows();
+        if (_sections.Count > 0) ShowSection(_s.OptionsSection);
+        _windowRestored = true;
+    }
+
+    void SaveWindow()
+    {
+        var r = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+        _s.WindowBounds = new[] { r.X, r.Y, r.Width, r.Height };
+        _s.WindowMaximized = WindowState == FormWindowState.Maximized;
+        _s.ColumnWidths = _list.Columns.Cast<ColumnHeader>().Select(c => c.Width).ToArray();
+        _s.ColumnLayout = ColumnLayoutKey;
+        _s.Save();
     }
 
     /// <summary>The empty mod list says why it is empty and offers the button that fixes it.</summary>
@@ -1877,7 +1985,7 @@ public sealed class MainForm : Form
         f.Controls.Add(split);
 
         // Roll back: package the commit an old upload came from and send it again, marked as a roll-back.
-        var canRollBack = _cfg.UseGitArchive && ModScanner.IsGitRepo(_s.RepoPath);
+        var canRollBack = _cfg.UseGitArchive && RepoIsGit;
         var again = new Button { Text = "&Upload this version again...", AutoSize = true, Padding = new Padding(8, 2, 8, 2), Enabled = false };
         _tip.SetToolTip(again, canRollBack ? "Re-upload the selected version from git, to roll back a bad update"
             : "Rolling back needs a git repo and git packaging, to get the old files back");
@@ -1957,7 +2065,7 @@ public sealed class MainForm : Form
     /// </summary>
     Func<ModInfo, GitOps.CommitNote?>? DraftNoteFn()
     {
-        if (!ModScanner.IsGitRepo(_s.RepoPath)) return null;
+        if (!RepoIsGit) return null;
         var repo = _s.RepoPath;
         var history = UploadHistory.Load();
         var record = UploadedVersions.LoadRecord();
@@ -2061,6 +2169,7 @@ public sealed class MainForm : Form
 
     void OnItemCheck(object? sender, ItemCheckEventArgs e)
     {
+        if (_busy && !_populating) { e.NewValue = e.CurrentValue; return; } // the batch is already picked
         if (_populating || e.NewValue != CheckState.Checked) return;
         if (_list.Items[e.Index].Tag is ModInfo m && !CanTick(m)) e.NewValue = CheckState.Unchecked;
     }
@@ -2112,10 +2221,14 @@ public sealed class MainForm : Form
         _retry.Visible = !_busy && _retrySet.Count > 0 && _mods.Any(m => _retrySet.Contains(m.Dir));
     }
 
+    /// <summary>
+    /// Locks what would change a running upload. The mod list, its search and Hide up to date stay usable, so the list
+    /// can be read while an upload runs; ticks and the list's edit actions wait for it.
+    /// </summary>
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _list, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _filter, _hideUpToDate, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _testItems, _changed, _buildCmd, _packageRef, _autoRetry, _updateTags, _oneSession, _verifyUploads, _watchBuilds })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _testItems, _changed, _buildCmd, _packageRef, _autoRetry, _updateTags, _oneSession, _verifyUploads, _watchBuilds })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -2165,7 +2278,17 @@ public sealed class MainForm : Form
 
     LogFilter CurrentLogFilter => (LogFilter)Math.Max(0, _logFilter.SelectedIndex);
 
-    /// <summary>Adds a line with the time in front, coloured by what kind of line it is.</summary>
+    /// <summary>Lines added since the log box was last drawn; they are drawn together (see <see cref="FlushLog"/>).</summary>
+    readonly List<(DateTime Time, string Text, LogKind Kind)> _pendingLog = new();
+    readonly System.Windows.Forms.Timer _logTimer = new() { Interval = 100 };
+    /// <summary>Lines in the log box; it is trimmed back to <see cref="MaxLogLines"/> once it holds this many more.</summary>
+    int _logBoxLines;
+    const int LogTrimSlack = 2000;
+
+    /// <summary>
+    /// Adds a line with the time in front, coloured by what kind of line it is. The line is kept at once, but the log box
+    /// draws new lines about ten times a second, so SteamCMD printing hundreds of lines doesn't slow the window down.
+    /// </summary>
     void Append(string line, LogKind kind = LogKind.Plain)
     {
         if (InvokeRequired) { BeginInvoke(() => Append(line, kind)); return; }
@@ -2173,27 +2296,63 @@ public sealed class MainForm : Form
         _logLines.Add(entry);
         if (_logLines.Count > MaxLogLines) _logLines.RemoveRange(0, _logLines.Count - MaxLogLines);
         if (!Display.Shows(CurrentLogFilter, kind)) return;
-        if (_autoScroll.Checked)
+        _pendingLog.Add(entry);
+        // --shot and a window not shown yet draw straight away; otherwise the timer gathers lines.
+        if (NoStartupPrompts || !_log.IsHandleCreated) FlushLog();
+        else _logTimer.Enabled = true;
+    }
+
+    /// <summary>Draws the lines <see cref="Append"/> gathered, then trims the log box if it grew too long.</summary>
+    void FlushLog()
+    {
+        _logTimer.Enabled = false;
+        if (_pendingLog.Count == 0) return;
+        if (!_log.IsHandleCreated)
         {
-            Write(entry);
-            _log.ScrollToCaret();
+            foreach (var e in _pendingLog) Write(e);
+            _logBoxLines += _pendingLog.Count;
+            _pendingLog.Clear();
             return;
         }
-        // Auto-scroll is off: add the line at the end but leave the view (and any selection) where the reader has it.
+        var follow = _autoScroll.Checked;
+        // With auto-scroll off, the new lines go at the end but the view (and any selection) stays where the reader has it.
         var first = SendMessage(_log.Handle, EmGetFirstVisibleLine, 0, 0);
         var (start, length) = (_log.SelectionStart, _log.SelectionLength);
         SendMessage(_log.Handle, WmSetRedraw, 0, 0);
         try
         {
-            Write(entry);
-            _log.Select(start, length);
-            SendMessage(_log.Handle, EmLineScroll, 0, first - SendMessage(_log.Handle, EmGetFirstVisibleLine, 0, 0));
+            foreach (var e in _pendingLog) Write(e);
+            _logBoxLines += _pendingLog.Count;
+            _pendingLog.Clear();
+            if (_logBoxLines > MaxLogLines + LogTrimSlack)
+            {
+                var cut = _log.GetFirstCharIndexFromLine(_logBoxLines - MaxLogLines);
+                if (cut > 0)
+                {
+                    _log.Select(0, cut);
+                    _log.SelectedText = ""; // works on a read-only box, like AppendText
+                    first = Math.Max(0, first - (_logBoxLines - MaxLogLines));
+                    start = Math.Max(0, start - cut);
+                    _logBoxLines = MaxLogLines;
+                }
+            }
+            if (follow)
+            {
+                _log.SelectionStart = _log.TextLength;
+                _log.SelectionLength = 0;
+            }
+            else
+            {
+                _log.Select(start, length);
+                SendMessage(_log.Handle, EmLineScroll, 0, first - SendMessage(_log.Handle, EmGetFirstVisibleLine, 0, 0));
+            }
         }
         finally
         {
             SendMessage(_log.Handle, WmSetRedraw, 1, 0);
             _log.Invalidate();
         }
+        if (follow) _log.ScrollToCaret();
     }
 
     void Write((DateTime Time, string Text, LogKind Kind) e)
@@ -2216,8 +2375,10 @@ public sealed class MainForm : Form
         try
         {
             _log.Clear();
+            _pendingLog.Clear();
+            _logBoxLines = 0;
             foreach (var e in _logLines)
-                if (Display.Shows(CurrentLogFilter, e.Kind)) Write(e);
+                if (Display.Shows(CurrentLogFilter, e.Kind)) { Write(e); _logBoxLines++; }
             _log.SelectionStart = _log.TextLength;
             _log.ScrollToCaret();
         }
@@ -2286,6 +2447,7 @@ public sealed class MainForm : Form
         try
         {
             var (ok, _) = await SteamLogin.VerifyAsync(steam, _s.Account, CancellationToken.None);
+            NoteLogin(ok);
             if (ok) SetLogin($"Logged in as {_s.Account}", Tone.Ok);
             else SetLogin($"Not logged in as {_s.Account}", Tone.Error);
             if (announce || !ok) Say(_login.Text);
@@ -2296,11 +2458,27 @@ public sealed class MainForm : Form
         finally { if (!wasBusy) SetBusy(false); }
     }
 
-    /// <summary>Checks the saved login; if there isn't one, opens SteamCMD so you can log in, waits, then checks again.</summary>
-    async Task<bool> LoginFlowAsync()
+    /// <summary>When this account's saved login last worked (a login check or an upload), so the next upload can skip checking.</summary>
+    (string Account, DateTime At)? _loginOk;
+
+    /// <summary>A login that worked this recently is trusted without starting SteamCMD to check it again.</summary>
+    static readonly TimeSpan TrustLoginFor = TimeSpan.FromMinutes(15);
+
+    void NoteLogin(bool ok) => _loginOk = ok ? (_s.Account, DateTime.UtcNow) : null;
+
+    bool LoginRecentlyOk => _loginOk is { } l && string.Equals(l.Account, _s.Account, StringComparison.OrdinalIgnoreCase)
+        && DateTime.UtcNow - l.At < TrustLoginFor;
+
+    /// <summary>
+    /// Checks the saved login; if there isn't one, opens SteamCMD so you can log in, waits, then checks again. With
+    /// <paramref name="trustRecent"/>, a login that worked in the last few minutes is not checked again: the SteamCMD
+    /// run that follows logs in anyway, and a refused login there offers "Log in again and retry".
+    /// </summary>
+    async Task<bool> LoginFlowAsync(bool trustRecent = false)
     {
         if (string.IsNullOrWhiteSpace(_s.Account)) { Nudge(_account, _accountNote, "Type your Steam account name here first."); return false; }
         if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { Nudge(_install, _accountNote, "SteamCMD is not installed yet. Press Install SteamCMD below."); return false; }
+        if (trustRecent && LoginRecentlyOk) return await OwnershipOkAsync();
 
         if (await VerifyLoginAsync(false)) return await OwnershipOkAsync();
 
@@ -2403,7 +2581,7 @@ public sealed class MainForm : Form
         if (_busy || m.WorkshopId == null) return;
         var sent = PackageDiffs.Load(PackageDiffs.DefaultDir, m.WorkshopId);
         if (sent == null) { Append($"{m.Name}: this PC has no record of what its last upload sent, so there is nothing to compare with. Upload it once from here first.", LogKind.Warn); return; }
-        if (!await LoginFlowAsync()) return;
+        if (!await LoginFlowAsync(trustRecent: true)) return;
         Append($"{m.Name}: downloading Workshop item {m.WorkshopId} as subscribers get it...", LogKind.Note);
         await RunSteamJobAsync("Checking Steam's copy", async ct =>
         {
@@ -2432,7 +2610,7 @@ public sealed class MainForm : Form
             MessageBox.Show(this, $"{dest} is not empty. Pick an empty folder, so nothing is overwritten.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
-        if (!await LoginFlowAsync()) return;
+        if (!await LoginFlowAsync(trustRecent: true)) return;
         Append($"{m.Name}: downloading Workshop item {m.WorkshopId}...", LogKind.Note);
         await RunSteamJobAsync("Downloading from Steam", async ct =>
         {
@@ -2459,7 +2637,7 @@ public sealed class MainForm : Form
             await RunSteamJobAsync("Reading the game's branches", async ct => _branches = await GameBuilds.FetchAsync(_s.EffectiveSteamCmd, appId, ct));
         using var f = new TestInstallForm(_cfg.GameName, appId, _branches, Path.Combine(AppSettings.Folder, "test-installs", appId), m, _cfg.GameModsFolder);
         if (f.ShowDialog(this) != DialogResult.OK) return;
-        if (!await LoginFlowAsync()) return;
+        if (!await LoginFlowAsync(trustRecent: true)) return;
         var folder = Path.GetFullPath(f.Folder);
         Append($"Installing {GameLabel()} ({f.Branch} branch) into {folder}. The first time downloads the whole game.", LogKind.Note);
         await RunSteamJobAsync("The test install", async ct =>
@@ -2717,7 +2895,18 @@ public sealed class MainForm : Form
 
     /// <param name="only">Upload these mods instead of the ticked ones.</param>
     /// <param name="rollback">Re-upload a past version: the commit to package and the note to send.</param>
+    /// <summary>True from pressing Upload until the upload and its follow-ups are done, so nothing refreshes by itself meanwhile.</summary>
+    bool _inUpload;
+
     async Task GoAsync(List<ModInfo>? only = null, (string Ref, string Version, string Note)? rollback = null)
+    {
+        var outer = !_inUpload; // "Retry failed" at the end of an upload starts another one from inside it
+        _inUpload = true;
+        try { await UploadAsync(only, rollback); }
+        finally { if (outer) _inUpload = false; }
+    }
+
+    async Task UploadAsync(List<ModInfo>? only, (string Ref, string Version, string Note)? rollback)
     {
         SaveFields();
         var picked = only ?? Selected().ToList();
@@ -2729,7 +2918,7 @@ public sealed class MainForm : Form
         var test = _testItems.Checked && rollback == null;
         // Test items keep their own page, and a roll back sends the old version as it was.
         if (!test && rollback == null && _s.DescriptionSync != DescriptionSync.Never && Directory.Exists(_s.RepoPath)) await OfferDescriptionsAsync(picked);
-        var gitPackaging = _cfg.UseGitArchive && ModScanner.IsGitRepo(_s.RepoPath);
+        var gitPackaging = _cfg.UseGitArchive && RepoIsGit;
         var gitRef = rollback?.Ref ?? (_s.RefFor(_s.RepoPath) is { Length: > 0 } fromRef ? fromRef : null);
         if (gitRef != null && gitPackaging && !GitOps.RefExists(_s.RepoPath, gitRef))
         {
@@ -2788,10 +2977,10 @@ public sealed class MainForm : Form
             catch (OperationCanceledException) { built = false; Append("Build step cancelled; nothing was uploaded.", LogKind.Warn); }
             finally { SetBusy(false); _cts.Dispose(); _cts = null; }
             if (!built) { Say("The build step failed, so nothing was uploaded."); return; }
-            RefreshAll();
+            await RefreshAllAsync();
         }
 
-        if (!dry && !await LoginFlowAsync()) { Append("Stopped: not logged in to Steam.", LogKind.Warn); return; }
+        if (!dry && !await LoginFlowAsync(trustRecent: true)) { Append("Stopped: not logged in to Steam.", LogKind.Warn); return; }
 
         var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account)
         {
@@ -2864,13 +3053,23 @@ public sealed class MainForm : Form
             _cts?.Dispose(); _cts = null;
             SetBusy(false);
         }
-        // Page changes went out with each successful upload.
-        if (!dry && !test) foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created)) WorkshopPage.Clear(r.Mod.Dir);
+        // Page changes went out with each successful upload, and the mod is unticked so the next press doesn't send it again.
+        if (!dry && !test)
+            foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created))
+            {
+                WorkshopPage.Clear(r.Mod.Dir);
+                foreach (var it in _rows.Where(it => SameDir(it, r.Mod.Dir))) it.Checked = false;
+            }
         _failed.Clear(); _retrySet.Clear();
         foreach (var r in results.Where(r => !r.Ok))
         {
             _retrySet.Add(r.Mod.Dir);
             if (r.Status == BatchStatus.Failed) _failed.Add(r.Mod.Dir);
+        }
+        if (!dry)
+        {
+            if (results.Any(r => r.Status == BatchStatus.Failed && BatchUpload.IsLoginFailure(r.Message))) NoteLogin(false);
+            else if (results.Any(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created)) NoteLogin(true);
         }
         var counts = BatchUpload.Counts(results);
         var allOk = results.All(r => r.Ok);
@@ -2883,7 +3082,7 @@ public sealed class MainForm : Form
         if (!dry && !test) AfterUploadGit(results, uploadedCommit);
         if (!dry && !test) await AnnounceAsync(results, NoteSent, uploadedCommit);
         SaveRunLog(logFrom, started, RunLogs.Label(dry ? "dry run" : test ? "test upload" : "upload", picked.Select(m => m.Name).ToList()));
-        RefreshAll();
+        await RefreshAllAsync();
         if (!allOk)
         {
             var retry = new TaskDialogButton($"Retry failed ({_retrySet.Count})");
@@ -3012,7 +3211,7 @@ public sealed class MainForm : Form
     /// </summary>
     void AfterUploadGit(List<BatchItem> results, string uploaded)
     {
-        if (!ModScanner.IsGitRepo(_s.RepoPath)) return;
+        if (!RepoIsGit) return;
         var created = results.Where(r => r.Status == BatchStatus.Created).ToList();
         if (created.Count > 0)
         {
