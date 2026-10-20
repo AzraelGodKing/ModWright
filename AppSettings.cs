@@ -96,6 +96,16 @@ public sealed class AppSettings
     public bool SortDescending { get; set; }
     /// <summary>The Options section that was open last.</summary>
     public int OptionsSection { get; set; }
+    /// <summary>Named sets of mods (their paths in the repo) to tick in one click, per mods folder.</summary>
+    public Dictionary<string, Dictionary<string, List<string>>> ModGroups { get; set; } = new();
+    /// <summary>Push the tags "Tag each upload in git" makes to the remote straight away.</summary>
+    public bool PushTags { get; set; }
+    /// <summary>A command run in the mods folder after each successful upload, per mods folder (see AfterUpload).</summary>
+    public Dictionary<string, string> AfterCommands { get; set; } = new();
+    /// <summary>Keep a zip of what each upload sent (the newest few per item) in the data folder's packages folder.</summary>
+    public bool KeepPackages { get; set; }
+    /// <summary>Show a Windows notification when an upload or dry run ends while the window is in the background.</summary>
+    public bool NotifyWhenDone { get; set; } = true;
 
     public const int MaxRecent = 10;
 
@@ -139,6 +149,26 @@ public sealed class AppSettings
     public string RefFor(string repo) => ValueFor(PackageRefs, repo);
 
     public void SetRef(string repo, string gitRef) => SetValue(PackageRefs, repo, gitRef);
+
+    /// <summary>The command run after each upload from <paramref name="repo"/>, or "" for none.</summary>
+    public string AfterFor(string repo) => ValueFor(AfterCommands, repo);
+
+    public void SetAfter(string repo, string command) => SetValue(AfterCommands, repo, command);
+
+    /// <summary>The mod groups of <paramref name="repo"/>, by name (an empty map when it has none).</summary>
+    public Dictionary<string, List<string>> GroupsFor(string repo) =>
+        ModGroups.FirstOrDefault(kv => Same(kv.Key, repo)).Value is { } g ? new(g, StringComparer.OrdinalIgnoreCase) : new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Saves (or with no mods, deletes) the group <paramref name="name"/> of <paramref name="repo"/>.</summary>
+    public void SetGroup(string repo, string name, IEnumerable<string> mods)
+    {
+        var groups = GroupsFor(repo);
+        foreach (var k in groups.Keys.Where(k => k.Equals(name.Trim(), StringComparison.OrdinalIgnoreCase)).ToList()) groups.Remove(k);
+        var list = mods.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (list.Count > 0 && name.Trim().Length > 0) groups[name.Trim()] = list;
+        foreach (var k in ModGroups.Keys.Where(k => Same(k, repo)).ToList()) ModGroups.Remove(k);
+        if (groups.Count > 0) ModGroups[Key(repo)] = groups.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Value);
+    }
 
     static string ValueFor(Dictionary<string, string> map, string repo) => map.FirstOrDefault(kv => Same(kv.Key, repo)).Value ?? "";
 
@@ -217,7 +247,8 @@ public sealed class AppSettings
         var all = new List<string> { RepoPath };
         if (recent) all.AddRange(RecentRepos);
         all.AddRange(Profiles.Select(p => p.RepoPath));
-        foreach (var map in new[] { NoteTemplates, DescriptionFooters, BuildCommands, PackageRefs, DiscordWebhooks, ThunderstoreTeams, ThunderstoreCommunities, ThunderstoreCategories }) all.AddRange(map.Keys);
+        foreach (var map in new[] { NoteTemplates, DescriptionFooters, BuildCommands, PackageRefs, DiscordWebhooks, ThunderstoreTeams, ThunderstoreCommunities, ThunderstoreCategories, AfterCommands }) all.AddRange(map.Keys);
+        all.AddRange(ModGroups.Keys);
         all.AddRange(GitHubReleaseRepos);
         return all.Where(f => !string.IsNullOrWhiteSpace(f)).Select(Key).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
@@ -234,13 +265,19 @@ public sealed class AppSettings
         for (var i = 0; i < RecentRepos.Count; i++) RecentRepos[i] = Move(RecentRepos[i]);
         RecentRepos = RecentRepos.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         foreach (var p in Profiles) p.RepoPath = Move(p.RepoPath);
-        foreach (var map in new[] { NoteTemplates, DescriptionFooters, BuildCommands, PackageRefs, DiscordWebhooks })
+        foreach (var map in new[] { NoteTemplates, DescriptionFooters, BuildCommands, PackageRefs, DiscordWebhooks, AfterCommands })
             foreach (var k in map.Keys.Where(k => Same(k, from)).ToList())
             {
                 var v = map[k];
                 map.Remove(k);
                 map[to] = v;
             }
+        foreach (var k in ModGroups.Keys.Where(k => Same(k, from)).ToList())
+        {
+            var v = ModGroups[k];
+            ModGroups.Remove(k);
+            ModGroups[to] = v;
+        }
         for (var i = 0; i < GitHubReleaseRepos.Count; i++) GitHubReleaseRepos[i] = Move(GitHubReleaseRepos[i]);
         for (var i = 0; i < ThunderstoreRepos.Count; i++) ThunderstoreRepos[i] = Move(ThunderstoreRepos[i]);
     }

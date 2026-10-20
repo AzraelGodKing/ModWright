@@ -126,7 +126,7 @@ static class Program
         // Every upload run is also saved with the window's past logs.
         StreamWriter? runLog = null;
         if (o.Command == "upload" && o.Error == null)
-            try { runLog = new StreamWriter(RunLogs.NewPath(RunLogs.DefaultDir, RunLogs.Label((o.DryRun ? "dry run" : o.Test ? "test upload" : "upload") + " (command line)", o.Mods.Count > 0 ? o.Mods : new[] { o.Changed ? "changed mods" : "all mods" }), DateTime.Now), false) { AutoFlush = true }; }
+            try { runLog = new StreamWriter(RunLogs.NewPath(RunLogs.DefaultDir, RunLogs.Label((o.DryRun ? "dry run" : o.Test ? "test upload" : "upload") + " (command line)", o.Mods.Count > 0 ? o.Mods : new[] { o.Group != null ? "group " + o.Group : o.Changed ? "changed mods" : "all mods" }), DateTime.Now), false) { AutoFlush = true }; }
             catch { runLog = null; }
         using var output = new TeeWriter(console, log, runLog);
         try
@@ -143,7 +143,8 @@ static class Program
                 ownership: (account, appId, token) => SteamCmd.OwnsAsync(settings.EffectiveSteamCmd, account, appId, token),
                 descriptionFooter: settings.FooterFor(settings.RepoPath),
                 pageExtras: settings.UpdateRequired || settings.UpdatePageExtras ? (r, token) => WorkshopExtras.ApplyOnSteamAsync(r, token) : null,
-                pageExtrasPage: settings.UpdatePageExtras, pageExtrasRequired: settings.UpdateRequired).GetAwaiter().GetResult();
+                pageExtrasPage: settings.UpdatePageExtras, pageExtrasRequired: settings.UpdateRequired,
+                settings: settings).GetAwaiter().GetResult();
         }
         finally { runLog?.Dispose(); }
     }
