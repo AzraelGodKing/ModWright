@@ -541,7 +541,7 @@ public sealed class Publisher
             At("Setting Workshop tags...", 98);
             var t = await TagUpdater(_cfg.AppId, tagged, p.Tags, ct);
             Say(t.Ok ? t.Message : $"Warning: the upload went through, but the Workshop tags were not set: {t.Message} " +
-                "(\"Update Workshop tags\" on the mod's right-click menu tries again without uploading.)");
+                "(Right-click the mod > On Steam > Update Workshop tags to try again without uploading.)");
         }
 
         if (PageExtras != null && !TestItems && (m.WorkshopId ?? newId) is { } parent
@@ -557,7 +557,7 @@ public sealed class Publisher
                 if (x.Ok && x.PageSent) WorkshopExtras.RememberSent(req, SentRecord);
                 foreach (var d in x.Done) Say("Workshop page: " + d + ".");
                 if (!x.Ok) Say($"Warning: the upload went through, but the Workshop page was not fully updated: {x.Error} " +
-                    "(\"Update required items, gallery and languages\" on the mod's right-click menu tries again without uploading.)");
+                    "(Right-click the mod > On Steam > Update required items, gallery and languages to try again without uploading.)");
                 else if (x.Done.Count == 0) Say("Workshop page extras already right.");
             }
         }

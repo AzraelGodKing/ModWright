@@ -115,7 +115,7 @@ public static class PackageDiffs
         var lines = new List<string> { $"Package {d.Since}: {d.Summary}." };
         var all = d.Added.Select(p => "  + " + p).Concat(d.Changed.Select(p => "  ~ " + p)).Concat(d.Removed.Select(p => "  - " + p)).ToList();
         lines.AddRange(all.Take(max));
-        if (all.Count > max) lines.Add($"  ...and {all.Count - max} more (right-click the mod > Preview package... lists them all)");
+        if (all.Count > max) lines.Add($"  ...and {all.Count - max} more (right-click the mod > Package > Preview package... lists them all)");
         return lines;
     }
 }

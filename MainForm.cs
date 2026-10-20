@@ -632,9 +632,19 @@ public sealed class MainForm : Form
         if (SelectedMod() is { } sel && _list.ContextMenuStrip is { } rowMenu && !_busy)
         {
             _refreshRowMenu();
-            foreach (ToolStripItem item in rowMenu.Items)
-                if (item is ToolStripMenuItem { Available: true, Enabled: true } mi)
-                    entries.Add(new PaletteEntry(PaletteSearch.Clean(mi.Text ?? ""), sel.Name, mi.ShortcutKeyDisplayString ?? "", mi.PerformClick));
+            // Submenus are walked, and their items are listed with the submenu's name ("Copy: Workshop ID").
+            void AddItems(ToolStripItemCollection items, string group)
+            {
+                foreach (ToolStripItem item in items)
+                    if (item is ToolStripMenuItem { Available: true, Enabled: true } mi)
+                    {
+                        var name = PaletteSearch.Clean(mi.Text ?? "");
+                        var full = group.Length > 0 ? group + ": " + name : name;
+                        if (mi.HasDropDownItems) AddItems(mi.DropDownItems, full);
+                        else entries.Add(new PaletteEntry(full, sel.Name, mi.ShortcutKeyDisplayString ?? "", mi.PerformClick));
+                    }
+            }
+            AddItems(rowMenu.Items, "");
         }
         for (var i = 0; i < _sections.Count; i++)
         {
@@ -654,54 +664,71 @@ public sealed class MainForm : Form
         if (f.ShowDialog(this) == DialogResult.OK) f.Picked?.Run();
     }
 
+    /// <summary>
+    /// The mod list's right-click menu: the everyday actions at the top, the rest grouped into submenus by what they
+    /// touch (Steam, the package, files, the clipboard, the ticked mods).
+    /// </summary>
     ContextMenuStrip BuildRowMenu()
     {
         var menu = new ContextMenuStrip();
+        ToolStripMenuItem Sub(string text) { var sub = new ToolStripMenuItem(text); menu.Items.Add(sub); return sub; }
+
         menu.Items.Add(new ToolStripMenuItem("Edit &Workshop page...", null, (_, _) => EditWorkshopPage(SelectedMod())) { ShortcutKeyDisplayString = "Enter" });
         menu.Items.Add(new ToolStripMenuItem("Change the &version to upload...", null, (_, _) => { if (SelectedMod() is { } m) ChangeVersion(m); }) { ShortcutKeyDisplayString = "F2" });
-        menu.Items.Add("Stats and comme&nts...", null, (_, _) => ShowStats(SelectedMod()));
-        var bulk = menu.Items.Add("Workshop pages of ticked &mods...", null, async (_, _) => await EditTickedPagesAsync());
         var entry = menu.Items.Add("Write the &changelog entry...", null, (_, _) => { if (SelectedMod() is { } m && AskChangelogEntry(m, m.Version)) RefreshAll(); });
-        var bulkVersion = menu.Items.Add("Change the versi&on of ticked mods...", null, (_, _) => ChangeTickedVersions());
-        var gameVersion = menu.Items.Add("Add a &game version to ticked mods...", null, (_, _) => AddGameVersion());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Upload &history...", null, (_, _) => { if (SelectedMod() is { } m) ShowHistory(m); });
-        menu.Items.Add("&Preview package...", null, async (_, _) => { if (SelectedMod() is { } m) await PreviewPackageAsync(m); });
-        var packages = menu.Items.Add("Uploaded p&ackages", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) OpenPath(PackageArchive.FolderFor(PackageArchive.DefaultDir, m.WorkshopId!)); });
-        var copyList = new ToolStripMenuItem("Copy the mod &list as");
+
+        var steam = Sub("On &Steam");
+        var onSteam = steam.DropDownItems.Add("&Open on Steam", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) OpenUrl(WorkshopUrl(m)); });
+        steam.DropDownItems.Add("Stats and comme&nts...", null, (_, _) => ShowStats(SelectedMod()));
+        steam.DropDownItems.Add(new ToolStripSeparator());
+        var tags = steam.DropDownItems.Add("Update Workshop &tags", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await UpdateTagsAsync(m); });
+        var required = steam.DropDownItems.Add("Update &required items, gallery and languages", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await UpdatePageExtrasAsync(m); });
+        steam.DropDownItems.Add(new ToolStripSeparator());
+        var steamCopy = steam.DropDownItems.Add("Check what Steam &hands out", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await CheckSteamCopyAsync(m); });
+        var download = steam.DropDownItems.Add("&Download from Steam...", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await DownloadFromSteamAsync(m); });
+        steam.DropDownItems.Add("Try in a game &beta...", null, async (_, _) => await TryInGameBetaAsync(SelectedMod()));
+
+        var package = Sub("&Package");
+        package.DropDownItems.Add("&Preview package...", null, async (_, _) => { if (SelectedMod() is { } m) await PreviewPackageAsync(m); });
+        package.DropDownItems.Add("Upload &history...", null, (_, _) => { if (SelectedMod() is { } m) ShowHistory(m); });
+        var packages = package.DropDownItems.Add("Uploaded p&ackages", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) OpenPath(PackageArchive.FolderFor(PackageArchive.DefaultDir, m.WorkshopId!)); });
+        var shrink = package.DropDownItems.Add("S&hrink preview image under 1 MB", null, (_, _) => { if (SelectedMod() is { } m) ShrinkPreview(m); });
+
+        var open = Sub("&Open");
+        open.DropDownItems.Add("Mod &folder", null, (_, _) => { if (SelectedMod() is { } m) OpenPath(m.Dir); });
+        var changelog = open.DropDownItems.Add("Change&log", null, (_, _) => { if (ChangelogOf(SelectedMod()) is { } p) OpenPath(p); });
+
+        var copy = Sub("Cop&y");
+        var copyId = copy.DropDownItems.Add("Workshop &ID", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(m.WorkshopId!, "Workshop ID"); });
+        var copyLink = copy.DropDownItems.Add("Workshop lin&k", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(WorkshopUrl(m), "Workshop link"); });
+        var copyList = new ToolStripMenuItem("The mod &list as");
         foreach (var (label, format) in new[] { ("&Markdown table (README)", Reports.Markdown), ("&Steam BBCode (collection or profile)", Reports.BBCode), ("&CSV (spreadsheet)", Reports.Csv) })
             copyList.DropDownItems.Add(label, null, (_, _) => Copy(Reports.ModList(_rows.Select(it => (ModInfo)it.Tag!), format), "mod list"));
-        menu.Items.Add(copyList);
-        var shrink = menu.Items.Add("S&hrink preview image under 1 MB", null, (_, _) => { if (SelectedMod() is { } m) ShrinkPreview(m); });
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Open mod &folder", null, (_, _) => { if (SelectedMod() is { } m) OpenPath(m.Dir); });
-        var changelog = menu.Items.Add("Open change&log", null, (_, _) => { if (ChangelogOf(SelectedMod()) is { } p) OpenPath(p); });
-        menu.Items.Add(new ToolStripSeparator());
-        var onSteam = menu.Items.Add("Open on &Steam", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) OpenUrl(WorkshopUrl(m)); });
-        var copyId = menu.Items.Add("Copy Workshop &ID", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(m.WorkshopId!, "Workshop ID"); });
-        var copyLink = menu.Items.Add("Copy Workshop lin&k", null, (_, _) => { if (SelectedMod() is { OnSteam: true } m) Copy(WorkshopUrl(m), "Workshop link"); });
-        var tags = menu.Items.Add("Update Workshop &tags", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await UpdateTagsAsync(m); });
+        copy.DropDownItems.Add(copyList);
+
+        var ticked = Sub("&Ticked mods");
+        var bulk = ticked.DropDownItems.Add("Workshop &pages...", null, async (_, _) => await EditTickedPagesAsync());
+        var bulkVersion = ticked.DropDownItems.Add("Change the versi&on...", null, (_, _) => ChangeTickedVersions());
+        var gameVersion = ticked.DropDownItems.Add("Add a &game version...", null, (_, _) => AddGameVersion());
         var thunder = menu.Items.Add("Publish to Th&understore", null, async (_, _) => await PublishThunderstoreAsync(TickedOrSelected().Where(x => Thunderstore.Has(x.Dir)).ToList()));
-        var required = menu.Items.Add("Update &required items, gallery and languages", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await UpdatePageExtrasAsync(m); });
-        menu.Items.Add(new ToolStripSeparator());
-        var steamCopy = menu.Items.Add("Check what Steam &hands out", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await CheckSteamCopyAsync(m); });
-        var download = menu.Items.Add("&Download from Steam...", null, async (_, _) => { if (SelectedMod() is { OnSteam: true } m) await DownloadFromSteamAsync(m); });
-        menu.Items.Add("Try in a game &beta...", null, async (_, _) => await TryInGameBetaAsync(SelectedMod()));
+
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("&New mod...", null, async (_, _) => await NewModAsync()) { ShortcutKeyDisplayString = "Ctrl+N" });
         _refreshRowMenu = () =>
         {
-            steamCopy.Enabled = download.Enabled = SelectedMod()?.OnSteam == true;
-            onSteam.Enabled = copyId.Enabled = copyLink.Enabled = SelectedMod()?.OnSteam == true;
-            tags.Visible = WorkshopTags.LayoutHasTags(_cfg);
-            tags.Enabled = required.Enabled = SelectedMod()?.OnSteam == true;
-            bulk.Visible = bulkVersion.Visible = Selected().Count() > 1;
-            gameVersion.Visible = RimWorldLint.Applies(_cfg);
-            thunder.Visible = TickedOrSelected().Any(x => Thunderstore.Has(x.Dir));
+            var onSteamNow = SelectedMod()?.OnSteam == true;
+            steamCopy.Enabled = download.Enabled = onSteam.Enabled = copyId.Enabled = copyLink.Enabled = onSteamNow;
+            tags.Available = WorkshopTags.LayoutHasTags(_cfg);
+            tags.Enabled = required.Enabled = onSteamNow;
+            bulk.Available = bulkVersion.Available = Selected().Count() > 1;
+            gameVersion.Available = RimWorldLint.Applies(_cfg);
+            ticked.Available = bulk.Available || gameVersion.Available;
+            thunder.Available = TickedOrSelected().Any(x => Thunderstore.Has(x.Dir));
             changelog.Enabled = ChangelogOf(SelectedMod()) != null;
-            entry.Visible = SelectedMod() is { } m && ModScanner.NeedsChangelogEntry(m, _cfg);
-            shrink.Visible = SelectedMod() is { PreviewOk: false, PreviewPath.Length: > 0 };
-            packages.Visible = SelectedMod() is { OnSteam: true } pm && PackageArchive.List(PackageArchive.DefaultDir, pm.WorkshopId!).Count > 0;
+            entry.Available = SelectedMod() is { } m && ModScanner.NeedsChangelogEntry(m, _cfg);
+            shrink.Available = SelectedMod() is { PreviewOk: false, PreviewPath.Length: > 0 };
+            packages.Available = SelectedMod() is { OnSteam: true } pm && PackageArchive.List(PackageArchive.DefaultDir, pm.WorkshopId!).Count > 0;
         };
         menu.Opening += (_, e) =>
         {
@@ -877,7 +904,7 @@ public sealed class MainForm : Form
                 _verifyUploads,
                 Hint("Downloads each item again the way subscribers get it, so it doubles the traffic. A difference is only a warning; the upload has already gone through."),
                 _keepPackages,
-                Hint("For every mods folder. Right-click a mod > Uploaded packages opens its zips: unzip one to look at or restore exactly what went out, without git."),
+                Hint("For every mods folder. Right-click a mod > Package > Uploaded packages opens its zips: unzip one to look at or restore exactly what went out, without git."),
                 _updateTags,
                 Hint("SteamCMD cannot set tags, so they go through the Steam client: it has to be running and signed in as the account that owns the mod. " +
                      "Version tags the mod no longer lists are taken off; other tags are kept."),
@@ -939,7 +966,7 @@ public sealed class MainForm : Form
             Card("Stats and comments", null,
                 _countComments,
                 Hint("Comments can only be counted by the Steam client, which then briefly shows you playing the game. Mods with new comments are named in the log " +
-                     "and their row tooltip. Right-click a mod > Stats and comments for charts of subscribers, favourites and visitors over time.")),
+                     "and their row tooltip. Right-click a mod > On Steam > Stats and comments for charts of subscribers, favourites and visitors over time.")),
             Card("Description", null,
                 Row(Lbl("When a mod's &description file differs from Steam"), _descSync),
                 Hint("Checked when you upload a mod that is on Steam and has a description file (steam_description.txt for Generic). " +
@@ -1797,7 +1824,7 @@ public sealed class MainForm : Form
         Tone tone;
         if (m == null) { text = "Select a mod to see everything it needs. Space ticks it, Enter edits its Workshop page, F2 changes its version, F1 lists every shortcut."; tone = Tone.Muted; }
         else if (!m.Ready) { text = $"{m.Name}: fix " + string.Join("; ", m.Problems) + (ModScanner.NeedsChangelogEntry(m, _cfg) ? ". Double-click the status (or right-click) to write the changelog entry."
-            : m.PreviewOk == false && m.PreviewPath.Length > 0 ? ". Right-click > Shrink preview image to bring it under 1 MB." : "."); tone = Tone.Error; }
+            : m.PreviewOk == false && m.PreviewPath.Length > 0 ? ". Right-click > Package > Shrink preview image to bring it under 1 MB." : "."); tone = Tone.Error; }
         else if (m.Warnings.Count > 0) { text = $"{m.Name}: " + string.Join("; ", m.Warnings) + "."; tone = Tone.Warn; }
         else
         {
@@ -2318,7 +2345,7 @@ public sealed class MainForm : Form
             var last = history.GetValueOrDefault(m.WorkshopId!);
             if (SubscriberStats.Trend(stats.GetValueOrDefault(m.WorkshopId!), DateOnly.FromDateTime(DateTime.Now),
                     last == null ? null : DateOnly.FromDateTime(last.Time.LocalDateTime)) is { } trend) extra.Add(trend);
-            if (newComments.TryGetValue(m.WorkshopId!, out var unread)) extra.Add($"{unread:N0} new comment{(unread == 1 ? "" : "s")} on Steam (right-click > Stats and comments).");
+            if (newComments.TryGetValue(m.WorkshopId!, out var unread)) extra.Add($"{unread:N0} new comment{(unread == 1 ? "" : "s")} on Steam (right-click > On Steam > Stats and comments).");
             it.ToolTipText = string.Join("\n", extra) + "\n" + RowTip(m);
             // Now known to be up to date: drop it from view when those are hidden.
             if (_hideUpToDate.Checked && StateOf(it) == RowState.UpToDate && it.ListView != null)
@@ -2560,7 +2587,7 @@ public sealed class MainForm : Form
         _s.Save();
         var fresh = WorkshopStats.TakeCounts(r.Comments);
         foreach (var m in mods)
-            if (fresh.TryGetValue(m.WorkshopId!, out var n)) Append($"{m.Name} has {n:N0} new comment{(n == 1 ? "" : "s")} on Steam (right-click > Stats and comments).", LogKind.Note);
+            if (fresh.TryGetValue(m.WorkshopId!, out var n)) Append($"{m.Name} has {n:N0} new comment{(n == 1 ? "" : "s")} on Steam (right-click > On Steam > Stats and comments).", LogKind.Note);
         if (!quiet && fresh.Count == 0) Append("No new comments on your mods.", LogKind.Ok);
         return fresh;
     }
