@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.1
+
+- **What's new reads properly.** The window that shows the changes after an update (and from Options > About) broke
+  every item mid-sentence where this changelog wraps its lines, with stray indents and no bold. It now shows a heading
+  per version, real bullets that wrap to the window's width, the lead phrase in bold and commands in a fixed-width
+  font. The release notes on GitHub no longer break mid-sentence either.
+
 ## 1.4.0
 
 - **Secrets never ship.** Every package is searched before upload for things that must never become public: Steam's
