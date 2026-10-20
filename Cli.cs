@@ -440,6 +440,8 @@ public static class Cli
             Say($"Error: \"{gitRef}\" is not a branch, tag or commit in {repo}.");
             return End(ExitUsage, $"\"{gitRef}\" is not a branch, tag or commit.");
         }
+        if (isGit && cfg.UseGitArchive && gitRef == null && !o.Test)
+            foreach (var w in GitOps.SyncWarnings(GitOps.Sync(repo), !o.DryRun && o.Announce && gitHubReleases)) Say("Warning: " + w);
         if (!o.DryRun && cfg.Experimental && !o.AllowExperimental)
         {
             Say($"Error: the \"{cfg.PresetName()}\" layout is experimental. Try a new private item first; add --allow-experimental to upload anyway.");

@@ -119,6 +119,51 @@ public static class GitOps
         return r.code == 0 ? null : r.output;
     }
 
+    /// <summary>Pushes the tags <paramref name="tags"/> to <paramref name="remote"/>. Returns null on success, else git's message.</summary>
+    public static string? PushTags(string repo, IReadOnlyCollection<string> tags, string remote = "origin")
+    {
+        if (tags.Count == 0) return null;
+        var r = Run(repo, new[] { "push", remote }.Concat(tags.Select(t => "refs/tags/" + t)).ToArray());
+        return r.code == 0 ? null : r.output;
+    }
+
+    /// <summary>How the checked-out branch stands against its upstream, as of the last fetch.</summary>
+    /// <param name="Upstream">The upstream branch, such as "origin/main".</param>
+    public sealed record SyncState(string Branch, string Upstream, int Ahead, int Behind);
+
+    /// <summary>
+    /// The checked-out branch against its upstream (as git last fetched it; nothing is fetched here). Null when HEAD is
+    /// detached, the branch has no upstream, or git can't be read.
+    /// </summary>
+    public static SyncState? Sync(string repo)
+    {
+        var branch = Run(repo, "rev-parse", "--abbrev-ref", "HEAD");
+        if (branch.code != 0 || branch.output.Length == 0 || branch.output == "HEAD") return null;
+        var up = Run(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}");
+        if (up.code != 0 || up.output.Length == 0) return null;
+        var counts = Run(repo, "rev-list", "--left-right", "--count", "HEAD...@{upstream}");
+        if (counts.code != 0) return null;
+        var parts = counts.output.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 2 && int.TryParse(parts[0], out var ahead) && int.TryParse(parts[1], out var behind)
+            ? new SyncState(branch.output, up.output, ahead, behind) : null;
+    }
+
+    /// <summary>
+    /// What to point out before uploading from <paramref name="s"/>: being behind the upstream (newer work would not
+    /// be uploaded), and with <paramref name="needsPush"/> (a GitHub release on the commit) commits not pushed yet.
+    /// </summary>
+    public static List<string> SyncWarnings(SyncState? s, bool needsPush)
+    {
+        var w = new List<string>();
+        if (s == null) return w;
+        static string Commits(int n) => n == 1 ? "1 commit" : n + " commits";
+        if (s.Behind > 0)
+            w.Add($"{s.Branch} is {Commits(s.Behind)} behind {s.Upstream} (as of the last fetch), so this would upload an older version than the one pushed. Pull first if that work should go out.");
+        if (needsPush && s.Ahead > 0)
+            w.Add($"{s.Branch} has {Commits(s.Ahead)} not pushed to {s.Upstream}. The GitHub release needs the uploaded commit on GitHub, so push before uploading.");
+        return w;
+    }
+
     /// <summary>True when <paramref name="gitRef"/> names a commit in the repo (a branch, tag or commit id).</summary>
     public static bool RefExists(string repo, string gitRef) =>
         gitRef.Length > 0 && !gitRef.StartsWith('-') && Run(repo, "rev-parse", "-q", "--verify", gitRef + "^{commit}").code == 0;

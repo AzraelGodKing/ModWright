@@ -481,6 +481,8 @@ public static class ModScanner
                     : $"{cfg.Preview}: {preview.Length / 1024.0:0} KB of {MaxPreviewBytes / 1024} KB" + (m.PreviewOk == true ? "" : " (over Steam's limit)");
                 if (!m.OnSteam && !preview.Exists) m.Problems.Add("needs " + cfg.Preview + " to create on Steam");
                 else if (!m.OnSteam && preview.Length > MaxPreviewBytes) m.Problems.Add($"{cfg.Preview} is over 1 MB (Steam's limit)");
+                // The preview is only sent when the item is created, so an existing item's file is not worth a warning.
+                if (preview.Exists && !m.OnSteam) m.Warnings.AddRange(ImageHeader.PreviewWarnings(preview.FullName));
             }
 
             // A layout may list several places a build can land (RimWorld: Assemblies or a version folder's Assemblies).
