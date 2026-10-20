@@ -140,7 +140,8 @@ static class Program
                 json: jsonOut ? Console.Out : null,
                 tagUpdater: settings.UpdateTags ? WorkshopTags.UpdateOnSteamAsync : null,
                 oneSession: settings.OneSession, verifyUploads: settings.VerifyUploads,
-                ownership: (account, appId, token) => SteamCmd.OwnsAsync(settings.EffectiveSteamCmd, account, appId, token)).GetAwaiter().GetResult();
+                ownership: (account, appId, token) => SteamCmd.OwnsAsync(settings.EffectiveSteamCmd, account, appId, token),
+                descriptionFooter: settings.FooterFor(settings.RepoPath)).GetAwaiter().GetResult();
         }
         finally { runLog?.Dispose(); }
     }

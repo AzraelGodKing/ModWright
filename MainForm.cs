@@ -43,6 +43,11 @@ public sealed class MainForm : Form
         Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, Width = 520, Height = 64, Font = new Font("Consolas", 9f),
         PlaceholderText = "{note}", AccessibleName = "Change note template for this mods folder",
     };
+    readonly TextBox _descFooter = new()
+    {
+        Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, Width = 520, Height = 64, Font = new Font("Consolas", 9f),
+        PlaceholderText = "e.g. [url=https://discord.gg/...]Discord[/url] | [url=https://ko-fi.com/...]Ko-fi[/url]", AccessibleName = "Footer added to every description in this mods folder",
+    };
     readonly ComboBox _descSync = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, AccessibleName = "When a description file differs from Steam" };
     readonly CheckBox _testItems = new() { AutoSize = true, Text = "Upload to t&est items" };
     readonly TextBox _buildCmd = new() { Width = 420, PlaceholderText = "e.g. dotnet build -c Release", AccessibleName = "Build step for this mods folder" };
@@ -163,6 +168,7 @@ public sealed class MainForm : Form
             else await RefreshAllAsync();
             if (IsDisposed) return;
             if (UpdatedFrom != null) Append($"Updated SteamCMD Helper from {UpdatedFrom} to {UpdateCheck.CurrentVersion}.", LogKind.Ok);
+            if (!NoStartupPrompts) ShowWhatsNewAfterUpdate();
             if (!NoStartupPrompts) _ = Task.Run(() => { SelfUpdate.CleanUp(SelfUpdate.AppDir); SelfUpdate.CleanStaging(UpdateCheck.CurrentVersion); }); // what the last update left
             if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { if (!NoStartupPrompts) await OfferInstallAsync(); }
             else _ = StartupSteamAsync(SteamLogin.LooksCached(_s.EffectiveSteamCmd, _s.Account));
@@ -289,6 +295,12 @@ public sealed class MainForm : Form
         {
             if (_populating || !Directory.Exists(_s.RepoPath)) return;
             _s.SetTemplate(_s.RepoPath, _noteTemplate.Text);
+            _s.Save();
+        };
+        _descFooter.Leave += (_, _) =>
+        {
+            if (_populating || !Directory.Exists(_s.RepoPath)) return;
+            _s.SetFooter(_s.RepoPath, _descFooter.Text);
             _s.Save();
         };
         _clock.Tick += (_, _) => ShowClock();
@@ -719,7 +731,11 @@ public sealed class MainForm : Form
                 Row(Lbl("When a mod's &description file differs from Steam"), _descSync),
                 Hint("Checked when you upload a mod that is on Steam and has a description file (steam_description.txt for Generic). " +
                      "Public and unlisted items are compared with their page on Steam; other items with what this PC last sent. " +
-                     "The new description goes out with the upload, like a change made in Workshop page...")));
+                     "The new description goes out with the upload, like a change made in Workshop page..."),
+                Row(Lbl("&Footer"), _descFooter),
+                Hint("The footer is for the current mods folder: it goes at the end of every description sent from a description file, so a Discord or Ko-fi link " +
+                     "is one edit for all your mods. {name}, {id} (the Workshop id) and {game} fill themselves in. Changing it counts as a changed description, " +
+                     "so each mod offers its new description at its next upload. Steam BBCode works here.")));
 
         // ---- SteamCMD
         var openSteam = Btn("Open &folder", (_, _) => OpenPath(Path.GetDirectoryName(_s.EffectiveSteamCmd)!));
@@ -787,14 +803,17 @@ public sealed class MainForm : Form
         AddSection("About", "Version and updates, where your data is kept, and help.",
             Card("Updates", null,
                 Hint($"SteamCMD Helper {version}."),
-                Row(_checkUpdates, _checkUpdateNow),
+                Row(_checkUpdates, _checkUpdateNow, Btn("What's new...", (_, _) => ShowAllChanges())),
                 _autoUpdate,
                 _updateReady),
             Card("Your data", null,
                 Hint(AppSettings.Portable
                     ? $"Portable mode ({AppSettings.PortableMarker} is next to the program): settings, the recent folders list and the upload history are kept in {AppSettings.Folder}, so they travel with it."
                     : $"Settings, the recent folders list and the upload history are kept in %LocalAppData%\\SteamCmdHelper for your Windows user only. To keep them beside the program instead (on a USB stick, say), put an empty file named {AppSettings.PortableMarker} next to SteamCmdHelper.exe."),
-                Row(openData, forget)),
+                Row(openData, forget),
+                Row(Btn("E&xport settings...", (_, _) => ExportSettings()), Btn("&Import settings...", (_, _) => ImportSettings())),
+                Hint("Export saves your settings, profiles, per-folder options (including Discord webhook links, so keep the file private) and upload history in one " +
+                     "zip, to bring to another PC with Import. SteamCMD and its saved Steam login stay behind: log in once on the new PC.")),
             Card("Help", null,
                 Row(Lbl("Everything works from the keyboard.").Role(ThemeRole.Muted), SmallBtn("Keyboard shortcuts (F1)", (_, _) => ShowShortcuts())),
                 Hint(Disclaimer + " Steam and SteamCMD are trademarks of Valve Corporation.")));
@@ -1628,6 +1647,83 @@ public sealed class MainForm : Form
         _s.Save();
     }
 
+    /// <summary>Once per update (whichever way it was installed), the changelog of the versions just installed.</summary>
+    void ShowWhatsNewAfterUpdate()
+    {
+        var current = UpdateCheck.CurrentVersion;
+        var last = _s.LastRunVersion;
+        if (last == current) return;
+        _s.LastRunVersion = current;
+        _s.Save();
+        if (!WhatsNew.ShouldShow(last, current)) return;
+        var sections = WhatsNew.Between(WhatsNew.BuiltIn(), last, current);
+        if (sections.Count == 0) return;
+        using var f = new WhatsNewForm($"Updated from {last} to {current}. Here is what changed:", WhatsNew.Render(sections));
+        f.ShowDialog(this);
+    }
+
+    void ShowAllChanges()
+    {
+        var all = WhatsNew.Between(WhatsNew.BuiltIn(), "0", UpdateCheck.CurrentVersion);
+        using var f = new WhatsNewForm($"Every version up to {UpdateCheck.CurrentVersion}, newest first:", WhatsNew.Render(all));
+        f.ShowDialog(this);
+    }
+
+    void ExportSettings()
+    {
+        using var dlg = new SaveFileDialog
+        {
+            Title = "Export settings", Filter = "Settings export (*.zip)|*.zip", FileName = $"SteamCmdHelper-settings-{DateTime.Now:yyyy-MM-dd}.zip",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+        };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        try
+        {
+            SaveWindow(); // so the file holds what the window shows now
+            var n = SettingsTransfer.Export(dlg.FileName);
+            Append($"Exported settings and upload history ({n} files) to {dlg.FileName}. It includes any Discord webhook links, so keep it private.", LogKind.Ok);
+        }
+        catch (Exception e) { MessageBox.Show(this, "Could not export the settings: " + e.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error); }
+    }
+
+    /// <summary>
+    /// Imports an export from another PC: asks where each mods folder that does not exist here is now, keeps a backup of
+    /// the current files, then takes the imported values.
+    /// </summary>
+    void ImportSettings()
+    {
+        if (_busy) return;
+        using var dlg = new OpenFileDialog { Title = "Import settings", Filter = "Settings export (*.zip)|*.zip" };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        var (imported, error) = SettingsTransfer.Read(dlg.FileName);
+        if (imported == null) { MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+        if (MessageBox.Show(this, "Replace this PC's settings and upload history with the ones in this file? The current ones are kept in a backup folder first.",
+                Text, MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+
+        foreach (var folder in imported.Folders(recent: false).Where(f => !Directory.Exists(f)))
+        {
+            using var pick = new FolderBrowserDialog
+            {
+                Description = $"On the old PC, a mods folder was at {folder}. Where is it on this PC? (Cancel to leave it as it was.)",
+                UseDescriptionForTitle = true,
+            };
+            if (pick.ShowDialog(this) == DialogResult.OK) imported.MoveFolder(folder, pick.SelectedPath);
+        }
+        SettingsTransfer.FitToThisPc(imported);
+        try
+        {
+            var backup = SettingsTransfer.Import(dlg.FileName, imported);
+            _s.CopyFrom(imported);
+            Append($"Imported settings and upload history from {dlg.FileName}. The previous ones are in {backup}.", LogKind.Ok);
+        }
+        catch (Exception e) { MessageBox.Show(this, "Could not import the settings: " + e.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
+        FillRecent();
+        ShowProfiles();
+        ShowAnnounce();
+        _ = RefreshAllAsync();
+        MessageBox.Show(this, "Settings imported. Restart SteamCMD Helper so every option shows its imported value.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
     /// <summary>The empty mod list says why it is empty and offers the button that fixes it.</summary>
     void UpdateEmptyState()
     {
@@ -2228,7 +2324,7 @@ public sealed class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _testItems, _changed, _buildCmd, _packageRef, _autoRetry, _updateTags, _oneSession, _verifyUploads, _watchBuilds })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _buildCmd, _packageRef, _autoRetry, _updateTags, _oneSession, _verifyUploads, _watchBuilds })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -2932,6 +3028,7 @@ public sealed class MainForm : Form
         var sameVersion = only != null || test ? new List<ModInfo>()
             : _rows.Where(it => it.Checked && StateOf(it) == RowState.UpToDate).Select(it => (ModInfo)it.Tag!).ToList();
         var checkFirst = sameVersion.Select(m => $"Steam already has {m.Name} v{m.Version}. Raise the version first (F2) if this upload changes anything, or players can't tell the updates apart.").ToList();
+        if (!test && rollback == null) checkFirst.AddRange(await DependencyUpdatesAsync(picked));
         foreach (var m in picked)
         {
             var pageEdit = WorkshopPage.Get(m.Dir);
@@ -2996,6 +3093,7 @@ public sealed class MainForm : Form
             TagUpdater = _s.UpdateTags ? WorkshopTags.UpdateOnSteamAsync : null,
             Credit = _s.UploadCredit,
             NoteTemplate = _s.TemplateFor(_s.RepoPath),
+            DescriptionFooter = _s.FooterFor(_s.RepoPath),
             MarkdownToSteam = _s.MarkdownNotes,
             VerifyUploads = _s.VerifyUploads,
         };
@@ -3125,6 +3223,32 @@ public sealed class MainForm : Form
     }
 
     /// <summary>
+    /// For each picked mod already on Steam, the Workshop items it needs that Steam updated after the mod's own last
+    /// update (Steam's time, else this PC's last upload). Offline, it is simply empty.
+    /// </summary>
+    async Task<List<string>> DependencyUpdatesAsync(List<ModInfo> picked)
+    {
+        try
+        {
+            var cfg = _cfg;
+            var onSteam = picked.Where(m => m.OnSteam).ToList();
+            var deps = await Task.Run(() => onSteam.ToDictionary(m => m, m => Dependencies.Find(m, cfg)));
+            if (deps.Values.All(d => d.Count == 0)) return new();
+            var live = await WorkshopStatus.FetchAsync(onSteam.Select(m => m.WorkshopId!).Concat(deps.Values.SelectMany(d => d)));
+            var latest = UploadHistory.Latest(UploadHistory.Load());
+            var lines = new List<string>();
+            foreach (var (m, ids) in deps)
+            {
+                var since = live.TryGetValue(m.WorkshopId!, out var own) && own.Updated != null ? own.Updated
+                    : latest.TryGetValue(m.WorkshopId!, out var last) ? last.Time : (DateTimeOffset?)null;
+                lines.AddRange(Dependencies.UpdatedSince(m.Name, ids, since, live, DateTimeOffset.Now));
+            }
+            return lines;
+        }
+        catch (Exception e) when (e is not OperationCanceledException) { return new(); }
+    }
+
+    /// <summary>
     /// Finds the picked mods whose description file differs from their Workshop page and, when the user agrees (or
     /// always, per Options), puts the file's text into their page changes so it goes out with this upload.
     /// </summary>
@@ -3132,7 +3256,7 @@ public sealed class MainForm : Form
     {
         List<(ModInfo Mod, string Text)> changed;
         UseWaitCursor = true;
-        try { changed = await DescriptionSync.FindChangedAsync(picked, _cfg, DescriptionSync.FetchFromSteam, null, CancellationToken.None); }
+        try { changed = await DescriptionSync.FindChangedAsync(picked, _cfg, DescriptionSync.FetchFromSteam, null, CancellationToken.None, footer: _s.FooterFor(_s.RepoPath)); }
         catch (Exception e) { Append("Could not compare the descriptions with Steam: " + e.Message, LogKind.Warn); return; }
         finally { UseWaitCursor = false; }
         if (changed.Count == 0) return;
@@ -3316,6 +3440,8 @@ public sealed class MainForm : Form
         _webhook.Text = hasRepo ? _s.WebhookFor(_s.RepoPath) : "";
         _noteTemplate.Text = hasRepo ? _s.TemplateFor(_s.RepoPath).Replace("\n", "\r\n") : "";
         _noteTemplate.Enabled = hasRepo && !_busy;
+        _descFooter.Text = hasRepo ? _s.FooterFor(_s.RepoPath).Replace("\n", "\r\n") : "";
+        _descFooter.Enabled = hasRepo && !_busy;
         _buildCmd.Text = hasRepo ? _s.BuildFor(_s.RepoPath) : "";
         _packageRef.Text = hasRepo ? _s.RefFor(_s.RepoPath) : "";
         _buildCmd.Enabled = _packageRef.Enabled = hasRepo && !_busy;

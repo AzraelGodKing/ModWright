@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace SteamCmdHelper;
 
@@ -20,6 +21,24 @@ public static class DescriptionSync
 
     /// <summary>Text compared the way Steam keeps it: one kind of line break, no surrounding blank space.</summary>
     public static string Normalize(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n').Trim();
+
+    /// <summary>
+    /// Adds the mods folder's shared footer (links to Discord, Ko-fi, GitHub...) to the end of a description, with
+    /// {name}, {id} and {game} filled in. A description that already ends with it is left alone, so it never doubles.
+    /// </summary>
+    public static string WithFooter(string text, string? footer, string name, string id, string game)
+    {
+        if (string.IsNullOrWhiteSpace(footer)) return text;
+        var filled = Regex.Replace(Normalize(footer), @"\{(name|id|game)\}", m => m.Groups[1].Value.ToLowerInvariant() switch
+        {
+            "name" => name,
+            "id" => id,
+            _ => game,
+        }, RegexOptions.IgnoreCase);
+        var body = Normalize(text);
+        if (body.EndsWith(filled, StringComparison.Ordinal)) return body;
+        return body.Length == 0 ? filled : body + "\n\n" + filled;
+    }
 
     public static string Hash(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Normalize(text))));
 
@@ -69,10 +88,11 @@ public static class DescriptionSync
 
     /// <summary>
     /// The mods (already on Steam, with a description file and no description change waiting) whose file differs from
-    /// Steam, with the file's text. <paramref name="fetch"/> reads the description on Steam (null when it can't).
+    /// Steam, with the file's text plus the shared <paramref name="footer"/>. A changed footer alone counts as a change. <paramref name="fetch"/> reads the description on Steam (null when it can't).
     /// </summary>
     public static async Task<List<(ModInfo Mod, string Text)>> FindChangedAsync(IEnumerable<ModInfo> mods, ProjectConfig cfg,
-        Func<string, CancellationToken, Task<string?>> fetch, string? path, CancellationToken ct, string? pagesPath = null)
+        Func<string, CancellationToken, Task<string?>> fetch, string? path, CancellationToken ct, string? pagesPath = null,
+        string? footer = null)
     {
         var sent = Load(path);
         var changed = new List<(ModInfo, string)>();
@@ -83,6 +103,8 @@ public static class DescriptionSync
             if (string.IsNullOrWhiteSpace(cfg.SteamDescriptionFile) || !File.Exists(file)) continue;
             string text;
             try { text = await File.ReadAllTextAsync(file, ct); } catch (IOException) { continue; }
+            if (Normalize(text).Length == 0) continue;
+            text = WithFooter(text, footer, m.Name, m.WorkshopId!, cfg.GameName);
             var onSteam = await fetch(m.WorkshopId!, ct);
             if (Differs(text, onSteam, sent.GetValueOrDefault(m.WorkshopId!))) changed.Add((m, Normalize(text)));
         }
