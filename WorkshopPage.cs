@@ -56,6 +56,19 @@ public static class WorkshopPage
         return null;
     }
 
+    /// <summary>
+    /// One description edited for "Workshop pages of ticked mods": every <paramref name="find"/> replaced (when given),
+    /// then <paramref name="append"/> added at the end unless the text already ends with it.
+    /// </summary>
+    public static string EditText(string current, string find, string replace, string append)
+    {
+        var text = current.Replace("\r\n", "\n");
+        if (find.Length > 0) text = text.Replace(find.Replace("\r\n", "\n"), replace.Replace("\r\n", "\n"), StringComparison.Ordinal);
+        var add = append.Replace("\r\n", "\n").Trim();
+        if (add.Length > 0 && !text.TrimEnd().EndsWith(add, StringComparison.Ordinal)) text = text.TrimEnd() + (text.Trim().Length > 0 ? "\n\n" : "") + add;
+        return text;
+    }
+
     /// <summary>The image types Steam takes as a Workshop preview.</summary>
     public static readonly string[] PreviewTypes = { ".png", ".jpg", ".jpeg", ".gif" };
 
