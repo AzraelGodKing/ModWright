@@ -1946,14 +1946,14 @@ public sealed class MainForm : Form
         if (!WhatsNew.ShouldShow(last, current)) return;
         var sections = WhatsNew.Between(WhatsNew.BuiltIn(), last, current);
         if (sections.Count == 0) return;
-        using var f = new WhatsNewForm($"Updated from {last} to {current}. Here is what changed:", WhatsNew.Render(sections));
+        using var f = new WhatsNewForm($"Updated from {last} to {current}. Here is what changed:", sections);
         f.ShowDialog(this);
     }
 
     void ShowAllChanges()
     {
         var all = WhatsNew.Between(WhatsNew.BuiltIn(), "0", UpdateCheck.CurrentVersion);
-        using var f = new WhatsNewForm($"Every version up to {UpdateCheck.CurrentVersion}, newest first:", WhatsNew.Render(all));
+        using var f = new WhatsNewForm($"Every version up to {UpdateCheck.CurrentVersion}, newest first:", all);
         f.ShowDialog(this);
     }
 

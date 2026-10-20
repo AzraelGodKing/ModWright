@@ -220,7 +220,7 @@ static class Program
 
         if (Array.IndexOf(args, "--shot") is var sh and >= 0 && sh + 1 < args.Length)
         {
-            // Render the main window (also at 125% text), each section of its Options tab, the shortcuts list, the request form and the Workshop page editor to PNG files, in both themes (layout check without clicking).
+            // Render the main window (also at 125% text), each section of its Options tab, the shortcuts list, what's new, the request form and the Workshop page editor to PNG files, in both themes (layout check without clicking).
             ApplicationConfiguration.Initialize();
             // A crash while drawing would otherwise sit behind an error dialog until CI times out; write it down and stop.
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
@@ -260,6 +260,7 @@ static class Program
                     var name = section == 0 ? "options" : "options-" + new string(sections[section].ToLowerInvariant().Where(char.IsLetter).ToArray());
                     Snap(options, Path.Combine(args[sh + 1], $"{name}{suffix}.png"));
                 }
+                Snap(new WhatsNewForm("Updated from 1.3.8 to 1.4.0. Here is what changed:", WhatsNew.Between(WhatsNew.BuiltIn(), "1.3.7", UpdateCheck.CurrentVersion)), Path.Combine(args[sh + 1], $"whatsnew{suffix}.png"));
                 Snap(new ShortcutsForm(), Path.Combine(args[sh + 1], $"shortcuts{suffix}.png"));
                 Snap(new RequestForm("RimWorld", "294100", "RimWorld", "About/About.xml\r\nAbout/Preview.png\r\nAssemblies/Mod.dll"), Path.Combine(args[sh + 1], $"request{suffix}.png"));
                 var example = new ModInfo { Name = "Example Mod", Folder = "ExampleMod", Dir = Path.Combine(Path.GetTempPath(), "steamcmd_helper_shot_example") };
