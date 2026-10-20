@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.0
 
 - **Secrets never ship.** Every package is searched before upload for things that must never become public: Steam's
   own saved login (`ssfn*` files, a `config.vdf` with a login cache), private keys and key stores, `.env` files, the
