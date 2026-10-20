@@ -184,7 +184,11 @@ public static class Theme
 
     static ThemeRole RoleOf(Control c) => Roles.TryGetValue(c, out var r) ? (ThemeRole)r : ThemeRole.None;
 
-    public static void Apply(Control root) => Apply(root, root.Parent?.BackColor ?? Current.Back, PaletteFor(root));
+    public static void Apply(Control root)
+    {
+        Localizer.Apply(root);
+        Apply(root, root.Parent?.BackColor ?? Current.Back, PaletteFor(root));
+    }
 
     /// <summary>
     /// Every window is laid out in 96-DPI pixels. The first time it is themed, it is scaled to the screen's DPI (150%,
@@ -523,6 +527,7 @@ public static class Theme
         menu.BackColor = Current.Surface;
         menu.ForeColor = Current.Text;
         foreach (ToolStripItem i in menu.Items) i.ForeColor = Current.Text;
+        Localizer.Apply(menu);
     }
 
     sealed class MenuColors(Palette p) : ProfessionalColorTable
