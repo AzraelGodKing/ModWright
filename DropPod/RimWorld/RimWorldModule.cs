@@ -47,6 +47,27 @@ public sealed class RimWorldModule : IGameModule
         SafeFiles.WriteWithBackup(file, config.ToXml());
     }
 
+    public GameLaunch? Launch(GameInstall install, bool ownDataFolder, string? logFile)
+    {
+        var names = OperatingSystem.IsWindows() ? new[] { "RimWorldWin64.exe", "RimWorldWin.exe" } : OperatingSystem.IsLinux() ? new[] { "RimWorldLinux" } : Array.Empty<string>();
+        var exe = names.Select(n => SafeFiles.Child(install.GameFolder, n)).FirstOrDefault(f => f != null);
+        if (exe == null) return null;
+        var args = new List<string>();
+        // RimWorld's own switch: config, ModsConfig.xml and saves all go to this folder.
+        if (ownDataFolder) args.Add("-savedatafolder=" + install.DataFolder);
+        // Unity's switch for the log file.
+        if (logFile != null) { args.Add("-logFile"); args.Add(logFile); }
+        return new GameLaunch(exe, args, install.GameFolder);
+    }
+
+    public string LogFile(GameInstall install) =>
+        OperatingSystem.IsMacOS()
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Logs", "Ludeon Studios", "RimWorld by Ludeon Studios", "Player.log")
+            : Path.Combine(install.DataFolder, "Player.log");
+
+    // ModsConfig.xml carries the known expansions too; a new instance gets its own mod list written over it.
+    public IReadOnlyList<string> SettingsFiles { get; } = new[] { Path.Combine("Config", "Prefs.xml"), Path.Combine("Config", "KeyPrefs.xml"), Path.Combine("Config", "ModsConfig.xml") };
+
     public string ActiveKey(string id) => RimWorldIds.WithoutSteamSuffix(ModManifest.KeyOf(id));
 
     /// <summary>The base game first, then the expansions in release order, then everything else.</summary>

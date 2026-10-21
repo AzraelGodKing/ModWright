@@ -126,6 +126,16 @@ public static class SafeFiles
     }
 
     /// <summary>Reader settings for untrusted XML: no DTDs, no external files, and a size cap so a broken file can't eat memory.</summary>
+    /// <summary>A file or folder name for something the player named: unsafe characters replaced, never empty, at most 80 characters.</summary>
+    public static string SafeName(string name, string fallback)
+    {
+        var bad = Path.GetInvalidFileNameChars().Concat(new[] { '/', '\\', ':', '*', '?', '"', '<', '>', '|' }).ToHashSet();
+        var safe = new string(name.Trim().Select(c => bad.Contains(c) || char.IsControl(c) ? '_' : c).ToArray()).Trim('.', ' ');
+        if (safe.Length == 0) safe = fallback;
+        if (System.Text.RegularExpressions.Regex.IsMatch(safe, @"^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\..*)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) safe = "_" + safe;
+        return safe.Length > 80 ? safe[..80] : safe;
+    }
+
     public static XmlReaderSettings XmlSettings(long maxChars = 16_000_000) => new()
     {
         DtdProcessing = DtdProcessing.Ignore,
