@@ -296,6 +296,11 @@ static class Program
                 var dropPod = new MainForm(theme, new AppSettings { DoNotSave = true, GameFolders = { ["294100"] = rwGame }, GameDataFolders = { ["294100"] = rwData } }) { NoStartupPrompts = true };
                 dropPod.Shown += (_, _) => { dropPod.Size = new Size(Math.Min(1300, screen.Width - 40), Math.Min(800, screen.Height - 40)); dropPod.ShowDropPod(); };
                 Snap(dropPod, Path.Combine(args[sh + 1], $"droppod{suffix}.png"));
+                // The first-start choice of sides, and the window with only the mod manager picked (no Upload tab).
+                Snap(new SidesForm(Display.Both), Path.Combine(args[sh + 1], $"sides{suffix}.png"));
+                var managerOnly = new MainForm(theme, new AppSettings { DoNotSave = true, Sides = Display.Manager, GameFolders = { ["294100"] = rwGame }, GameDataFolders = { ["294100"] = rwData } }) { NoStartupPrompts = true };
+                managerOnly.Shown += (_, _) => managerOnly.Size = new Size(Math.Min(1300, screen.Width - 40), Math.Min(800, screen.Height - 40));
+                Snap(managerOnly, Path.Combine(args[sh + 1], $"main-manager{suffix}.png"));
                 if (theme == Theme.DarkName)
                 {
                     // Kats, the newest theme, once on the Upload tab with mods (each theme gets a shot only while it is new).
@@ -395,6 +400,15 @@ static class Program
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         Application.ThreadException += (_, e) => ShowCrash(e.Exception, canContinue: true);
         AppDomain.CurrentDomain.UnhandledException += (_, e) => { if (e.ExceptionObject is Exception ex) ShowCrash(ex, canContinue: false); };
+        // The first start asks which sides of the app to show (mod manager, uploader or both); closing it keeps both.
+        var start = AppSettings.Load();
+        if (start.Sides.Length == 0)
+        {
+            Theme.Set(start.Theme);
+            Localizer.Use(start.Language);
+            using (var pick = new SidesForm(Display.Both)) { pick.ShowDialog(); start.Sides = pick.Choice; }
+            start.Save();
+        }
         var form = new MainForm { UpdatedFrom = updatedFrom };
         SingleInstance.Listen(form);
         Application.Run(form);
