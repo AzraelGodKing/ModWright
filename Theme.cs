@@ -35,7 +35,8 @@ public sealed record Palette(
 public static class Theme
 {
     public const string DarkName = Display.Dark, LightName = Display.Light, KatsName = Display.Kats, KonekoName = Display.Koneko,
-        SerinaName = Display.Serina, WolfieName = Display.Wolfie, VickraName = Display.Vickra, KitomiName = Display.Kitomi, SystemName = Display.System, HighContrastName = "HighContrast";
+        SerinaName = Display.Serina, WolfieName = Display.Wolfie, VickraName = Display.Vickra, KitomiName = Display.Kitomi,
+        SzendooName = Display.Szendoo, SystemName = Display.System, HighContrastName = "HighContrast";
 
     // The look follows Steam's own desktop client: deep slate-blue surfaces, a near-black brand bar, Steam blue for
     // links, ticks and selection, light-blue secondary buttons and a green button for the main job. Neither theme uses
@@ -185,6 +186,27 @@ public static class Theme
     };
 
     /// <summary>
+    /// Szendoo: dim grey (#696969) cards with a hot pink (#FF70B0) for buttons, ticks and selection, and dark text on the
+    /// pink. The grey is lighter than the other dark themes, so the other buttons sit darker than the cards and the status
+    /// colours are pale enough to read on it.
+    /// </summary>
+    public static readonly Palette SzendooPalette = new(
+        SzendooName, true,
+        Back: Color.FromArgb(82, 82, 82), Surface: Color.FromArgb(105, 105, 105), Header: Color.FromArgb(56, 56, 56),
+        Input: Color.FromArgb(70, 70, 70), Border: Color.FromArgb(140, 140, 140),
+        Text: Color.FromArgb(250, 250, 250), Muted: Color.FromArgb(222, 222, 222), Title: Color.White,
+        Button: Color.FromArgb(58, 58, 58), ButtonText: Color.FromArgb(255, 150, 200),
+        ButtonHover: Color.FromArgb(72, 72, 72), ButtonDown: Color.FromArgb(66, 66, 66),
+        Accent: Color.FromArgb(255, 112, 176), AccentHover: Color.FromArgb(255, 140, 192), AccentText: Color.FromArgb(30, 10, 20),
+        Primary: Color.FromArgb(255, 112, 176), PrimaryHover: Color.FromArgb(255, 140, 192),
+        Track: Color.FromArgb(80, 80, 80), ListHeader: Color.FromArgb(92, 92, 92),
+        Ok: Color.FromArgb(180, 255, 190), Warn: Color.FromArgb(255, 225, 120), Error: Color.FromArgb(255, 180, 160), Info: Color.FromArgb(255, 190, 220))
+    {
+        AccentDeep = Color.FromArgb(200, 50, 120),
+        PrimaryDeep = Color.FromArgb(200, 50, 120),
+    };
+
+    /// <summary>
     /// Windows High Contrast: every colour comes from the user's contrast theme, so the app reads exactly like the rest
     /// of Windows. Status colours fall back to the text colour; the words (badges, notes) carry the meaning.
     /// </summary>
@@ -219,7 +241,7 @@ public static class Theme
 
     public static Palette Current { get; private set; } = DarkPalette;
 
-    /// <summary>What the user picked: "Dark", "Light", "Kats", "Koneko", "Serina", "Wolfie", "Vickra", "Kitomi" or "System". <see cref="Current"/> is what that resolves to now.</summary>
+    /// <summary>What the user picked: "Dark", "Light", "Kats", "Koneko", "Serina", "Wolfie", "Vickra", "Kitomi", "Szendoo" or "System". <see cref="Current"/> is what that resolves to now.</summary>
     public static string Choice { get; private set; } = DarkName;
 
     /// <summary>True while Windows High Contrast is on; it overrides the chosen theme.</summary>
@@ -238,7 +260,8 @@ public static class Theme
             {
                 LightName => LightPalette, KatsName => KatsPalette, KonekoName => KonekoPalette,
                 SerinaName => SerinaPalette, WolfieName => WolfiePalette,
-                VickraName => VickraPalette, KitomiName => KitomiPalette, _ => DarkPalette,
+                VickraName => VickraPalette, KitomiName => KitomiPalette,
+                SzendooName => SzendooPalette, _ => DarkPalette,
             };
         return Current != before;
     }
