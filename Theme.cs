@@ -36,7 +36,8 @@ public static class Theme
 {
     public const string DarkName = Display.Dark, LightName = Display.Light, KatsName = Display.Kats, KonekoName = Display.Koneko,
         SerinaName = Display.Serina, WolfieName = Display.Wolfie, VickraName = Display.Vickra, KitomiName = Display.Kitomi,
-        SzendooName = Display.Szendoo, TriphlxName = Display.Triphlx, TohmaName = Display.Tohma, SystemName = Display.System, HighContrastName = "HighContrast";
+        SzendooName = Display.Szendoo, TriphlxName = Display.Triphlx, TohmaName = Display.Tohma,
+        SkywolfName = Display.Skywolf, SystemName = Display.System, HighContrastName = "HighContrast";
 
     // The look follows Steam's own desktop client: deep slate-blue surfaces, a near-black brand bar, Steam blue for
     // links, ticks and selection, light-blue secondary buttons and a green button for the main job. Neither theme uses
@@ -247,6 +248,26 @@ public static class Theme
     };
 
     /// <summary>
+    /// Skywolf: black surfaces with a deep dark purple for buttons, ticks and selection, white text on the purple, and
+    /// light purple for the other buttons' text. Unlike Koneko's bright lavender, the purple here is dark.
+    /// </summary>
+    public static readonly Palette SkywolfPalette = new(
+        SkywolfName, true,
+        Back: Color.FromArgb(6, 4, 8), Surface: Color.FromArgb(14, 10, 18), Header: Color.FromArgb(0, 0, 0),
+        Input: Color.FromArgb(10, 7, 13), Border: Color.FromArgb(52, 30, 70),
+        Text: Color.FromArgb(228, 222, 236), Muted: Color.FromArgb(150, 138, 166), Title: Color.White,
+        Button: Color.FromArgb(30, 18, 42), ButtonText: Color.FromArgb(190, 140, 240),
+        ButtonHover: Color.FromArgb(44, 26, 62), ButtonDown: Color.FromArgb(38, 22, 54),
+        Accent: Color.FromArgb(106, 27, 154), AccentHover: Color.FromArgb(128, 44, 180), AccentText: Color.White,
+        Primary: Color.FromArgb(106, 27, 154), PrimaryHover: Color.FromArgb(128, 44, 180),
+        Track: Color.FromArgb(28, 18, 38), ListHeader: Color.FromArgb(10, 7, 13),
+        Ok: Color.FromArgb(120, 220, 120), Warn: Color.FromArgb(240, 200, 80), Error: Color.FromArgb(240, 110, 100), Info: Color.FromArgb(190, 140, 240))
+    {
+        AccentDeep = Color.FromArgb(60, 10, 92),
+        PrimaryDeep = Color.FromArgb(60, 10, 92),
+    };
+
+    /// <summary>
     /// Windows High Contrast: every colour comes from the user's contrast theme, so the app reads exactly like the rest
     /// of Windows. Status colours fall back to the text colour; the words (badges, notes) carry the meaning.
     /// </summary>
@@ -281,7 +302,7 @@ public static class Theme
 
     public static Palette Current { get; private set; } = DarkPalette;
 
-    /// <summary>What the user picked: "Dark", "Light", "Kats", "Koneko", "Serina", "Wolfie", "Vickra", "Kitomi", "Szendoo", "Triphlx", "Tohma" or "System". <see cref="Current"/> is what that resolves to now.</summary>
+    /// <summary>What the user picked: "Dark", "Light", "Kats", "Koneko", "Serina", "Wolfie", "Vickra", "Kitomi", "Szendoo", "Triphlx", "Tohma", "Skywolf" or "System". <see cref="Current"/> is what that resolves to now.</summary>
     public static string Choice { get; private set; } = DarkName;
 
     /// <summary>True while Windows High Contrast is on; it overrides the chosen theme.</summary>
@@ -302,7 +323,8 @@ public static class Theme
                 SerinaName => SerinaPalette, WolfieName => WolfiePalette,
                 VickraName => VickraPalette, KitomiName => KitomiPalette,
                 SzendooName => SzendooPalette,
-                TriphlxName => TriphlxPalette, TohmaName => TohmaPalette, _ => DarkPalette,
+                TriphlxName => TriphlxPalette, TohmaName => TohmaPalette,
+                SkywolfName => SkywolfPalette, _ => DarkPalette,
             };
         return Current != before;
     }
