@@ -9,7 +9,7 @@ public enum LogFilter { All, WarningsAndErrors, ErrorsOnly }
 /// <summary>Display choices that need no WinForms (theme, text size, log filtering), so the tests can check them.</summary>
 public static class Display
 {
-    public const string Dark = "Dark", Light = "Light", Kats = "Kats", Koneko = "Koneko", Serina = "Serina", Wolfie = "Wolfie", Vickra = "Vickra", Kitomi = "Kitomi", System = "System";
+    public const string Dark = "Dark", Light = "Light", Kats = "Kats", Koneko = "Koneko", Serina = "Serina", Wolfie = "Wolfie", Vickra = "Vickra", Kitomi = "Kitomi", Szendoo = "Szendoo", System = "System";
 
     /// <summary>The themes in Options > Appearance, in the drop-down's order: saved name and the name shown.</summary>
     public static readonly (string Name, string Label)[] Themes =
@@ -17,6 +17,7 @@ public static class Display
         (Dark, "Dark"), (Light, "Light"), (Kats, "Kats (orange and gunmetal)"),
         (Koneko, "Koneko (purple and black)"), (Serina, "Serina (purple and mint green)"), (Wolfie, "Wolfie (blue and green)"),
         (Vickra, "Vickra (sapphire and emerald)"), (Kitomi, "Kitomi (red, black and cyan)"),
+        (Szendoo, "Szendoo (grey and pink)"),
         (System, "Match Windows"),
     };
 
