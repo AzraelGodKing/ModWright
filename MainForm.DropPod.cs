@@ -102,11 +102,13 @@ public sealed partial class MainForm
         _dpDownload = SmallBtn("Download missing", async (_, _) => await DownloadMissingAsync());
         _dpUpdates = SmallBtn("Check for updates", async (_, _) => await CheckDropPodUpdatesAsync());
         var readLog = SmallBtn("Read the log", (_, _) => { if (_dpScan != null) OpenDropPodLog(_dpInst?.LogFile ?? _dpGame.LogFile(_dpScan.Install), watch: false); });
+        var insight = SmallBtn("Insight", (_, _) => ShowInsight());
+        Tip(insight, "Hints about the active mods: Harmony patches that may clash, patches on per-tick methods, mods heavy to load, and your rules file's notes");
         Tip(readLog, "Read the game's last log: errors and warnings grouped, with the mod most likely at fault");
         Tip(_dpActivateDeps, "Tick the installed mods the active ones need, each placed before the first mod that needs it");
         Tip(_dpDownload, "Download the missing dependencies that link a Workshop item, with SteamCMD and your saved login, into RimWorld's Mods folder");
         Tip(_dpUpdates, "Ask Steam which installed Workshop mods have a newer version");
-        page.Controls.Add(Card("Problems", new Control[] { _dpProblemCount, _dpActivateDeps, _dpDownload, _dpUpdates, readLog }, _dpProblems), 0, 2);
+        page.Controls.Add(Card("Problems", new Control[] { _dpProblemCount, _dpActivateDeps, _dpDownload, _dpUpdates, readLog, insight }, _dpProblems), 0, 2);
         ((Control)page.Controls[2]).Dock = DockStyle.Fill;
         UpdateDropPodButtons();
         return page;
@@ -792,6 +794,24 @@ public sealed partial class MainForm
         if (fetchable.Count == 0 || MessageBox.Show(this, $"{fetchable.Count} of the missing mods are on the Steam Workshop. Download them with SteamCMD into the Mods folder?", Text,
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         await DownloadWorkshopAsync(fetchable, () => save.Mods.Match(_dpScan!, _dpGame).Installed);
+    }
+
+    void ShowInsight()
+    {
+        if (_dpScan is not { } scan) return;
+        var byId = scan.ById();
+        var active = _dpActive.Where(byId.ContainsKey).ToList();
+        var rules = DropPodRules();
+        string Name(string key) => byId.TryGetValue(key, out var m) ? m.DisplayName : key;
+        using var f = new InsightForm(ct =>
+        {
+            var mods = active.Select(k => byId[k]).ToList();
+            var patches = HarmonyPatches.ForMods(mods, ct);
+            var weights = mods.Where(m => m.Source != ModSource.Official).Select(m => { ct.ThrowIfCancellationRequested(); return Insight.Weigh(m); }).ToList();
+            return Insight.Conflicts(patches, active, Name).Concat(Insight.TickPatches(patches, active, Name))
+                .Concat(Insight.Heavy(weights, active, Name)).Concat(Insight.Notes(rules, active, Name)).ToList();
+        }, Name);
+        f.ShowDialog(this);
     }
 
     /// <summary>Shows the game's log analysed (modeless, so the game and the Drop Pod stay usable); with <paramref name="watch"/> it follows the log as it grows.</summary>

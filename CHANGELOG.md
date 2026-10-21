@@ -60,6 +60,11 @@
   stack trace (read from the mod's DLLs, never run), its Harmony patch on a method there, a file in its folder, or
   its package ID in the text. Untick the mod at fault takes it off the list to try again; Copy a report gives a
   short summary to paste in a bug report. Logs of any size are read a line at a time.
+- **Insight into clashes and speed.** Drop Pod > Problems > Insight reads the active mods' DLLs (without running
+  them) for the Harmony patches they declare and points out methods two mods both rewrite with transpilers, prefixes
+  that can stop other mods' changes from running, and mods that change many per-tick methods. It also names mods with
+  a lot of textures or definition files (they add to loading time) and lists your rules file's notes. These are
+  hints, not measurements.
 
 ## 1.6.0
 
