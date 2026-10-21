@@ -383,7 +383,8 @@ public static class ModScanner
     public static string ModsRoot(string repo, ProjectConfig cfg) =>
         string.IsNullOrWhiteSpace(cfg.ModsFolder) ? repo : Path.Combine(repo, ProjectConfig.Norm(cfg.ModsFolder));
 
-    public static List<ModInfo> Scan(string repo, ProjectConfig cfg)
+    /// <param name="strictAbout">RimWorld: About.xml warnings block the upload (Options > Uploading).</param>
+    public static List<ModInfo> Scan(string repo, ProjectConfig cfg, bool strictAbout = false)
     {
         var list = new List<ModInfo>();
         var root = ModsRoot(repo, cfg);
@@ -492,7 +493,7 @@ public static class ModScanner
 
             if (RimWorldLint.Applies(cfg))
             {
-                var (problems, warnings) = RimWorldLint.Check(dir);
+                var (problems, warnings) = RimWorldLint.Check(dir, strictAbout);
                 m.Problems.AddRange(problems);
                 m.Warnings.AddRange(warnings);
             }

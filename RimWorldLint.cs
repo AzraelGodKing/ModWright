@@ -15,8 +15,6 @@ public static class RimWorldLint
     /// <summary>The checks run for the RimWorld layout and any layout for RimWorld's app id.</summary>
     public static bool Applies(ProjectConfig cfg) => cfg.AppId == "294100" && cfg.ModMarker.Replace('\\', '/').Equals("About/About.xml", StringComparison.OrdinalIgnoreCase);
 
-    // RimWorld's own rule (ModMetaData.PackageIdIsValid): letters, digits and dots, with at least one dot inside.
-    static readonly Regex PackageId = new(@"^[A-Za-z0-9]+(\.[A-Za-z0-9]+)+$");
     static readonly Regex VersionFolder = new(@"^\d+\.\d+$");
 
     /// <summary>Folders RimWorld never reads and the RimWorld layout leaves out of the package.</summary>
@@ -33,7 +31,8 @@ public static class RimWorldLint
     }
 
     /// <summary>What would block the upload (Problems) and what is only worth a look (Warnings) for one mod.</summary>
-    public static (List<string> Problems, List<string> Warnings) Check(string modDir)
+    /// <param name="strict">Treat the About.xml warnings (see <see cref="DropPod.RimWorld.AboutLint"/>) as problems that block the upload.</param>
+    public static (List<string> Problems, List<string> Warnings) Check(string modDir, bool strict = false)
     {
         var problems = new List<string>();
         var warnings = new List<string>();
@@ -43,18 +42,10 @@ public static class RimWorldLint
         if (about?.Root is not { } meta) return (problems, warnings);
 
         var supported = meta.Element("supportedVersions")?.Elements("li").Select(e => Short(e.Value)).Where(v => v.Length > 0).Distinct().ToList() ?? new();
-        var packageId = meta.Element("packageId")?.Value.Trim() ?? "";
-        // Only RimWorld 1.0 loaded mods without one.
-        if (packageId.Length == 0 && supported.All(v => v == "1.0") && supported.Count > 0)
-            warnings.Add("About.xml has no <packageId>; RimWorld 1.1 and later need one (such as YourName.ModName)");
-        else if (packageId.Length == 0)
-            problems.Add("About.xml has no <packageId> (such as YourName.ModName): RimWorld refuses to load a mod without one");
-        else if (!PackageId.IsMatch(packageId))
-            warnings.Add($"packageId \"{packageId}\" is not valid for RimWorld: use letters and digits with a dot, such as YourName.ModName");
-
-        foreach (var li in meta.Element("modDependencies")?.Elements("li") ?? Enumerable.Empty<XElement>())
-            if (string.IsNullOrWhiteSpace(li.Element("packageId")?.Value))
-                warnings.Add("a modDependencies entry" + (li.Element("displayName")?.Value is { Length: > 0 } n ? $" ({n.Trim()})" : "") + " has no packageId, so RimWorld can't check it");
+        // About.xml itself, read by the parser the Drop Pod uses too.
+        if (DropPod.RimWorld.RimWorldAbout.ReadFolder(modDir, DropPod.ModSource.Local) is { } manifest)
+            foreach (var f in DropPod.RimWorld.AboutLint.Check(manifest))
+                (f.Level == DropPod.RimWorld.LintLevel.Block || strict ? problems : warnings).Add(f.Message);
 
         var folders = Directory.GetDirectories(modDir).Select(Path.GetFileName).Where(n => VersionFolder.IsMatch(n!)).Select(n => n!).ToList();
         var loadFolders = Path.Combine(modDir, "loadFolders.xml");

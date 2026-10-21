@@ -68,6 +68,7 @@ public sealed partial class MainForm : Form
     readonly CheckBox _commitIds = new() { AutoSize = true, Text = "Commit a new item's Workshop ID file without asking" };
     readonly CheckBox _oneSession = new() { AutoSize = true, Text = "Upload several mods with one SteamCMD login (faster batches)" };
     readonly CheckBox _notifyDone = new() { AutoSize = true, Text = "Show a Windows notification when an upload ends while the window is in the background" };
+    readonly CheckBox _strictAbout = new() { AutoSize = true, Text = "RimWorld: About.xml warnings block the upload too" };
     readonly CheckBox _verifyUploads = new() { AutoSize = true, Text = "Check each upload by downloading it back from Steam and comparing the files" };
     readonly CheckBox _steamBack = new() { AutoSize = true, Text = "Bring the Steam client back &online after uploading (restarts it when SteamCMD's login took its place)" };
     Button _restartSteam = null!;
@@ -955,6 +956,8 @@ public sealed partial class MainForm : Form
         _oneSession.CheckedChanged += (_, _) => { _s.OneSession = _oneSession.Checked; _s.Save(); };
         _notifyDone.Checked = _s.NotifyWhenDone;
         _notifyDone.CheckedChanged += (_, _) => { _s.NotifyWhenDone = _notifyDone.Checked; _s.Save(); };
+        _strictAbout.Checked = _s.StrictAboutCheck;
+        _strictAbout.CheckedChanged += (_, _) => { if (_populating) return; _s.StrictAboutCheck = _strictAbout.Checked; _s.Save(); RefreshAll(); };
         _verifyUploads.Checked = _s.VerifyUploads;
         _verifyUploads.CheckedChanged += (_, _) => { _s.VerifyUploads = _verifyUploads.Checked; _s.Save(); };
         _steamBack.Checked = _s.SteamBackOnline;
@@ -968,7 +971,10 @@ public sealed partial class MainForm : Form
                      "Kept in your settings, never in the repo."),
                 Row(Lbl("Upload &from"), _packageRef),
                 Hint("A git branch or tag to package instead of the checked-out commit (git packaging only), so a release branch can be uploaded while you work elsewhere. " +
-                     "The version and change note are then read from that branch.")),
+                     "The version and change note are then read from that branch."),
+                _strictAbout,
+                Hint("A missing packageId or broken XML always blocks. With this on, so does what is only a warning otherwise: no author, description or supportedVersions, " +
+                     "a dependency without a Workshop link, a load-order rule that names the mod itself or isn't a packageId.")),
             Card("While uploading", null,
                 _autoRetry,
                 _notifyDone,
@@ -1752,12 +1758,12 @@ public sealed partial class MainForm : Form
         Dictionary<string, string> Uploaded, Dictionary<string, UploadEntry> History, string Stamp, bool IsGit);
 
     /// <summary>Reads the mods folder, its layout, git branch and this PC's upload records. Touches no controls.</summary>
-    static FolderScan ScanFolder(string repo)
+    static FolderScan ScanFolder(string repo, bool strictAbout)
     {
         var cfg = ProjectConfig.Load(repo);
         var branch = ModScanner.GitBranch(repo);
         var isGit = branch != null || ModScanner.IsGitRepo(repo); // a repo with no commits yet has no branch to name
-        var mods = ModScanner.Scan(repo, cfg);
+        var mods = ModScanner.Scan(repo, cfg, strictAbout);
         foreach (var m in mods)
             if (WorkshopPage.Get(m.Dir) is { } page) m.Warnings.Add("Workshop page changes go out with the next upload: " + page.Summary());
         return new FolderScan(repo, cfg, branch, mods, UploadedVersions.LoadRecord(), UploadHistory.Latest(UploadHistory.Load()), ModScanner.FolderStamp(repo, cfg), isGit);
@@ -1772,7 +1778,7 @@ public sealed partial class MainForm : Form
         SaveFields();
         ShowProfiles();
         ShowAnnounce();
-        ShowScan(ScanFolder(_s.RepoPath));
+        ShowScan(ScanFolder(_s.RepoPath, _s.StrictAboutCheck));
     }
 
     bool _repoIsGit;
@@ -1817,7 +1823,8 @@ public sealed partial class MainForm : Form
         var no = ++_scanNo;
         UseWaitCursor = true;
         FolderScan scan;
-        try { scan = await Task.Run(() => ScanFolder(repo)); }
+        var strict = _s.StrictAboutCheck;
+        try { scan = await Task.Run(() => ScanFolder(repo, strict)); }
         finally { if (no == _scanNo && !IsDisposed) UseWaitCursor = false; }
         if (IsDisposed || no != _scanNo || repo != _s.RepoPath) return; // closed, refreshed again, or another folder was opened meanwhile
         ShowScan(scan);
@@ -3021,7 +3028,7 @@ public sealed partial class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _theme, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _tsTeam, _tsCommunity, _tsCategories, _tsToken, _tsAfter, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _groups, _afterCmd, _pushTags, _keepPackages, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _steamBack, _restartSteam, _watchBuilds })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _theme, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _tsTeam, _tsCommunity, _tsCategories, _tsToken, _tsAfter, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _groups, _afterCmd, _pushTags, _keepPackages, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _steamBack, _restartSteam, _watchBuilds, _strictAbout })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;

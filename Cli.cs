@@ -25,6 +25,8 @@ public sealed class CliOptions
     public bool Markdown, Csv;
     /// <summary>"doctor --login": really log in with the saved login instead of only looking for it.</summary>
     public bool Login;
+    /// <summary>lint and upload: About.xml warnings block too, as with Options > Uploading's setting.</summary>
+    public bool Strict;
     /// <summary>"schedule": when to upload (--at), list the scheduled uploads (--list), or cancel one (--cancel).</summary>
     public string? At, Cancel;
     public bool ListScheduled;
@@ -44,7 +46,7 @@ public static class Cli
 {
     public const int ExitOk = 0, ExitFailed = 1, ExitUsage = 2, ExitSteam = 3;
 
-    static readonly string[] Commands = { "upload", "list", "version", "update", "download", "verify", "game-builds", "test-install", "ci-setup", "login-secret", "game-version", "note", "history", "doctor", "schedule", "help" };
+    static readonly string[] Commands = { "upload", "list", "version", "update", "download", "verify", "game-builds", "test-install", "ci-setup", "login-secret", "game-version", "note", "history", "doctor", "schedule", "lint", "help" };
 
     public const string Usage = """
         SteamCMD Helper command line
@@ -92,6 +94,10 @@ public static class Cli
                                                              or "+2h" (also --allow-create, --announce)
           SteamCmdHelper schedule --list | --cancel <number or mod>
                                                              list or cancel the scheduled uploads
+          SteamCmdHelper lint [<mod>...] [--strict]          check the mods without uploading: what blocks an
+                                                             upload and what is only a warning (RimWorld: the
+                                                             About.xml check too). --strict: warnings from
+                                                             About.xml block, as Options > Uploading can set
           SteamCmdHelper help                                show this text
 
         Options:
@@ -180,6 +186,7 @@ public static class Cli
                 case "--markdown": o.Markdown = true; break;
                 case "--csv": o.Csv = true; break;
                 case "--login": o.Login = true; break;
+                case "--strict": o.Strict = true; break;
                 case "--at": o.At = Value(); break;
                 case "--list": o.ListScheduled = true; break;
                 case "--cancel": o.Cancel = Value(); break;
@@ -218,7 +225,8 @@ public static class Cli
         if ((o.At != null || o.ListScheduled || o.Cancel != null) && o.Command != "schedule") { o.Error = "--at, --list and --cancel only go with \"schedule\"."; return o; }
         if (o.Command == "schedule") return ParseSchedule(o);
         if (o.Login && o.Command != "doctor") { o.Error = "--login only goes with \"doctor\"."; return o; }
-        if (o.Command is "history" or "doctor") return o; // mod names are optional (doctor takes none)
+        if (o.Strict && o.Command is not ("lint" or "upload")) { o.Error = "--strict only goes with \"lint\" or \"upload\"."; return o; }
+        if (o.Command is "history" or "doctor" or "lint") return o; // mod names are optional (doctor takes none)
         if (o.Command == "game-version")
         {
             if (o.Mods.Count == 0) o.Error = "Give the game version to add, such as 1.7, then the mods or --all.";
@@ -257,6 +265,28 @@ public static class Cli
         else if (o.Command != "upload" && o.Mods.Count > 0) o.Error = $"\"{o.Command}\" does not take mod names.";
         else if (o.CheckOnly && o.Command != "update") o.Error = "--check only goes with \"update\".";
         return o;
+    }
+
+    /// <summary>"lint": each mod's problems (which block an upload) and warnings. Exit code 1 when any mod has a problem.</summary>
+    static int Lint(CliOptions o, List<ModInfo> mods, Action<string> say)
+    {
+        var pick = mods;
+        if (o.Mods.Count > 0)
+        {
+            var unknown = o.Mods.Where(n => Find(mods, n) == null).ToList();
+            if (unknown.Count > 0) { say("Error: no such mod in the repo: " + string.Join(", ", unknown) + "."); return ExitUsage; }
+            pick = o.Mods.Select(n => Find(mods, n)!).Distinct().ToList();
+        }
+        if (pick.Count == 0) { say("No mods found."); return ExitOk; }
+        foreach (var m in pick)
+        {
+            say($"{m.Folder} ({m.Name}): " + (m.Problems.Count > 0 ? $"{m.Problems.Count} to fix" : "ready") + (m.Warnings.Count > 0 ? $", {m.Warnings.Count} warning{(m.Warnings.Count == 1 ? "" : "s")}" : ""));
+            foreach (var p in m.Problems) say("  fix:  " + p);
+            foreach (var w in m.Warnings) say("  warn: " + w);
+        }
+        var blocked = pick.Count(m => m.Problems.Count > 0);
+        say(blocked == 0 ? $"All {pick.Count} ready." : $"{blocked} of {pick.Count} can't be uploaded until fixed.");
+        return blocked == 0 ? ExitOk : ExitFailed;
     }
 
     static CliOptions ParseSchedule(CliOptions o)
@@ -551,7 +581,7 @@ public static class Cli
         }
 
         var cfg = ProjectConfig.Load(repo);
-        var mods = ModScanner.Scan(repo, cfg);
+        var mods = ModScanner.Scan(repo, cfg, o.Strict || settings?.StrictAboutCheck == true);
         // JSON goes out alone, so a script can parse everything printed.
         if (o.Command == "list" && o.Json) { Say(ListJson(repo, cfg, mods)); return ExitOk; }
         if (o.Command == "list" && (o.Markdown || o.Csv)) { output.Write(Reports.ModList(mods, o.Markdown ? Reports.Markdown : Reports.Csv)); return ExitOk; }
@@ -567,6 +597,7 @@ public static class Cli
             var shaper = new Publisher(repo, cfg, steamCmd, account) { Credit = credit, NoteTemplate = noteTemplate, MarkdownToSteam = markdown };
             return ShowNotes(o, cfg, mods, shaper, Say);
         }
+        if (o.Command == "lint") return Lint(o, mods, Say);
         if (o.Command == "history") return ShowHistory(o, mods, UploadHistory.Load(historyFile), output, Say);
         var dataDir = Path.GetDirectoryName(Path.GetFullPath(historyFile))!;
         switch (o.Command)
