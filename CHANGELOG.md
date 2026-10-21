@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.7.0
 
 - **SteamCMD Helper is now Modwright**, with two sides: the Workshop uploader and the Drop Pod for RimWorld players.
   The name in the window, the brand bar (which also says which side is open) and the messages changed; the program
