@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace SteamCmdHelper;
 
 /// <summary>
-/// Moves SteamCMD Helper to another PC: <see cref="Export"/> zips the settings (profiles, per-folder options), the upload
+/// Moves Modwright to another PC: <see cref="Export"/> zips the settings (profiles, per-folder options), the upload
 /// history and what the app remembers about past uploads; <see cref="Import"/> puts them back on the new PC. SteamCMD
 /// and its saved Steam login are never included, so the new PC logs in once on its own.
 /// </summary>
@@ -49,7 +49,7 @@ public static class SettingsTransfer
         {
             using var zip = ZipFile.OpenRead(zipPath);
             var entry = zip.GetEntry(Settings);
-            if (entry == null) return (null, "This file is not a SteamCMD Helper settings export (it has no settings.json).");
+            if (entry == null) return (null, "This file is not a Modwright settings export (it has no settings.json).");
             using var r = new StreamReader(entry.Open());
             var s = JsonSerializer.Deserialize<AppSettings>(r.ReadToEnd());
             return s == null ? (null, "The settings in this file could not be read.") : (s, null);

@@ -12,9 +12,9 @@ public static class GitHubActions
     public const string LoginSecretName = "STEAM_CONFIG_VDF";
 
     public const string Workflow = """
-        # Uploads this repo's mods to the Steam Workshop with SteamCMD Helper when a tag starting with "v" is pushed,
+        # Uploads this repo's mods to the Steam Workshop with Modwright when a tag starting with "v" is pushed,
         # or when started by hand from the Actions tab. Only mods whose version Steam does not have yet are uploaded.
-        # Written by SteamCMD Helper (ci-setup).
+        # Written by Modwright (ci-setup).
         #
         # It needs two repository secrets (Settings > Secrets and variables > Actions):
         #   STEAM_ACCOUNT     the Steam login name that owns the mods
@@ -46,7 +46,7 @@ public static class GitHubActions
             steps:
               - uses: actions/checkout@v4
 
-              - name: Get SteamCMD Helper
+              - name: Get Modwright
                 env:
                   GH_TOKEN: ${{ github.token }}
                 run: gh release download --repo AzraelGodKing/SteamCMDHelper --pattern "*-win-x64.exe" --output "$env:RUNNER_TEMP\SteamCmdHelper.exe"

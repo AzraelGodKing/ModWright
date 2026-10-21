@@ -176,7 +176,7 @@ public static class ScheduledUploads
         var name = TaskName(at, what);
         var xml = Path.Combine(tempDir ?? Path.GetTempPath(), $"sch-task-{Guid.NewGuid():N}.xml");
         Directory.CreateDirectory(Path.GetDirectoryName(xml)!);
-        File.WriteAllText(xml, TaskXml(exe, CommandLine(args), repo, at, $"SteamCMD Helper uploads {what} from {repo}."), Encoding.Unicode);
+        File.WriteAllText(xml, TaskXml(exe, CommandLine(args), repo, at, $"Modwright uploads {what} from {repo}."), Encoding.Unicode);
         (int Code, string Output) r;
         try { r = await Runner(new[] { "/Create", "/TN", name, "/XML", xml, "/F" }, ct); }
         catch (Exception e) when (e is not OperationCanceledException) { return (null, "Task Scheduler could not be started: " + e.Message); }

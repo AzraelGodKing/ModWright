@@ -38,7 +38,7 @@ public sealed class AppSettings
     public List<string> RecentRepos { get; set; } = new();
     /// <summary>After an upload, tag HEAD in git as "&lt;mod folder&gt;-v&lt;version&gt;".</summary>
     public bool TagUploads { get; set; }
-    /// <summary>End each change note sent to Steam with "Uploaded via SteamCMD Helper" and a link to the newest release.</summary>
+    /// <summary>End each change note sent to Steam with "Uploaded via Modwright" and a link to the newest release.</summary>
     public bool UploadCredit { get; set; } = true;
     /// <summary>Turn Markdown in .md changelogs into the BBCode Steam's change notes use.</summary>
     public bool MarkdownNotes { get; set; } = true;
