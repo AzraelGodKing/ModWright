@@ -2,10 +2,11 @@
 
 ## 1.9.0
 
-- **Four new themes: Koneko, Serina, Wolfie and Vickra.** Options > Appearance > Theme now also offers Koneko
-  (near-black with a bright purple), Serina (deep purple with mint green), Wolfie (deep blue with a bright green) and
-  Vickra (jewel tones: deep emerald with a bright sapphire). Like Kats, each puts dark text on its bright colour so
-  buttons and selected rows stay easy to read, and the brand bar follows the theme's own colours.
+- **Five new themes: Koneko, Serina, Wolfie, Vickra and Kitomi.** Options > Appearance > Theme now also offers Koneko
+  (near-black with a bright purple), Serina (deep purple with mint green), Wolfie (deep blue with a bright green),
+  Vickra (jewel tones: deep emerald with a bright sapphire) and Kitomi (black and white with a bold red and cyan). Like
+  Kats, each picks the text colour that reads best on its bright colour so buttons and selected rows stay easy to read,
+  and the brand bar follows the theme's own colours.
 
 ## 1.8.0
 
