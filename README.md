@@ -180,7 +180,8 @@ the command line alike: **Past logs** lists them by time and what was uploaded, 
 the window was closed. The newest 50 are kept, in `%LOCALAPPDATA%\SteamCmdHelper\logs`.
 
 The app uses a dark theme by default. The **Theme** drop-down under **Options > Appearance** offers **Light**, **Kats**
-(gunmetal grey with orange), or **Match Windows** to follow Windows' light or dark app mode (it switches when Windows
+(gunmetal grey with orange), **Koneko** (purple and black), **Serina** (purple and mint green), **Wolfie** (blue and
+green), or **Match Windows** to follow Windows' light or dark app mode (it switches when Windows
 does). When Windows High Contrast is on, the app uses its
 contrast colours instead. **Text size** (100% to 175%) makes all text, and the layout with it, larger on top of Windows'
 own display scaling; it is used from the next start. The choices are saved for your Windows user.

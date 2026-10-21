@@ -8,7 +8,7 @@
     <RootNamespace>SteamCmdHelper</RootNamespace>
     <AssemblyName>SteamCmdHelper</AssemblyName>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.8.0</Version>
+    <Version>1.9.0</Version>
     <Product>SteamCMD Helper</Product>
     <Description>One-click Steam Workshop uploads for RimWorld mods, with login handling and progress.</Description>
     <Copyright>Copyright (c) 2026 Azrael</Copyright>

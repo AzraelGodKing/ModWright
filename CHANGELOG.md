@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.0
+
+- **Three new themes: Koneko, Serina and Wolfie.** Options > Appearance > Theme now also offers Koneko (near-black with
+  a bright purple), Serina (deep purple with mint green) and Wolfie (deep blue with a bright green). Like Kats, each
+  puts dark text on its bright colour so buttons and selected rows stay easy to read, and the brand bar follows the
+  theme's own colours.
+
 ## 1.8.0
 
 - **The uploader is now The Launch Pad.** In RimWorld, a pod launcher fires transport pods that land as drop pods, so
