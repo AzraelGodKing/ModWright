@@ -521,6 +521,7 @@ logged in once in SteamCMD's own window. That account has to own the game.
 | Game branches, the new-build notice | Anonymous | A game's branches and build ids are public |
 | Steam version, Updated, subscribers, the game's name | None (Steam's web pages) | Read from public Workshop pages without SteamCMD |
 | Workshop tags, required items, gallery, other languages, comment counts | The Steam client | SteamCMD can't set these, so the running Steam client does it as the signed-in account |
+| Drop Pod: send the active mods to a Steam collection | The Steam client | SteamCMD can't make collections; the signed-in account must own the game (and the collection, to update it) |
 | Publish to Thunderstore | Thunderstore token | Thunderstore has its own accounts; Steam is not involved |
 | GitHub Actions upload | Saved, copied into a secret | The runner has no one to type a password, so it reuses the saved login |
 

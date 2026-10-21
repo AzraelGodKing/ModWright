@@ -210,6 +210,7 @@ static class Program
         // Setting one Workshop item's tags through the Steam client, for a window or command line run (see WorkshopTags).
         if (args.Length > 0 && args[0] == WorkshopTags.ChildArg) return SteamworksTags.RunChild(args[1..]);
         if (args.Length > 0 && args[0] == WorkshopExtras.ChildArg) return SteamworksExtras.RunChild(args[1..]);
+        if (args.Length > 0 && args[0] == DropPod.SteamCollections.ChildArg) return SteamworksCollections.RunChild(args[1..]);
 
         if (Cli.IsCommand(args)) return RunCommandLine(args);
 

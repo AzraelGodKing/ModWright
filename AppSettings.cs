@@ -90,6 +90,8 @@ public sealed class AppSettings
     public Dictionary<string, string> GameFolders { get; set; } = new();
     /// <summary>Drop Pod: a game's config and saves folder chosen by hand, by Steam app id; missing = the game's usual place.</summary>
     public Dictionary<string, string> GameDataFolders { get; set; } = new();
+    /// <summary>Drop Pod: the Steam collection each modlist was last sent to, by "app id|modlist name" (see DropPod.SteamCollections.Key).</summary>
+    public Dictionary<string, string> SteamCollections { get; set; } = new();
     /// <summary>Discord webhook to announce uploads to, per mods folder. Kept here, not in the repo, because the link is a secret.</summary>
     public Dictionary<string, string> DiscordWebhooks { get; set; } = new();
     /// <summary>Mods folders whose uploads also get a GitHub release (made with the gh tool).</summary>
