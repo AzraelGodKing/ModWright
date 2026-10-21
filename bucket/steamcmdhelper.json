@@ -1,13 +1,13 @@
 {
-  "version": "1.2.0",
+  "version": "1.7.0",
   "description": "Upload Steam Workshop mod updates without remembering SteamCMD commands.",
   "homepage": "https://github.com/AzraelGodKing/SteamCMDHelper",
   "license": "MIT",
   "notes": "SteamCMD Helper downloads SteamCMD itself the first time it needs it (Options > Install SteamCMD).",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/AzraelGodKing/SteamCMDHelper/releases/download/v1.2.0/SteamCmdHelper-1.2.0-win-x64.exe#/SteamCmdHelper.exe",
-      "hash": "2d82c51ffc293723f53294408a1430311a9d58c4a4cd11acbb87a511402c6f0b"
+      "url": "https://github.com/AzraelGodKing/SteamCMDHelper/releases/download/v1.7.0/SteamCmdHelper-1.7.0-win-x64.exe#/SteamCmdHelper.exe",
+      "hash": "2f83939b00063a61909dd03f1eda3c9d62e06c3a2426cd9abbe0545239b188d4"
     }
   },
   "bin": "SteamCmdHelper.exe",
