@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.1
+
+- **Modwright reads as one word in the brand bar.** "Mod" and "wright" keep their own colours but no longer have a
+  gap between them.
+
 ## 1.7.0
 
 - **SteamCMD Helper is now Modwright**, with two sides: the Workshop uploader and the Drop Pod for RimWorld players.
