@@ -461,6 +461,19 @@ line to, every ticked mod's description, and sets their visibility, all sent wit
   upload history in one zip; **Import settings...** on the other PC backs up what is there first and asks where each
   mods folder is now. The file can contain Discord webhook links, so keep it private.
 
+### Release helpers
+
+- **Version hint:** the version dialog (F2) marks the bump your commits since the last upload suggest: major for
+  `BREAKING CHANGE` or `feat!:`, minor for `feat:` or "Add ...", patch otherwise. The upload confirmation warns when
+  the version looks too small for them.
+- **Release checklist:** your own steps per mods folder (Options > Uploading), ticked off in the upload confirmation.
+  "Don't upload until every step is ticked" makes it a must; dry runs never need it.
+- **Mod families:** when picked mods need each other (RimWorld modDependencies, else Workshop links), the ones others
+  need go up first, and if one fails, the mods that need it are not uploaded.
+- **Package > Make a preview image** draws a title card over a screenshot or a colour; **Workshop description from
+  README** turns README.md into Steam BBCode in the description file, with a preview.
+- The log notes subscriber milestones (100, 1,000, ...) and a noticeable drop in a week.
+
 ### Groups, the command palette and uploading later
 
 - **Groups** (Mods card) saves the ticked mods as a named group for the mods folder and ticks a group again in one
@@ -586,6 +599,34 @@ list when it closes.
 - **Insight:** hints about the active mods: methods two mods both rewrite with Harmony transpilers, prefixes that
   can stop other mods' changes, mods that patch per-tick methods, mods heavy on textures or definitions, and your
   rules file's notes.
+- **Details beside the list:** the picked mod's preview, author, version, needs and needed-by, modlists, your note
+  and description, with buttons for its folder, Workshop page and change notes. Right-click a mod for **Why is this
+  mod here?** (the rules that put it there) and **Note and colour...**.
+- **Undo:** Ctrl+Z and Ctrl+Y undo and redo list changes. Every Save to game is kept in **Tools > Load order
+  history**, with what was added, removed and moved, and any earlier list can be put back.
+- **Tools:** **Find the broken mod for me** (halves the suspects each round until one is left, then puts your list
+  back), **Load a Steam collection as a modlist**, **Compare with a friend's list** (from a share code, with Make mine
+  match), **Load times** (each start timed from the log), **Clean up unused mods and settings** (to the Recycle Bin,
+  Workshop mods unsubscribed), and **Back up the newest save before a risky start**.
+- **More:** export the active mods **with their mod settings** as a .zip (import takes it too), set **launch
+  options** for the normal game or an instance, and **freeze** an instance: its Workshop mods are copied in so Steam
+  updates can't change them, and linked into the Mods folder only while it plays.
+- After **Check for updates**, the change notes of mods with updates are shown, with risky lines marked. The log
+  window's **Report to the author** opens a ready bug report on the mod's GitHub issues or Workshop comments.
+  Right-click Modwright on the taskbar to start RimWorld or an instance without opening the window.
+
+### For mod authors: RimWorld tools in The Launch Pad
+
+Right-click one of your mods > **RimWorld** (RimWorld layouts only):
+
+- **Test in a clean colony:** starts the mod with only the game, the DLC and what it needs, in a "Launch Pad test"
+  instance, straight into a test map (`-quicktest`). Close the game and its log is read for errors that point at the
+  mod. The upload confirmation warns when the last test had errors or the mod changed since, and when a dependency
+  was updated it suggests testing again. **Compatibility grid** shows the last result per supported game version.
+- **Play it live:** links the mod's folder into RimWorld's Mods folder (a directory junction), so each build is in
+  the game at once. Only links Modwright made are ever removed; the folder itself is never touched.
+- **Edit About.xml:** the common fields with the Drop Pod's checks live, and rules picked from your installed mods.
+- **Read a player's log:** paste a log or a pastebin/gist/hastebin link and see only the problems in your own mods.
 
 ### Your own load-order rules
 

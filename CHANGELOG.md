@@ -11,6 +11,63 @@
   Anyone already using Modwright keeps both, so updating asks nothing.
 - **Modwright reads as one word in the brand bar.** "Mod" and "wright" keep their own colours but no longer have a
   gap between them.
+- **The Drop Pod shows the picked mod beside the list**: its preview, author, version, where it comes from, what it
+  needs and what needs it, which modlists use it, your note on it and its description, with buttons for its folder,
+  Workshop page and change notes. Drag the divider to resize it.
+- **Undo and a load order history.** Ctrl+Z and Ctrl+Y undo and redo changes to the mod list, and every Save to game is
+  kept (Tools > Load order history) with what was added, removed and moved, so you can go back to the list from
+  before last night's change.
+- **Why is this mod here?** Right-click a mod to see which rules (needs, loadAfter, loadBefore, your own rules file)
+  put it where it is in the load order.
+- **Find the broken mod for me.** Tools > Find the broken mod halves the suspects each round, starts the game with one
+  half (always with what they need), and asks whether the problem is still there. It names the culprit in a few rounds
+  and puts your list back at the end.
+- **Steam collections and a friend's list.** Load a Steam collection as a modlist (nested collections too), and
+  compare your list with a friend's share code: what each side has that the other doesn't, the order and versions,
+  with Make mine match.
+- **Your own notes and colours on mods**, shown in new Tag and Note columns and in the details panel.
+- **Clean up unused mods and settings.** Lists Workshop mods no modlist, instance or save uses, and settings files of
+  mods that are gone, with their size. The ticked ones go to the Recycle Bin, and Workshop mods are unsubscribed.
+- **Modlists with their mod settings.** Export the active mods with their settings files as a .zip, and import one to
+  get the same list and settings. New instances start with your mod settings.
+- **What changed in an update.** After Check for updates, the change notes of the mods with updates are shown, with
+  lines that mention saves, breaking changes or removals marked.
+- **A save backup before a risky start.** When the list differs from the mods your newest save was made with, the
+  Drop Pod offers to copy the save first (turn it off under Tools).
+- **Load times.** Each start is timed from the game's log, so Tools > Load times shows how long each setup took, how
+  much slower or faster than last time, and which mods were added since.
+- **Launch options** for the normal game and for each instance (such as -quicktest or -popupwindow), with options that
+  clash with the Drop Pod's own named.
+- **Freeze an instance.** Its Workshop mods are copied into the instance so Steam updates can't change them, and are
+  linked in only while that instance plays. Updates waiting on Steam are listed when you unfreeze it.
+- **Start RimWorld from the taskbar.** Right-click Modwright on the taskbar for Play RimWorld and each instance.
+- **Report a mod's error to its author** from the log window: a ready bug report (the error, the game version and how
+  many mods were active) opens on the mod's GitHub issues or its Workshop comments.
+- **Test in a clean colony** (The Launch Pad, right-click > RimWorld): your mod starts with only the game, the DLC and
+  what it needs, in its own instance and straight into a test map. When you close the game its log is read for errors
+  that point at your mod. The upload confirmation then warns when the mod has errors or changed since its test, and a
+  dependency update suggests testing again.
+- **Play it live.** Links your mod's folder into RimWorld's Mods folder, so each build is in the game with nothing
+  copied. Only links Modwright made are ever removed.
+- **Read a player's log.** Paste a log, a pastebin/gist/hastebin link or a file a player sent, and see only the
+  problems that point at your own mods, plus the mod list the log carries.
+- **An About.xml editor** with the Drop Pod's checks shown live as you type. Needs, loadAfter, loadBefore and
+  incompatibleWith can be picked from your installed mods, so packageIds and Workshop links are right. Fields it
+  doesn't show, comments and by-version lists stay as they were.
+- **A compatibility grid**: each of your mods' last clean-colony result on each RimWorld version it supports.
+- **A version bump hint.** The version dialog marks the bump your commits since the last upload point to (major for
+  "BREAKING CHANGE" or "feat!:", minor for "feat:" or "Add ...", patch for the rest), and the upload confirmation
+  warns when the version looks too small for them.
+- **Subscriber milestones and drops.** The log notes when a mod passes 1,000 (or another round number) subscribers, and
+  when it lost a noticeable share in a week.
+- **A release checklist** per mods folder (Options > Uploading): your own steps, shown as boxes to tick in the upload
+  confirmation. Turn on "Don't upload until every step is ticked" to make it a must.
+- **Make a preview image**: a title card over a screenshot or a colour, at 16:9 for RimWorld or square, saved as the
+  mod's preview (the old one is kept) and shrunk under Steam's 1 MB if needed.
+- **Workshop description from README**: turns README.md into Steam BBCode (headings, lists, links, images, code,
+  quotes) in the mod's description file, with a preview first.
+- **Release a mod family together.** When picked mods need each other, the ones others need go up first, and when one
+  fails, the mods that need it are not uploaded, so players never get half a release.
 
 ## 1.7.0
 
