@@ -8,6 +8,10 @@
   Mods with a broken About.xml show in the warning colour with what is wrong, mods made for another game version are
   greyed out, and package IDs installed twice are named at the top. Ctrl+Tab now steps through Upload, Drop Pod and
   Options.
+- **A new Kats theme, and the theme is now a drop-down.** Options > Appearance lists Dark, Light, Kats and Match Windows
+  in one drop-down instead of a row of buttons, so more themes fit. Kats pairs gunmetal grey with a vivid orange
+  (#FF5C00) for buttons, ticks and selection, with dark text on the orange so it stays easy to read. The brand bar
+  follows a dark theme's own colours; only the light theme keeps the dark bar.
 
 ## 1.6.0
 

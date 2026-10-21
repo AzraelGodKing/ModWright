@@ -295,6 +295,13 @@ static class Program
                 var dropPod = new MainForm(theme, new AppSettings { DoNotSave = true, GameFolders = { ["294100"] = rwGame }, GameDataFolders = { ["294100"] = rwData } }) { NoStartupPrompts = true };
                 dropPod.Shown += (_, _) => { dropPod.Size = new Size(Math.Min(1300, screen.Width - 40), Math.Min(800, screen.Height - 40)); dropPod.ShowDropPod(); };
                 Snap(dropPod, Path.Combine(args[sh + 1], $"droppod{suffix}.png"));
+                if (theme == Theme.DarkName)
+                {
+                    // Kats, the newest theme, once on the Upload tab with mods (each theme gets a shot only while it is new).
+                    var kats = new MainForm(Theme.KatsName, new AppSettings { RepoPath = DemoRepo(), Account = "demo_account", AllowCreate = true, DoNotSave = true }) { NoStartupPrompts = true };
+                    kats.Shown += (_, _) => kats.SelectFirstMod();
+                    Snap(kats, Path.Combine(args[sh + 1], "main-mods-kats.png"));
+                }
                 // The Options tab once per section: options.png is the first, then options-<section>.png for the rest.
                 for (var s = 0; ; s++)
                 {

@@ -21,7 +21,12 @@ public sealed record Palette(
     Color Accent, Color AccentHover, Color AccentText,
     Color Primary, Color PrimaryHover,
     Color Track, Color ListHeader,
-    Color Ok, Color Warn, Color Error, Color Info);
+    Color Ok, Color Warn, Color Error, Color Info)
+{
+    /// <summary>The darker end of the gradient on Accent and Primary buttons.</summary>
+    public Color AccentDeep { get; init; } = Color.FromArgb(18, 58, 168);
+    public Color PrimaryDeep { get; init; } = Color.FromArgb(52, 92, 14);
+}
 
 /// <summary>
 /// Dark (default), light and Windows High Contrast themes for the WinForms UI. <see cref="Apply"/> walks a control tree
@@ -29,7 +34,7 @@ public sealed record Palette(
 /// </summary>
 public static class Theme
 {
-    public const string DarkName = Display.Dark, LightName = Display.Light, SystemName = Display.System, HighContrastName = "HighContrast";
+    public const string DarkName = Display.Dark, LightName = Display.Light, KatsName = Display.Kats, SystemName = Display.System, HighContrastName = "HighContrast";
 
     // The look follows Steam's own desktop client: deep slate-blue surfaces, a near-black brand bar, Steam blue for
     // links, ticks and selection, light-blue secondary buttons and a green button for the main job. Neither theme uses
@@ -60,6 +65,26 @@ public static class Theme
         Ok: Color.FromArgb(52, 122, 26), Warn: Color.FromArgb(168, 92, 0), Error: Color.FromArgb(192, 40, 30), Info: Color.FromArgb(16, 112, 204));
 
     /// <summary>
+    /// Kats: gunmetal grey surfaces with a vivid orange (#FF5C00) for buttons, ticks and selection. Text on the orange is
+    /// near-black, which reads far better on it than white.
+    /// </summary>
+    public static readonly Palette KatsPalette = new(
+        KatsName, true,
+        Back: Color.FromArgb(31, 38, 42), Surface: Color.FromArgb(42, 52, 57), Header: Color.FromArgb(22, 27, 30),
+        Input: Color.FromArgb(26, 32, 36), Border: Color.FromArgb(72, 86, 93),
+        Text: Color.FromArgb(226, 230, 232), Muted: Color.FromArgb(150, 160, 166), Title: Color.White,
+        Button: Color.FromArgb(58, 70, 76), ButtonText: Color.FromArgb(255, 150, 92),
+        ButtonHover: Color.FromArgb(76, 90, 97), ButtonDown: Color.FromArgb(66, 79, 85),
+        Accent: Color.FromArgb(255, 92, 0), AccentHover: Color.FromArgb(255, 122, 46), AccentText: Color.FromArgb(24, 20, 18),
+        Primary: Color.FromArgb(255, 92, 0), PrimaryHover: Color.FromArgb(255, 122, 46),
+        Track: Color.FromArgb(56, 68, 74), ListHeader: Color.FromArgb(36, 45, 49),
+        Ok: Color.FromArgb(150, 210, 60), Warn: Color.FromArgb(240, 200, 80), Error: Color.FromArgb(240, 110, 100), Info: Color.FromArgb(255, 150, 92))
+    {
+        AccentDeep = Color.FromArgb(150, 46, 0),
+        PrimaryDeep = Color.FromArgb(150, 46, 0),
+    };
+
+    /// <summary>
     /// Windows High Contrast: every colour comes from the user's contrast theme, so the app reads exactly like the rest
     /// of Windows. Status colours fall back to the text colour; the words (badges, notes) carry the meaning.
     /// </summary>
@@ -82,7 +107,7 @@ public static class Theme
     /// The brand bar keeps the dark colours in the light theme too, the way Steam's own tools keep their dark top bar,
     /// so the window looks like the same product in either theme. High Contrast uses the contrast colours throughout.
     /// </summary>
-    public static Palette Banner => HighContrast ? Current : DarkPalette;
+    public static Palette Banner => Current == LightPalette ? DarkPalette : Current;
 
     /// <summary>The palette a control is drawn with: the banner's inside the brand bar, the theme's everywhere else.</summary>
     public static Palette PaletteFor(Control? c)
@@ -94,7 +119,7 @@ public static class Theme
 
     public static Palette Current { get; private set; } = DarkPalette;
 
-    /// <summary>What the user picked: "Dark", "Light" or "System". <see cref="Current"/> is what that resolves to now.</summary>
+    /// <summary>What the user picked: "Dark", "Light", "Kats" or "System". <see cref="Current"/> is what that resolves to now.</summary>
     public static string Choice { get; private set; } = DarkName;
 
     /// <summary>True while Windows High Contrast is on; it overrides the chosen theme.</summary>
@@ -109,7 +134,7 @@ public static class Theme
         Choice = Display.NormalizeTheme(name);
         var before = Current;
         Current = SystemInformation.HighContrast ? HighContrastPalette()
-            : Display.ResolveTheme(Choice, WindowsAppsUseLight()) == LightName ? LightPalette : DarkPalette;
+            : Display.ResolveTheme(Choice, WindowsAppsUseLight()) switch { LightName => LightPalette, KatsName => KatsPalette, _ => DarkPalette };
         return Current != before;
     }
 
@@ -464,7 +489,7 @@ public static class Theme
         else if (role is ThemeRole.Accent or ThemeRole.Primary)
         {
             var baseColor = role == ThemeRole.Primary ? (hot ? p.PrimaryHover : p.Primary) : (hot ? p.AccentHover : p.Accent);
-            var deep = role == ThemeRole.Primary ? Color.FromArgb(52, 92, 14) : Color.FromArgb(18, 58, 168);
+            var deep = role == ThemeRole.Primary ? p.PrimaryDeep : p.AccentDeep;
             var top = down ? Blend(baseColor, deep, 0.35) : Blend(baseColor, Color.White, 0.08);
             var bottom = Blend(baseColor, deep, down ? 0.55 : 0.45);
             using var bg = new System.Drawing.Drawing2D.LinearGradientBrush(r, top, bottom, 90f);

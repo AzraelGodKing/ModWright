@@ -25,9 +25,7 @@ public sealed partial class MainForm : Form
     readonly Label _login = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Keep);
     readonly LinkLabel _loginLink = new LinkLabel { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleRight, Tag = "fill", LinkBehavior = LinkBehavior.HoverUnderline }.Role(ThemeRole.Keep);
     readonly Label _steamCmdPath = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Muted);
-    readonly RadioButton _themeDark = new() { AutoSize = true, Text = "Dar&k" };
-    readonly RadioButton _themeLight = new() { AutoSize = true, Text = "Li&ght" };
-    readonly RadioButton _themeSystem = new() { AutoSize = true, Text = "&Match Windows" };
+    readonly ComboBox _theme = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
     readonly ComboBox _textSize = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90 };
     readonly ComboBox _language = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, AccessibleName = "Language" };
     List<Translation> _languages = new();
@@ -299,9 +297,7 @@ public sealed partial class MainForm : Form
         _appId.Leave += async (_, _) => await ApplyAppIdAsync();
         _appId.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await ApplyAppIdAsync(); } };
         _preset.SelectionChangeCommitted += (_, _) => ApplyPresetChoice();
-        _themeDark.CheckedChanged += (_, _) => { if (_themeDark.Checked) SetTheme(Theme.DarkName); };
-        _themeLight.CheckedChanged += (_, _) => { if (_themeLight.Checked) SetTheme(Theme.LightName); };
-        _themeSystem.CheckedChanged += (_, _) => { if (_themeSystem.Checked) SetTheme(Theme.SystemName); };
+        _theme.SelectedIndexChanged += (_, _) => { if (_theme.SelectedIndex >= 0) SetTheme(Display.Themes[_theme.SelectedIndex].Name); };
         _textSize.SelectionChangeCommitted += (_, _) => SetTextSize();
         _logFilter.SelectedIndexChanged += (_, _) => RenderLog();
         _autoScroll.CheckedChanged += (_, _) => { if (_autoScroll.Checked) _log.ScrollToCaret(); };
@@ -1095,11 +1091,12 @@ public sealed partial class MainForm : Form
         // ---- Appearance
         _contrastNote = Hint("Windows High Contrast is on, so its colours are used. The theme picked here applies when it is off.");
         foreach (var size in Display.TextSizes) _textSize.Items.Add(size + "%");
+        foreach (var t in Display.Themes) _theme.Items.Add(Localizer.T(t.Label));
         Tip(_textSize, "Makes all text, and the layout with it, larger than Windows' own scaling");
         ShowThemeChoice();
         AddSection("Appearance", "How SteamCMD Helper looks for your Windows user.",
             Card("Theme and text", null,
-                Row(Lbl("Theme"), _themeDark, _themeLight, _themeSystem),
+                Row(Lbl("Theme"), _theme),
                 _contrastNote,
                 Row(Lbl("Te&xt size"), _textSize),
                 Hint("The theme changes straight away; Match Windows follows Windows' light or dark app mode. " +
@@ -1254,7 +1251,7 @@ public sealed partial class MainForm : Form
         if (page == _dropPodPage) DropPodShown();
     }
 
-    /// <summary>Saves the theme choice (Dark, Light or Match Windows) and switches to it live.</summary>
+    /// <summary>Saves the theme choice (one of <see cref="Display.Themes"/>) and switches to it live.</summary>
     void SetTheme(string choice)
     {
         if (_populating || Theme.Choice == choice) return;
@@ -1268,9 +1265,7 @@ public sealed partial class MainForm : Form
     void ShowThemeChoice()
     {
         _populating = true;
-        _themeDark.Checked = Theme.Choice == Theme.DarkName;
-        _themeLight.Checked = Theme.Choice == Theme.LightName;
-        _themeSystem.Checked = Theme.Choice == Theme.SystemName;
+        _theme.SelectedIndex = Array.FindIndex(Display.Themes, t => t.Name == Theme.Choice);
         _textSize.SelectedItem = Display.NormalizeTextSize(_s.TextSize) + "%";
         _populating = false;
         _contrastNote.Visible = Theme.HighContrast;
@@ -3026,7 +3021,7 @@ public sealed partial class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _themeDark, _themeLight, _themeSystem, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _tsTeam, _tsCommunity, _tsCategories, _tsToken, _tsAfter, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _groups, _afterCmd, _pushTags, _keepPackages, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _steamBack, _restartSteam, _watchBuilds })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _theme, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _tsTeam, _tsCommunity, _tsCategories, _tsToken, _tsAfter, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _groups, _afterCmd, _pushTags, _keepPackages, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _steamBack, _restartSteam, _watchBuilds })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
