@@ -55,6 +55,29 @@ public static class CleanTest
         return (sorted, missing);
     }
 
+    static readonly HashSet<string> NotPlayed = new(StringComparer.OrdinalIgnoreCase) { ".git", ".vs", ".idea", "obj", "Source", "node_modules" };
+
+    /// <summary>
+    /// A hash of what RimWorld reads from the mod folder (every file's path and contents, leaving out .git, Source and
+    /// build leftovers), to tell whether the mod changed since it was tested.
+    /// </summary>
+    public static string FolderHash(string folder)
+    {
+        using var sha = System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256);
+        void Walk(string dir)
+        {
+            foreach (var f in Directory.EnumerateFiles(dir).OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+            {
+                sha.AppendData(System.Text.Encoding.UTF8.GetBytes(Path.GetRelativePath(folder, f).Replace('\\', '/').ToLowerInvariant() + "\n"));
+                try { sha.AppendData(File.ReadAllBytes(f)); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
+            foreach (var d in Directory.EnumerateDirectories(dir).OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+                if (!NotPlayed.Contains(Path.GetFileName(d))) Walk(d);
+        }
+        if (Directory.Exists(folder)) Walk(folder);
+        return Convert.ToHexString(sha.GetHashAndReset())[..16];
+    }
+
     /// <summary>The log problems that point at <paramref name="modKey"/>, errors first.</summary>
     public static List<LogIssue> About(LogReport report, string modKey) =>
         report.Issues.Where(i => i.Mods.Any(b => b.Mod == modKey)).OrderByDescending(i => i.Level).ThenByDescending(i => i.Count).ToList();

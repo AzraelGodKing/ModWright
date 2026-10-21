@@ -63,6 +63,20 @@ public sealed class BatchUpload
     public bool OneSession { get; init; }
 
     /// <summary>
+    /// A mod family released together: each mod's key (RimWorld: packageId) and the keys it needs. Mods go up after the
+    /// picked mods they need, and a mod whose needed mod failed is not run, so players never get half a release.
+    /// </summary>
+    public (Func<ModInfo, string?> Key, Func<ModInfo, IEnumerable<string>> Needs)? Family { get; init; }
+
+    /// <summary>True when one picked mod needs another, so the order and skipping matter.</summary>
+    bool IsFamily(IReadOnlyList<ModInfo> mods)
+    {
+        if (Family is not { } f) return false;
+        var keys = new HashSet<string>(mods.Select(f.Key).OfType<string>(), StringComparer.OrdinalIgnoreCase);
+        return mods.Any(m => f.Needs(m).Any(n => keys.Contains(n) && !string.Equals(n, f.Key(m), StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>
     /// Runs every mod in order. Cancelling stops after the current mod; it and the rest are reported as not run.
     /// Never throws for a single mod's failure.
     /// </summary>
@@ -77,7 +91,10 @@ public sealed class BatchUpload
 
     async Task<List<BatchItem>> RunBatchAsync(IReadOnlyList<ModInfo> mods, bool upload, CancellationToken ct)
     {
-        if (OneSession && upload && mods.Count > 1) return await RunSessionAsync(mods, ct);
+        var family = IsFamily(mods);
+        if (family) mods = FamilyRelease.Order(mods, Family!.Value.Key, Family.Value.Needs);
+        // One session uploads everything at once, so a family runs mod by mod to be able to stop the dependents.
+        if (OneSession && upload && mods.Count > 1 && !family) return await RunSessionAsync(mods, ct);
         // The next mods are packaged while the current one is checked and uploaded.
         if (mods.Count > 1) _pub.PackageAhead(mods, ct);
         try { return await RunEachAsync(mods, upload, ct); }
@@ -88,6 +105,8 @@ public sealed class BatchUpload
     {
         var results = new List<BatchItem>();
         string? stopReason = null;
+        var failed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); // family key -> mod name
+        var family = IsFamily(mods) ? Family : null;
         for (var i = 0; i < mods.Count; i++)
         {
             var m = mods[i];
@@ -95,6 +114,14 @@ public sealed class BatchUpload
             if (stopReason != null)
             {
                 results.Add(new BatchItem(m, BatchStatus.NotRun, "Not run: " + stopReason + ".", m.WorkshopId));
+                continue;
+            }
+            if (family is { } fam && fam.Needs(m).FirstOrDefault(failed.ContainsKey) is { } broken)
+            {
+                if (fam.Key(m) is { Length: > 0 } k) failed[k] = m.Name;
+                var skip = new BatchItem(m, BatchStatus.NotRun, $"Not run: it needs {failed[broken]}, whose upload did not go through.", m.WorkshopId);
+                results.Add(skip);
+                Finished?.Invoke(skip, i, mods.Count);
                 continue;
             }
 
@@ -117,6 +144,7 @@ public sealed class BatchUpload
                 item = new BatchItem(m, BatchStatus.Failed, e.Message, m.WorkshopId);
             }
             results.Add(item);
+            if (!item.Ok && family?.Key(m) is { Length: > 0 } key) failed[key] = m.Name;
             Finished?.Invoke(item, i, mods.Count);
         }
         return results;
