@@ -49,6 +49,11 @@
   another RimWorld install (an older version, say). Pick it in the Instance list to edit its mods, and press Play to
   start RimWorld with it (RimWorld's own -savedatafolder switch). More exports an instance to a zip, with or without
   its saves, imports one, opens its folder or deletes it.
+- **Saves know their mods.** Drop Pod > Saves lists the saves of the normal game or the picked instance, newest
+  first, with the game version and how each save's mods differ from the active ones: not installed, installed but
+  not active, extra, or in another order. Use this save's mods makes the active list match it (and offers to download
+  the missing ones from the Workshop); Save as a modlist keeps it for later. Only the top of each save is read, so
+  even very large saves open at once, and a damaged save says so instead of failing.
 
 ## 1.6.0
 
