@@ -2,9 +2,10 @@
 
 ## 1.10.0
 
-- **Two more themes: Triphlx and Tohma.** Options > Appearance > Theme now also offers Triphlx (true black with an
-  electric blue) and Tohma (deep royal blue with crimson). Triphlx puts dark text on its blue and Tohma white text on
-  its crimson, so buttons and selected rows stay easy to read.
+- **Three more themes: Triphlx, Tohma and Skywolf.** Options > Appearance > Theme now also offers Triphlx (true black
+  with an electric blue), Tohma (deep royal blue with crimson) and Skywolf (black with a deep dark purple). Triphlx puts
+  dark text on its blue, and Tohma and Skywolf white text on their crimson and purple, so buttons and selected rows stay
+  easy to read.
 
 ## 1.9.0
 
