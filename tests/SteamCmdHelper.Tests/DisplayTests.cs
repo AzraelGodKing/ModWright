@@ -12,6 +12,9 @@ public class DisplayTests
     [InlineData("LIGHT", "Light")]
     [InlineData("system", "System")]
     [InlineData("kats", "Kats")]
+    [InlineData("koneko", "Koneko")]
+    [InlineData("SERINA", "Serina")]
+    [InlineData("Wolfie", "Wolfie")]
     [InlineData("HighContrast", "Dark")]
     public void Theme_choice_is_normalized_with_dark_as_default(string? saved, string expected) =>
         Assert.Equal(expected, Display.NormalizeTheme(saved));
@@ -23,6 +26,7 @@ public class DisplayTests
     [InlineData("Light", false, "Light")]
     [InlineData("Dark", true, "Dark")]
     [InlineData("Kats", true, "Kats")]
+    [InlineData("Wolfie", true, "Wolfie")]
     public void Match_Windows_follows_the_app_mode(string choice, bool? appsUseLight, string expected) =>
         Assert.Equal(expected, Display.ResolveTheme(choice, appsUseLight));
 

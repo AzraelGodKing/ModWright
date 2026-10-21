@@ -342,10 +342,13 @@ static class Program
                 Snap(managerOnly, Path.Combine(args[sh + 1], $"main-manager{suffix}.png"));
                 if (theme == Theme.DarkName)
                 {
-                    // Kats, the newest theme, once on the Upload tab with mods (each theme gets a shot only while it is new).
-                    var kats = new MainForm(Theme.KatsName, new AppSettings { RepoPath = DemoRepo(), Account = "demo_account", AllowCreate = true, DoNotSave = true }) { NoStartupPrompts = true };
-                    kats.Shown += (_, _) => kats.SelectFirstMod();
-                    Snap(kats, Path.Combine(args[sh + 1], "main-mods-kats.png"));
+                    // The newest themes, each once on the Upload tab with mods (each theme gets a shot only while it is new).
+                    foreach (var (name, file) in new[] { (Theme.KonekoName, "koneko"), (Theme.SerinaName, "serina"), (Theme.WolfieName, "wolfie") })
+                    {
+                        var fresh = new MainForm(name, new AppSettings { RepoPath = DemoRepo(), Account = "demo_account", AllowCreate = true, DoNotSave = true }) { NoStartupPrompts = true };
+                        fresh.Shown += (_, _) => fresh.SelectFirstMod();
+                        Snap(fresh, Path.Combine(args[sh + 1], $"main-mods-{file}.png"));
+                    }
                 }
                 // The Options tab once per section: options.png is the first, then options-<section>.png for the rest.
                 for (var s = 0; ; s++)

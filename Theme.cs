@@ -34,7 +34,8 @@ public sealed record Palette(
 /// </summary>
 public static class Theme
 {
-    public const string DarkName = Display.Dark, LightName = Display.Light, KatsName = Display.Kats, SystemName = Display.System, HighContrastName = "HighContrast";
+    public const string DarkName = Display.Dark, LightName = Display.Light, KatsName = Display.Kats, KonekoName = Display.Koneko,
+        SerinaName = Display.Serina, WolfieName = Display.Wolfie, SystemName = Display.System, HighContrastName = "HighContrast";
 
     // The look follows Steam's own desktop client: deep slate-blue surfaces, a near-black brand bar, Steam blue for
     // links, ticks and selection, light-blue secondary buttons and a green button for the main job. Neither theme uses
@@ -85,6 +86,65 @@ public static class Theme
     };
 
     /// <summary>
+    /// Koneko: near-black surfaces with a bright purple for buttons, ticks and selection. Text on the purple is near-black,
+    /// which reads better on it than white.
+    /// </summary>
+    public static readonly Palette KonekoPalette = new(
+        KonekoName, true,
+        Back: Color.FromArgb(16, 12, 20), Surface: Color.FromArgb(28, 22, 34), Header: Color.FromArgb(10, 8, 13),
+        Input: Color.FromArgb(20, 16, 25), Border: Color.FromArgb(66, 52, 82),
+        Text: Color.FromArgb(230, 224, 236), Muted: Color.FromArgb(156, 146, 168), Title: Color.White,
+        Button: Color.FromArgb(48, 36, 62), ButtonText: Color.FromArgb(200, 160, 255),
+        ButtonHover: Color.FromArgb(66, 50, 86), ButtonDown: Color.FromArgb(58, 44, 76),
+        Accent: Color.FromArgb(168, 98, 255), AccentHover: Color.FromArgb(186, 128, 255), AccentText: Color.FromArgb(18, 10, 26),
+        Primary: Color.FromArgb(168, 98, 255), PrimaryHover: Color.FromArgb(186, 128, 255),
+        Track: Color.FromArgb(44, 34, 56), ListHeader: Color.FromArgb(22, 17, 27),
+        Ok: Color.FromArgb(150, 210, 60), Warn: Color.FromArgb(240, 200, 80), Error: Color.FromArgb(240, 110, 100), Info: Color.FromArgb(200, 160, 255))
+    {
+        AccentDeep = Color.FromArgb(92, 36, 168),
+        PrimaryDeep = Color.FromArgb(92, 36, 168),
+    };
+
+    /// <summary>
+    /// Serina: deep purple surfaces with mint green for buttons, ticks and selection, and dark text on the mint.
+    /// </summary>
+    public static readonly Palette SerinaPalette = new(
+        SerinaName, true,
+        Back: Color.FromArgb(36, 24, 52), Surface: Color.FromArgb(48, 33, 70), Header: Color.FromArgb(26, 17, 38),
+        Input: Color.FromArgb(30, 20, 44), Border: Color.FromArgb(86, 64, 116),
+        Text: Color.FromArgb(236, 230, 244), Muted: Color.FromArgb(176, 160, 198), Title: Color.White,
+        Button: Color.FromArgb(64, 46, 92), ButtonText: Color.FromArgb(130, 232, 194),
+        ButtonHover: Color.FromArgb(82, 60, 116), ButtonDown: Color.FromArgb(72, 52, 104),
+        Accent: Color.FromArgb(110, 226, 182), AccentHover: Color.FromArgb(142, 238, 202), AccentText: Color.FromArgb(22, 30, 27),
+        Primary: Color.FromArgb(110, 226, 182), PrimaryHover: Color.FromArgb(142, 238, 202),
+        Track: Color.FromArgb(62, 44, 88), ListHeader: Color.FromArgb(40, 27, 58),
+        Ok: Color.FromArgb(110, 226, 182), Warn: Color.FromArgb(240, 200, 80), Error: Color.FromArgb(255, 120, 130), Info: Color.FromArgb(196, 160, 255))
+    {
+        AccentDeep = Color.FromArgb(40, 150, 112),
+        PrimaryDeep = Color.FromArgb(40, 150, 112),
+    };
+
+    /// <summary>
+    /// Wolfie: deep blue surfaces with a bright green for buttons, ticks and selection, light blue for the other buttons'
+    /// text, and dark text on the green.
+    /// </summary>
+    public static readonly Palette WolfiePalette = new(
+        WolfieName, true,
+        Back: Color.FromArgb(14, 26, 44), Surface: Color.FromArgb(20, 36, 60), Header: Color.FromArgb(9, 17, 30),
+        Input: Color.FromArgb(12, 22, 38), Border: Color.FromArgb(44, 70, 104),
+        Text: Color.FromArgb(220, 230, 242), Muted: Color.FromArgb(140, 164, 192), Title: Color.White,
+        Button: Color.FromArgb(28, 52, 84), ButtonText: Color.FromArgb(110, 190, 255),
+        ButtonHover: Color.FromArgb(40, 70, 110), ButtonDown: Color.FromArgb(34, 62, 98),
+        Accent: Color.FromArgb(46, 204, 113), AccentHover: Color.FromArgb(76, 222, 140), AccentText: Color.FromArgb(8, 24, 16),
+        Primary: Color.FromArgb(46, 204, 113), PrimaryHover: Color.FromArgb(76, 222, 140),
+        Track: Color.FromArgb(30, 50, 78), ListHeader: Color.FromArgb(16, 30, 50),
+        Ok: Color.FromArgb(46, 204, 113), Warn: Color.FromArgb(240, 200, 80), Error: Color.FromArgb(240, 110, 100), Info: Color.FromArgb(110, 190, 255))
+    {
+        AccentDeep = Color.FromArgb(18, 128, 66),
+        PrimaryDeep = Color.FromArgb(18, 128, 66),
+    };
+
+    /// <summary>
     /// Windows High Contrast: every colour comes from the user's contrast theme, so the app reads exactly like the rest
     /// of Windows. Status colours fall back to the text colour; the words (badges, notes) carry the meaning.
     /// </summary>
@@ -119,7 +179,7 @@ public static class Theme
 
     public static Palette Current { get; private set; } = DarkPalette;
 
-    /// <summary>What the user picked: "Dark", "Light", "Kats" or "System". <see cref="Current"/> is what that resolves to now.</summary>
+    /// <summary>What the user picked: "Dark", "Light", "Kats", "Koneko", "Serina", "Wolfie" or "System". <see cref="Current"/> is what that resolves to now.</summary>
     public static string Choice { get; private set; } = DarkName;
 
     /// <summary>True while Windows High Contrast is on; it overrides the chosen theme.</summary>
@@ -134,7 +194,11 @@ public static class Theme
         Choice = Display.NormalizeTheme(name);
         var before = Current;
         Current = SystemInformation.HighContrast ? HighContrastPalette()
-            : Display.ResolveTheme(Choice, WindowsAppsUseLight()) switch { LightName => LightPalette, KatsName => KatsPalette, _ => DarkPalette };
+            : Display.ResolveTheme(Choice, WindowsAppsUseLight()) switch 
+            {
+                LightName => LightPalette, KatsName => KatsPalette, KonekoName => KonekoPalette,
+                SerinaName => SerinaPalette, WolfieName => WolfiePalette, _ => DarkPalette,
+            };
         return Current != before;
     }
 
