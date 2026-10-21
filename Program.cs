@@ -42,6 +42,38 @@ static class Program
         return sb.ToString();
     }
 
+    /// <summary>
+    /// A throwaway RimWorld install for the Drop Pod screenshot: base game and a DLC, a Mods folder, a Workshop folder
+    /// next to it, and a player data folder with a ModsConfig.xml. Returns the game and data folders.
+    /// </summary>
+    static (string Game, string Data) DemoRimWorld()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "steamcmd_helper_shot_rimworld");
+        try { Directory.Delete(root, true); } catch { }
+        var game = Path.Combine(root, "steamapps", "common", "RimWorld");
+        var workshop = Path.Combine(root, "steamapps", "workshop", "content", "294100");
+        var data = Path.Combine(root, "UserData");
+        void Mod(string dir, string name, string author, string? id, string versions, string extra = "")
+        {
+            Directory.CreateDirectory(Path.Combine(dir, "About"));
+            File.WriteAllText(Path.Combine(dir, "About", "About.xml"), $"<?xml version=\"1.0\"?><ModMetaData><name>{name}</name><author>{author}</author>"
+                + (id != null ? $"<packageId>{id}</packageId>" : "") + "<supportedVersions>" + string.Concat(versions.Split(',').Select(v => $"<li>{v}</li>")) + $"</supportedVersions>{extra}</ModMetaData>");
+        }
+        Directory.CreateDirectory(game);
+        File.WriteAllText(Path.Combine(game, "Version.txt"), "1.6.4566 rev592");
+        Mod(Path.Combine(game, "Data", "Core"), "Core", "Ludeon Studios", "Ludeon.RimWorld", "1.6");
+        Mod(Path.Combine(game, "Data", "Biotech"), "Biotech", "Ludeon Studios", "Ludeon.RimWorld.Biotech", "1.6");
+        Mod(Path.Combine(game, "Mods", "MyColonyTweaks"), "My Colony Tweaks", "Kat", "Kat.ColonyTweaks", "1.5,1.6");
+        Mod(Path.Combine(workshop, "2009463077"), "Harmony", "Andreas Pardeike", "brrainz.harmony", "1.4,1.5,1.6");
+        Mod(Path.Combine(workshop, "1874644848"), "Better Storage", "Azrael", "Azrael.BetterStorage", "1.5,1.6", "<loadAfter><li>brrainz.harmony</li></loadAfter>");
+        Mod(Path.Combine(workshop, "2016263135"), "Old Hats", "Someone", "Someone.OldHats", "1.3,1.4");
+        Mod(Path.Combine(workshop, "2160293541"), "No Package Id", "Someone Else", null, "1.6");
+        Directory.CreateDirectory(Path.Combine(data, "Config"));
+        File.WriteAllText(Path.Combine(data, "Config", "ModsConfig.xml"), "<?xml version=\"1.0\"?><ModsConfigData><version>1.6.4566 rev592</version><activeMods>"
+            + "<li>ludeon.rimworld</li><li>brrainz.harmony</li><li>ludeon.rimworld.biotech</li><li>azrael.betterstorage</li><li>kat.colonytweaks</li></activeMods></ModsConfigData>");
+        return (game, data);
+    }
+
     /// <summary>A throwaway RimWorld mods folder for the --shot screenshots: one mod per kind of row.</summary>
     static string DemoRepo()
     {
@@ -258,6 +290,11 @@ static class Program
                 var wideList = new MainForm(theme, new AppSettings { RepoPath = DemoRepo(), Account = "demo_account", AllowCreate = true, DoNotSave = true }) { NoStartupPrompts = true };
                 wideList.Shown += (_, _) => wideList.Size = new Size(Math.Min(1700, screen.Width - 40), Math.Min(1000, screen.Height - 40));
                 Snap(wideList, Path.Combine(args[sh + 1], $"main-details-list{suffix}.png"));
+                // The Drop Pod tab on a demo RimWorld install.
+                var (rwGame, rwData) = DemoRimWorld();
+                var dropPod = new MainForm(theme, new AppSettings { DoNotSave = true, GameFolders = { ["294100"] = rwGame }, GameDataFolders = { ["294100"] = rwData } }) { NoStartupPrompts = true };
+                dropPod.Shown += (_, _) => { dropPod.Size = new Size(Math.Min(1300, screen.Width - 40), Math.Min(800, screen.Height - 40)); dropPod.ShowDropPod(); };
+                Snap(dropPod, Path.Combine(args[sh + 1], $"droppod{suffix}.png"));
                 // The Options tab once per section: options.png is the first, then options-<section>.png for the rest.
                 for (var s = 0; ; s++)
                 {

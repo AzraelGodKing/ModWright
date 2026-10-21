@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **The Drop Pod: a new tab for the RimWorld mods you play with.** It finds RimWorld through your Steam libraries (or a
+  folder you pick), reads every mod from the base game and DLC, the Mods folder and the Workshop, and lists each one's
+  name, author, package ID, where it came from, the game versions it supports and its place in the current load order.
+  Mods with a broken About.xml show in the warning colour with what is wrong, mods made for another game version are
+  greyed out, and package IDs installed twice are named at the top. Ctrl+Tab now steps through Upload, Drop Pod and
+  Options.
+
 ## 1.6.0
 
 - **The space beside the mod list is put to use.** On a wide window the list's columns ended about halfway across and

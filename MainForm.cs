@@ -6,7 +6,7 @@ using Microsoft.Win32;
 
 namespace SteamCmdHelper;
 
-public sealed class MainForm : Form
+public sealed partial class MainForm : Form
 {
     readonly AppSettings _s;
     ProjectConfig _cfg = new();
@@ -137,8 +137,8 @@ public sealed class MainForm : Form
     Button _groups = null!;
     Button _help = null!, _checkUpdateNow = null!, _editPage = null!, _browse = null!, _refresh = null!, _all = null!, _none = null!, _go = null!, _later = null!, _cancel = null!, _retry = null!,
         _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!, _emptyBrowse = null!, _emptyLayout = null!, _emptyClear = null!, _emptyNew = null!;
-    NavButton _navUpload = null!, _navOptions = null!;
-    Control _uploadPage = null!, _optionsPage = null!, _setup = null!, _progress = null!;
+    NavButton _navUpload = null!, _navDropPod = null!, _navOptions = null!;
+    Control _uploadPage = null!, _dropPodPage = null!, _optionsPage = null!, _setup = null!, _progress = null!;
     Tone _loginTone = Tone.Muted;
 
     List<ModInfo> _mods = new();
@@ -269,8 +269,10 @@ public sealed class MainForm : Form
 
         _uploadPage = BuildUploadPage();
         _optionsPage = BuildOptionsPage();
+        _dropPodPage = BuildDropPodPage();
         var pages = new Panel { Dock = DockStyle.Fill };
         pages.Controls.Add(_uploadPage);
+        pages.Controls.Add(_dropPodPage);
         pages.Controls.Add(_optionsPage);
 
         // Fill first, then the top bar, so docking puts the bar above the pages.
@@ -374,9 +376,10 @@ public sealed class MainForm : Form
     /// </summary>
     Control BuildHeader()
     {
-        var bar = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 5, RowCount = 1, Padding = new Padding(16, 10, 12, 2) }.Role(ThemeRole.Header);
+        var bar = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 6, RowCount = 1, Padding = new Padding(16, 10, 12, 2) }.Role(ThemeRole.Header);
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -391,12 +394,16 @@ public sealed class MainForm : Form
         bar.Controls.Add(title, 0, 0);
 
         _navUpload = new NavButton { Text = "&UPLOAD", AccessibleName = "Upload" };
+        _navDropPod = new NavButton { Text = "DROP POD", AccessibleName = "The Drop Pod: your RimWorld mods" };
         _navOptions = new NavButton { Text = "&OPTIONS", AccessibleName = "Options" };
         _navUpload.Click += (_, _) => ShowPage(_uploadPage);
+        _navDropPod.Click += (_, _) => ShowPage(_dropPodPage);
         _navOptions.Click += (_, _) => ShowPage(_optionsPage);
-        _navUpload.Anchor = _navOptions.Anchor = AnchorStyles.Bottom;
+        _navUpload.Anchor = _navDropPod.Anchor = _navOptions.Anchor = AnchorStyles.Bottom;
+        Tip(_navDropPod, "The Drop Pod: the RimWorld mods you play with");
         bar.Controls.Add(_navUpload, 2, 0);
-        bar.Controls.Add(_navOptions, 3, 0);
+        bar.Controls.Add(_navDropPod, 3, 0);
+        bar.Controls.Add(_navOptions, 4, 0);
 
         var helpMenu = new ContextMenuStrip();
         helpMenu.Items.Add(new ToolStripMenuItem("&Keyboard shortcuts", null, (_, _) => ShowShortcuts()) { ShortcutKeyDisplayString = "F1" });
@@ -410,7 +417,7 @@ public sealed class MainForm : Form
         _help.Margin = new Padding(12, 0, 0, 8);
         _help.Anchor = AnchorStyles.None;
         Tip(_help, "Keyboard shortcuts (F1), or send a request: support another game, report a bug or suggest a feature");
-        bar.Controls.Add(_help, 4, 0);
+        bar.Controls.Add(_help, 5, 0);
         return bar;
     }
 
@@ -1239,9 +1246,12 @@ public sealed class MainForm : Form
     {
         if (page == _optionsPage) SaveFields();
         _uploadPage.Visible = page == _uploadPage;
+        _dropPodPage.Visible = page == _dropPodPage;
         _optionsPage.Visible = page == _optionsPage;
         _navUpload.Selected = page == _uploadPage;
+        _navDropPod.Selected = page == _dropPodPage;
         _navOptions.Selected = page == _optionsPage;
+        if (page == _dropPodPage) DropPodShown();
     }
 
     /// <summary>Saves the theme choice (Dark, Light or Match Windows) and switches to it live.</summary>
@@ -1330,8 +1340,10 @@ public sealed class MainForm : Form
         Theme.StyleMenu(_list.ContextMenuStrip!);
         if (_help.Tag is ContextMenuStrip helpMenu) Theme.StyleMenu(helpMenu);
         _navUpload.Selected = _uploadPage.Visible;
+        _navDropPod.Selected = _dropPodPage.Visible;
         _navOptions.Selected = _optionsPage.Visible;
         foreach (var it in _rows) ColorRow(it, (ModInfo)it.Tag!);
+        ColorDropPodRows();
         UpdateDetail();
         SetLogin(_login.Text, _loginTone);
         ShowGame();
@@ -1360,6 +1372,8 @@ public sealed class MainForm : Form
     {
         switch (keyData)
         {
+            case Keys.F5 when _dropPodPage.Visible:
+                _ = ScanDropPodAsync(); return true;
             case Keys.F5 when !_busy:
                 RefreshAll(); return true;
             case Keys.Control | Keys.O when !_busy:
@@ -1377,9 +1391,15 @@ public sealed class MainForm : Form
                 ShowPalette(); return true;
             case Keys.Control | Keys.Tab:
             case Keys.Control | Keys.Shift | Keys.Tab:
-                ShowPage(_uploadPage.Visible ? _optionsPage : _uploadPage);
-                (_uploadPage.Visible ? _navUpload : _navOptions).Focus();
+            {
+                // Upload, Drop Pod, Options, round and round (Shift goes backwards).
+                var order = new (Control Page, NavButton Nav)[] { (_uploadPage, _navUpload), (_dropPodPage, _navDropPod), (_optionsPage, _navOptions) };
+                var at = Array.FindIndex(order, p => p.Page.Visible);
+                var next = order[(at + ((keyData & Keys.Shift) != 0 ? order.Length - 1 : 1)) % order.Length];
+                ShowPage(next.Page);
+                next.Nav.Focus();
                 return true;
+            }
             case Keys.Control | Keys.PageDown when _optionsPage.Visible:
             case Keys.Control | Keys.PageUp when _optionsPage.Visible:
                 ShowSection((_section + ((keyData & Keys.KeyCode) == Keys.PageUp ? _sections.Count - 1 : 1)) % _sections.Count);

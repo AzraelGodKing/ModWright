@@ -1,0 +1,120 @@
+using System.Collections.Concurrent;
+using System.Xml;
+using System.Xml.Linq;
+
+namespace SteamCmdHelper.DropPod;
+
+/// <summary>The mods found for a game: every copy (duplicates included), and what could not be read.</summary>
+public sealed class LibraryScan
+{
+    public GameInstall Install { get; init; } = null!;
+    /// <summary>Every mod found, sorted by name. Two copies of the same id are both here; see <see cref="Duplicates"/>.</summary>
+    public List<ModManifest> Mods { get; init; } = new();
+    /// <summary>Ids of the active mods in load order, or null when the game has no list yet.</summary>
+    public IReadOnlyList<string>? Active { get; init; }
+    /// <summary>Folders that could not be read at all, in words.</summary>
+    public List<string> Notes { get; init; } = new();
+
+    /// <summary>Mods by <see cref="ModManifest.Key"/>; where an id has several copies, the one the game prefers (first mod folder wins).</summary>
+    public Dictionary<string, ModManifest> ById()
+    {
+        var d = new Dictionary<string, ModManifest>(StringComparer.Ordinal);
+        foreach (var m in Mods.OrderBy(m => m.Source switch { ModSource.Official => 0, ModSource.Local => 1, _ => 2 }))
+            d.TryAdd(m.Key, m);
+        return d;
+    }
+
+    /// <summary>Ids that more than one mod folder claims.</summary>
+    public List<IGrouping<string, ModManifest>> Duplicates() =>
+        Mods.Where(m => m.Id.Length > 0).GroupBy(m => m.Key).Where(g => g.Count() > 1).ToList();
+}
+
+/// <summary>Reads every mod folder a game has, in parallel, without ever failing on one bad mod.</summary>
+public static class ModLibrary
+{
+    public static LibraryScan Scan(IGameModule game, GameInstall install, CancellationToken ct = default)
+    {
+        var notes = new ConcurrentBag<string>();
+        var found = new ConcurrentBag<ModManifest>();
+        var folders = new List<ModFolder>();
+        foreach (var mf in game.ModFolders(install))
+        {
+            try
+            {
+                if (!Directory.Exists(mf.Path)) continue;
+                folders.AddRange(Directory.GetDirectories(mf.Path).Select(d => new ModFolder(d, mf.Source)));
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { notes.Add($"Could not list {mf.Path}: {e.Message}"); }
+        }
+        Parallel.ForEach(folders, new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = Math.Max(2, Environment.ProcessorCount) }, f =>
+        {
+            try
+            {
+                if (game.ReadMod(f.Path, f.Source) is { } m) found.Add(m);
+            }
+            catch (Exception e) { notes.Add($"Could not read {f.Path}: {e.Message}"); }
+        });
+        IReadOnlyList<string>? active = null;
+        try { active = game.ReadActiveMods(install); }
+        catch (Exception e) { notes.Add("Could not read the active mod list: " + e.Message); }
+        return new LibraryScan
+        {
+            Install = install,
+            Mods = found.OrderBy(m => m.DisplayName, StringComparer.CurrentCultureIgnoreCase).ThenBy(m => m.Folder, StringComparer.OrdinalIgnoreCase).ToList(),
+            Active = active,
+            Notes = notes.OrderBy(n => n, StringComparer.Ordinal).ToList(),
+        };
+    }
+}
+
+/// <summary>File helpers for reading other people's files: case-insensitive lookups and XML that cannot reach out.</summary>
+public static class SafeFiles
+{
+    /// <summary>
+    /// The child of <paramref name="dir"/> named <paramref name="name"/> in any letter case (Windows ignores case, mods made on
+    /// other systems sometimes ship "about/about.xml"), or null.
+    /// </summary>
+    public static string? Child(string dir, string name, bool directory = false)
+    {
+        var exact = Path.Combine(dir, name);
+        if (directory ? Directory.Exists(exact) : File.Exists(exact)) return exact;
+        try
+        {
+            if (!Directory.Exists(dir)) return null;
+            var all = directory ? Directory.EnumerateDirectories(dir) : Directory.EnumerateFiles(dir);
+            return all.FirstOrDefault(p => string.Equals(Path.GetFileName(p), name, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    /// <summary>A relative path ("About/About.xml") resolved one part at a time, ignoring case.</summary>
+    public static string? Find(string dir, string relPath)
+    {
+        var parts = relPath.Split('/', '\\');
+        var cur = dir;
+        for (var i = 0; i < parts.Length; i++)
+        {
+            var next = Child(cur, parts[i], directory: i < parts.Length - 1);
+            if (next == null) return null;
+            cur = next;
+        }
+        return cur;
+    }
+
+    /// <summary>Reader settings for untrusted XML: no DTDs, no external files, and a size cap so a broken file can't eat memory.</summary>
+    public static XmlReaderSettings XmlSettings(long maxChars = 16_000_000) => new()
+    {
+        DtdProcessing = DtdProcessing.Ignore,
+        XmlResolver = null,
+        MaxCharactersInDocument = maxChars,
+        IgnoreComments = true,
+        CloseInput = true,
+    };
+
+    /// <summary>Parses <paramref name="xml"/> with <see cref="XmlSettings"/>.</summary>
+    public static XDocument ParseXml(string xml)
+    {
+        using var reader = XmlReader.Create(new StringReader(xml), XmlSettings());
+        return XDocument.Load(reader);
+    }
+}

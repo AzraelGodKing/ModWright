@@ -9,7 +9,7 @@ public sealed class ShortcutsForm : Form
         ("Ctrl+K", "Find any action by name and run it (also Ctrl+Shift+P)"),
         ("Alt + underlined letter", "Press that button, or go to the box whose label has the letter underlined"),
         ("Alt+U, Alt+O", "Go to the Upload or Options tab"),
-        ("Ctrl+Tab", "Switch between the Upload and Options tabs"),
+        ("Ctrl+Tab", "Switch between the Upload, Drop Pod and Options tabs (Ctrl+Shift+Tab goes back)"),
         ("Ctrl+PageDown, Ctrl+PageUp", "Next or previous Options section (Up and Down in the section list too)"),
         ("Ctrl+O", "Pick the mods folder"),
         ("Ctrl+N", "Make a new mod folder"),
