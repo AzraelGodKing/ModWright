@@ -35,7 +35,7 @@ public sealed record Palette(
 public static class Theme
 {
     public const string DarkName = Display.Dark, LightName = Display.Light, KatsName = Display.Kats, KonekoName = Display.Koneko,
-        SerinaName = Display.Serina, WolfieName = Display.Wolfie, SystemName = Display.System, HighContrastName = "HighContrast";
+        SerinaName = Display.Serina, WolfieName = Display.Wolfie, VickraName = Display.Vickra, SystemName = Display.System, HighContrastName = "HighContrast";
 
     // The look follows Steam's own desktop client: deep slate-blue surfaces, a near-black brand bar, Steam blue for
     // links, ticks and selection, light-blue secondary buttons and a green button for the main job. Neither theme uses
@@ -145,6 +145,26 @@ public static class Theme
     };
 
     /// <summary>
+    /// Vickra: jewel tones, the reverse of Wolfie. Deep emerald surfaces with a bright sapphire for buttons, ticks and
+    /// selection, light sapphire for the other buttons' text, and dark text on the sapphire.
+    /// </summary>
+    public static readonly Palette VickraPalette = new(
+        VickraName, true,
+        Back: Color.FromArgb(8, 36, 29), Surface: Color.FromArgb(13, 51, 41), Header: Color.FromArgb(4, 24, 19),
+        Input: Color.FromArgb(6, 30, 24), Border: Color.FromArgb(30, 92, 74),
+        Text: Color.FromArgb(222, 240, 233), Muted: Color.FromArgb(144, 186, 170), Title: Color.White,
+        Button: Color.FromArgb(18, 68, 55), ButtonText: Color.FromArgb(130, 178, 255),
+        ButtonHover: Color.FromArgb(26, 88, 71), ButtonDown: Color.FromArgb(22, 78, 63),
+        Accent: Color.FromArgb(66, 133, 255), AccentHover: Color.FromArgb(100, 158, 255), AccentText: Color.FromArgb(4, 14, 36),
+        Primary: Color.FromArgb(66, 133, 255), PrimaryHover: Color.FromArgb(100, 158, 255),
+        Track: Color.FromArgb(22, 64, 52), ListHeader: Color.FromArgb(10, 43, 34),
+        Ok: Color.FromArgb(64, 214, 150), Warn: Color.FromArgb(240, 200, 80), Error: Color.FromArgb(240, 110, 100), Info: Color.FromArgb(130, 178, 255))
+    {
+        AccentDeep = Color.FromArgb(20, 66, 170),
+        PrimaryDeep = Color.FromArgb(20, 66, 170),
+    };
+
+    /// <summary>
     /// Windows High Contrast: every colour comes from the user's contrast theme, so the app reads exactly like the rest
     /// of Windows. Status colours fall back to the text colour; the words (badges, notes) carry the meaning.
     /// </summary>
@@ -179,7 +199,7 @@ public static class Theme
 
     public static Palette Current { get; private set; } = DarkPalette;
 
-    /// <summary>What the user picked: "Dark", "Light", "Kats", "Koneko", "Serina", "Wolfie" or "System". <see cref="Current"/> is what that resolves to now.</summary>
+    /// <summary>What the user picked: "Dark", "Light", "Kats", "Koneko", "Serina", "Wolfie", "Vickra" or "System". <see cref="Current"/> is what that resolves to now.</summary>
     public static string Choice { get; private set; } = DarkName;
 
     /// <summary>True while Windows High Contrast is on; it overrides the chosen theme.</summary>
@@ -197,7 +217,8 @@ public static class Theme
             : Display.ResolveTheme(Choice, WindowsAppsUseLight()) switch 
             {
                 LightName => LightPalette, KatsName => KatsPalette, KonekoName => KonekoPalette,
-                SerinaName => SerinaPalette, WolfieName => WolfiePalette, _ => DarkPalette,
+                SerinaName => SerinaPalette, WolfieName => WolfiePalette,
+                VickraName => VickraPalette, _ => DarkPalette,
             };
         return Current != before;
     }
