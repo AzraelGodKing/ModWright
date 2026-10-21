@@ -327,6 +327,28 @@ public sealed class BatchAndCliTests : IDisposable
     }
 
     [Fact]
+    public async Task Family_release_runs_what_others_need_first_and_skips_dependents_of_failures()
+    {
+        _repo.AddMod("Addon");
+        _repo.AddMod("Broken", changelog: null);
+        _repo.AddMod("Solo");
+        var cfg = TestConfig.RimWorld();
+        var mods = ModScanner.Scan(_repo.Root, cfg);
+        var batch = new BatchUpload(new Publisher(_repo.Root, cfg, "steamcmd", "modder", _temp), _record)
+        {
+            Family = (m => m.Folder, m => m.Folder == "Addon" ? new[] { "Broken" } : Array.Empty<string>()),
+        };
+
+        var results = await batch.RunAsync(mods, upload: false, CancellationToken.None);
+
+        Assert.Equal(new[] { "Broken", "Addon", "Solo" }, results.Select(r => r.Mod.Folder));
+        Assert.False(results[0].Ok);
+        Assert.Equal(BatchStatus.NotRun, results[1].Status);
+        Assert.Contains("needs Broken Display", results[1].Message);
+        Assert.True(results[2].Ok);
+    }
+
+    [Fact]
     public async Task Cancelled_batch_reports_every_mod_as_not_run()
     {
         _repo.AddMod("Alpha");
