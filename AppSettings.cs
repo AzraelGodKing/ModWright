@@ -20,6 +20,11 @@ public sealed class AppSettings
     public bool AllowCreate { get; set; }
     /// <summary>"Dark" (the default), "Light" or "System" (follow Windows' app mode).</summary>
     public string Theme { get; set; } = Display.Dark;
+    /// <summary>
+    /// Which sides of the app show: "Both", "Manager" (The Drop Pod only) or "Uploader" (Workshop uploads only). Empty
+    /// until picked on the first start (see <see cref="Display.SidesOnLoad"/>).
+    /// </summary>
+    public string Sides { get; set; } = "";
     /// <summary>Text size in percent (Options > Appearance), on top of Windows' own display scaling.</summary>
     public int TextSize { get; set; } = 100;
     /// <summary>The language of the app's windows, by code ("de"); "" for English. Used from the next start.</summary>
@@ -379,9 +384,12 @@ public sealed class AppSettings
         try
         {
             if (File.Exists(FilePath))
+            {
                 s = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
+                s.Sides = Display.SidesOnLoad(true, s.Sides);
+            }
         }
-        catch { /* fall through to defaults */ }
+        catch { s.Sides = Display.Both; /* fall through to defaults; a file that can't be read is not a first start */ }
         return s;
     }
 

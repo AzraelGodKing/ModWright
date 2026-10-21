@@ -75,4 +75,41 @@ public class DisplayTests
         Assert.Equal(100, s.TextSize);
         Assert.Equal(0, s.LogHeight);
     }
+
+    [Theory]
+    [InlineData(null, "Both")]
+    [InlineData("", "Both")]
+    [InlineData("manager", "Manager")]
+    [InlineData("UPLOADER", "Uploader")]
+    [InlineData("Everything", "Both")]
+    public void Sides_choice_is_normalized_with_both_as_default(string? saved, string expected) =>
+        Assert.Equal(expected, Display.NormalizeSides(saved));
+
+    [Theory]
+    [InlineData("Both", true, true)]
+    [InlineData("Manager", false, true)]
+    [InlineData("Uploader", true, false)]
+    [InlineData("", true, true)]
+    public void Sides_choice_decides_which_tabs_show(string saved, bool uploader, bool dropPod)
+    {
+        Assert.Equal(uploader, Display.ShowsUploader(saved));
+        Assert.Equal(dropPod, Display.ShowsDropPod(saved));
+    }
+
+    [Fact]
+    public void First_start_asks_for_the_sides_but_existing_settings_keep_both()
+    {
+        Assert.Equal("", Display.SidesOnLoad(false, null)); // no settings file: a first start, so the choice is asked
+        Assert.Equal("Both", Display.SidesOnLoad(true, null)); // settings from before the choice existed
+        Assert.Equal("Both", Display.SidesOnLoad(true, ""));
+        Assert.Equal("Manager", Display.SidesOnLoad(true, "manager"));
+        Assert.Equal("Both", Display.SidesOnLoad(true, "nonsense"));
+    }
+
+    [Fact]
+    public void Sides_setting_survives_a_save_and_load_round_trip()
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(new AppSettings { Sides = Display.Uploader });
+        Assert.Equal("Uploader", System.Text.Json.JsonSerializer.Deserialize<AppSettings>(json)!.Sides);
+    }
 }

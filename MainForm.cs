@@ -26,6 +26,9 @@ public sealed partial class MainForm : Form
     readonly LinkLabel _loginLink = new LinkLabel { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleRight, Tag = "fill", LinkBehavior = LinkBehavior.HoverUnderline }.Role(ThemeRole.Keep);
     readonly Label _steamCmdPath = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Muted);
     readonly ComboBox _theme = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
+    readonly ComboBox _sidesChoice = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320, AccessibleName = "Show" };
+    /// <summary>The Options sections only the uploader uses, hidden when only the mod manager is picked.</summary>
+    readonly HashSet<SideNavButton> _uploaderSections = new();
     readonly ComboBox _textSize = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90 };
     readonly ComboBox _language = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, AccessibleName = "Language" };
     List<Translation> _languages = new();
@@ -188,14 +191,17 @@ public sealed partial class MainForm : Form
         RestoreWindow();
         Shown += async (_, _) =>
         {
-            if (NoStartupPrompts) RefreshNow(); // --shot expects the list filled as soon as the window shows
+            if (_dropPodPage.Visible) DropPodShown();
+            if (!HasUploader) { } // the mods folder is read when the uploader is switched on
+            else if (NoStartupPrompts) RefreshNow(); // --shot expects the list filled as soon as the window shows
             else await RefreshAllAsync();
             if (IsDisposed) return;
             if (UpdatedFrom != null) Append($"Updated Modwright from {UpdatedFrom} to {UpdateCheck.CurrentVersion}.", LogKind.Ok);
             if (!NoStartupPrompts) ShowWhatsNewAfterUpdate();
-            if (!NoStartupPrompts) _ = StartupCommentsAsync();
+            if (!NoStartupPrompts && HasUploader) _ = StartupCommentsAsync();
             if (!NoStartupPrompts) _ = Task.Run(() => { SelfUpdate.CleanUp(SelfUpdate.AppDir); SelfUpdate.CleanStaging(UpdateCheck.CurrentVersion); }); // what the last update left
-            if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { if (!NoStartupPrompts) await OfferInstallAsync(); }
+            if (!HasUploader) { } // SteamCMD is only needed by the mod manager to download missing mods, and it asks then
+            else if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { if (!NoStartupPrompts) await OfferInstallAsync(); }
             else _ = StartupSteamAsync(SteamLogin.LooksCached(_s.EffectiveSteamCmd, _s.Account));
             if (_s.CheckForUpdates && !NoStartupPrompts) await CheckForUpdateAsync(false);
         };
@@ -282,7 +288,7 @@ public sealed partial class MainForm : Form
         // Tab starts at the top bar (tabs and ?), then the page, top to bottom.
         header.TabIndex = 0;
         pages.TabIndex = 1;
-        ShowPage(_uploadPage);
+        ApplySides();
 
         Theme.Apply(this);
         // Scaled for the screen's DPI by now; keep the window (and its minimum) on a small or high-DPI screen.
@@ -700,13 +706,13 @@ public sealed partial class MainForm : Form
         // The Upload tab's buttons and boxes. While Options is showing nothing there reads as visible, so the two
         // buttons that come and go are judged by what they are for.
         bool OnUpload(ButtonBase b) => _uploadPage.Visible ? b.Visible : b == _cancel ? _busy : b == _retry ? _retrySet.Count > 0 && !_busy : true;
-        AddButtons(_uploadPage, "Upload", OnUpload, b => () =>
+        if (HasUploader) AddButtons(_uploadPage, "Upload", OnUpload, b => () =>
         {
             ShowPage(_uploadPage);
             if (b is CheckBox x) x.Checked = !x.Checked;
             else if (b is Button btn) btn.PerformClick();
         });
-        if (SelectedMod() is { } sel && _list.ContextMenuStrip is { } rowMenu && !_busy)
+        if (HasUploader && SelectedMod() is { } sel && _list.ContextMenuStrip is { } rowMenu && !_busy)
         {
             _refreshRowMenu();
             // Submenus are walked, and their items are listed with the submenu's name ("Copy: Workshop ID").
@@ -726,6 +732,7 @@ public sealed partial class MainForm : Form
         for (var i = 0; i < _sections.Count; i++)
         {
             var (tab, page) = _sections[i];
+            if (!SectionShown(i)) continue;
             var index = i;
             entries.Add(new PaletteEntry("Options: " + tab.Text, "", "", () => ShowOptionSection(index)));
             AddButtons(page, "Options › " + tab.Text, _ => true, b => () =>
@@ -1101,6 +1108,9 @@ public sealed partial class MainForm : Form
         _contrastNote = Hint("Windows High Contrast is on, so its colours are used. The theme picked here applies when it is off.");
         foreach (var size in Display.TextSizes) _textSize.Items.Add(size + "%");
         foreach (var t in Display.Themes) _theme.Items.Add(Localizer.T(t.Label));
+        foreach (var c in Display.SidesChoices) _sidesChoice.Items.Add(Localizer.T(c.Label));
+        _sidesChoice.SelectedIndex = Array.FindIndex(Display.SidesChoices, c => c.Name == Display.NormalizeSides(_s.Sides));
+        _sidesChoice.SelectedIndexChanged += (_, _) => { if (_sidesChoice.SelectedIndex >= 0) SetSides(Display.SidesChoices[_sidesChoice.SelectedIndex].Name); };
         Tip(_textSize, "Makes all text, and the layout with it, larger than Windows' own scaling");
         ShowThemeChoice();
         AddSection("Appearance", "How Modwright looks for your Windows user.",
@@ -1113,6 +1123,10 @@ public sealed partial class MainForm : Form
                 Row(_showDetails),
                 Hint("Its preview image, numbers on Steam, change note, description and buttons, on the Upload tab when the window is wide enough " +
                      "for the list's columns too. Drag the bar between the list and the details to resize them.")),
+            Card("Mod manager and uploader", null,
+                Row(Lbl("Sh&ow"), _sidesChoice),
+                Hint("The mod manager (The Drop Pod) is for the RimWorld mods you play with; the uploader puts your own mods on the Steam Workshop. " +
+                     "Only what is picked here is shown, and switching changes nothing else: your settings, mods folder and modlists stay as they are.")),
             Card("Language", null,
                 Row(Lbl("&Language"), _language),
                 Hint("The windows' buttons, labels and menus in another language, from the next start. Log lines and messages stay in English. " +
@@ -1209,6 +1223,7 @@ public sealed partial class MainForm : Form
         var index = _sections.Count;
         var tab = new SideNavButton { Text = name, Width = 170, AccessibleName = name };
         tab.Click += (_, _) => ShowSection(index);
+        if (name is "Uploading" or "Workshop page" or "Git & GitHub") _uploaderSections.Add(tab);
         _sections.Add((tab, page));
     }
 
@@ -1218,6 +1233,7 @@ public sealed partial class MainForm : Form
     void ShowSection(int index)
     {
         _section = Math.Clamp(index, 0, _sections.Count - 1);
+        if (!SectionShown(_section)) _section = 0; // the first section, Account, is always shown
         if (_windowRestored && _s.OptionsSection != _section) { _s.OptionsSection = _section; _s.Save(); }
         for (var i = 0; i < _sections.Count; i++)
         {
@@ -1248,8 +1264,51 @@ public sealed partial class MainForm : Form
         _list.Focus();
     }
 
+    /// <summary>Whether the uploader (the Upload tab) is shown; see <see cref="AppSettings.Sides"/>.</summary>
+    bool HasUploader => Display.ShowsUploader(_s.Sides);
+    /// <summary>Whether the mod manager (the Drop Pod tab) is shown.</summary>
+    bool HasDropPod => Display.ShowsDropPod(_s.Sides);
+    /// <summary>The tab the window opens on: Upload, or the Drop Pod when the uploader is not picked.</summary>
+    Control HomePage => HasUploader ? _uploadPage : _dropPodPage;
+
+    bool SectionShown(int index) => HasUploader || !_uploaderSections.Contains(_sections[index].Tab);
+
+    /// <summary>The next Options section that is shown, from <paramref name="from"/> one way or the other.</summary>
+    int NextSection(int from, bool back)
+    {
+        var i = from;
+        do i = (i + (back ? _sections.Count - 1 : 1)) % _sections.Count;
+        while (!SectionShown(i) && i != from);
+        return i;
+    }
+
+    /// <summary>Shows the tabs, Options sections and page for the sides picked.</summary>
+    void ApplySides()
+    {
+        _navUpload.Visible = HasUploader;
+        _navDropPod.Visible = HasDropPod;
+        foreach (var (tab, _) in _sections) tab.Visible = !_uploaderSections.Contains(tab) || HasUploader;
+        if (_optionsPage.Visible) { if (!SectionShown(_section)) ShowSection(0); }
+        else ShowPage(HomePage);
+    }
+
+    /// <summary>Saves which sides to show (one of <see cref="Display.SidesChoices"/>) and switches to it live.</summary>
+    void SetSides(string choice)
+    {
+        if (choice == Display.NormalizeSides(_s.Sides)) return;
+        var hadUploader = HasUploader;
+        _s.Sides = choice;
+        _s.Save();
+        ApplySides();
+        if (HasUploader && !hadUploader) RefreshAll(); // not read while the uploader was off
+        var label = Display.SidesChoices.First(c => c.Name == choice).Label;
+        Append($"Showing: {label}.", LogKind.Note);
+        Say(Localizer.T(label));
+    }
+
     void ShowPage(Control page)
     {
+        if (page == _uploadPage && !HasUploader || page == _dropPodPage && !HasDropPod) page = HomePage;
         if (page == _optionsPage) SaveFields();
         _uploadPage.Visible = page == _uploadPage;
         _dropPodPage.Visible = page == _dropPodPage;
@@ -1263,7 +1322,7 @@ public sealed partial class MainForm : Form
             _side.Text = Localizer.T(dropPod ? "THE DROP POD" : "WORKSHOP UPLOADER");
             Text = Localizer.T(dropPod ? "Modwright - The Drop Pod" : "Modwright - Workshop uploads");
         }
-        if (page == _dropPodPage) DropPodShown();
+        if (page == _dropPodPage && IsHandleCreated) DropPodShown(); // on opening, read once the window shows (see Shown)
     }
 
     /// <summary>Saves the theme choice (one of <see cref="Display.Themes"/>) and switches to it live.</summary>
@@ -1384,15 +1443,15 @@ public sealed partial class MainForm : Form
         {
             case Keys.F5 when _dropPodPage.Visible:
                 _ = ScanDropPodAsync(); return true;
-            case Keys.F5 when !_busy:
+            case Keys.F5 when !_busy && HasUploader:
                 RefreshAll(); return true;
-            case Keys.Control | Keys.O when !_busy:
+            case Keys.Control | Keys.O when !_busy && HasUploader:
                 BrowseRepo(); return true;
-            case Keys.Control | Keys.N when !_busy:
+            case Keys.Control | Keys.N when !_busy && HasUploader:
                 _ = NewModAsync(); return true;
-            case Keys.Control | Keys.F:
+            case Keys.Control | Keys.F when HasUploader:
                 ShowPage(_uploadPage); _filter.Focus(); _filter.SelectAll(); return true;
-            case Keys.Control | Keys.Enter when _go.Enabled:
+            case Keys.Control | Keys.Enter when _go.Enabled && HasUploader:
                 _go.PerformClick(); return true;
             case Keys.F1:
                 ShowShortcuts(); return true;
@@ -1402,8 +1461,9 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.Tab:
             case Keys.Control | Keys.Shift | Keys.Tab:
             {
-                // Upload, Drop Pod, Options, round and round (Shift goes backwards).
-                var order = new (Control Page, NavButton Nav)[] { (_uploadPage, _navUpload), (_dropPodPage, _navDropPod), (_optionsPage, _navOptions) };
+                // Upload, Drop Pod, Options (those shown), round and round (Shift goes backwards).
+                var order = new (Control Page, NavButton Nav)[] { (_uploadPage, _navUpload), (_dropPodPage, _navDropPod), (_optionsPage, _navOptions) }
+                    .Where(p => p.Nav.Visible).ToArray();
                 var at = Array.FindIndex(order, p => p.Page.Visible);
                 var next = order[(at + ((keyData & Keys.Shift) != 0 ? order.Length - 1 : 1)) % order.Length];
                 ShowPage(next.Page);
@@ -1412,7 +1472,7 @@ public sealed partial class MainForm : Form
             }
             case Keys.Control | Keys.PageDown when _optionsPage.Visible:
             case Keys.Control | Keys.PageUp when _optionsPage.Visible:
-                ShowSection((_section + ((keyData & Keys.KeyCode) == Keys.PageUp ? _sections.Count - 1 : 1)) % _sections.Count);
+                ShowSection(NextSection(_section, (keyData & Keys.KeyCode) == Keys.PageUp));
                 _sections[_section].Tab.Focus();
                 return true;
             case Keys.Escape when _busy && _cts != null && !_filter.Focused:

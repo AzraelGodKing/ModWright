@@ -550,6 +550,10 @@ from your layout. The new id is saved to the id file; commit it.
 
 ## The Drop Pod (RimWorld players)
 
+**Only want one side?** The first start asks whether you want the mod manager (The Drop Pod), the mod uploader, or
+both, and shows only what you pick. Change it any time under **Options > Appearance > Show**; nothing else changes.
+Settings from an earlier version keep both.
+
 The **DROP POD** tab is for the mods you play with. It finds RimWorld through your Steam libraries (or a folder you
 pick with **Game folder...**) and reads every mod from the base game and DLC, the game's Mods folder and the Workshop.
 Nothing in the game folder is changed until you press **Save to game**, which writes `ModsConfig.xml` and keeps the

@@ -31,6 +31,28 @@ public static class Display
         var c => c,
     };
 
+    public const string Both = "Both", Manager = "Manager", Uploader = "Uploader";
+
+    /// <summary>Which sides of the app to show (first start, then Options > Appearance): saved name and the name shown.</summary>
+    public static readonly (string Name, string Label)[] SidesChoices =
+    {
+        (Both, "Both: the mod manager and the mod uploader"), (Manager, "Mod manager only (The Drop Pod)"), (Uploader, "Mod uploader only"),
+    };
+
+    /// <summary>The saved choice of sides: one of <see cref="SidesChoices"/>. Anything else, or nothing picked yet, is both.</summary>
+    public static string NormalizeSides(string? name) =>
+        SidesChoices.Select(c => c.Name).FirstOrDefault(c => string.Equals(name, c, StringComparison.OrdinalIgnoreCase)) ?? Both;
+
+    public static bool ShowsUploader(string? sides) => NormalizeSides(sides) != Manager;
+    public static bool ShowsDropPod(string? sides) => NormalizeSides(sides) != Uploader;
+
+    /// <summary>
+    /// The sides setting as read from the settings file. Settings from before the choice existed (a file without it) mean
+    /// someone already using the app, who keeps both sides; no file at all means a first start, left empty so it asks.
+    /// </summary>
+    public static string SidesOnLoad(bool fileExisted, string? saved) =>
+        string.IsNullOrEmpty(saved) ? (fileExisted ? Both : "") : NormalizeSides(saved);
+
     /// <summary>Text sizes offered under Options > Appearance, in percent.</summary>
     public static readonly int[] TextSizes = { 100, 115, 125, 150, 175 };
 

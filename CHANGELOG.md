@@ -1,7 +1,11 @@
 # Changelog
 
-## 1.7.1
+## 1.8.0
 
+- **Use it as a mod manager, a mod uploader, or both.** The first start asks what Modwright is for: the mod manager (The
+  Drop Pod), the mod uploader, or both. Only what is picked is shown; the other tab, its Options sections, shortcuts and
+  command palette entries are hidden. Change it any time under Options > Appearance, live and without reinstalling.
+  Anyone already using Modwright keeps both, so updating asks nothing.
 - **Modwright reads as one word in the brand bar.** "Mod" and "wright" keep their own colours but no longer have a
   gap between them.
 
