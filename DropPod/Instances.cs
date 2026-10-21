@@ -18,6 +18,8 @@ public sealed class GameInstance
     /// <summary>Another install of the game to run, or "" for the usual one.</summary>
     public string GameFolder { get; set; } = "";
     public string Notes { get; set; } = "";
+    /// <summary>Extra arguments for starting the game with this instance ("-quicktest", "-popupwindow").</summary>
+    public string LaunchArgs { get; set; } = "";
     public DateTime Created { get; set; }
 
     /// <summary>The instance's folder on disk (set when it is loaded).</summary>

@@ -6,7 +6,8 @@ using System.Xml.Linq;
 namespace SteamCmdHelper.DropPod;
 
 /// <summary>One mod in a modlist: its id, and enough to find it again when it is not installed.</summary>
-public sealed record ModlistEntry(string Id, string? Name = null, string? WorkshopId = null);
+/// <param name="Version">The mod's own version when the list was made (for comparing with a friend's list), or null.</param>
+public sealed record ModlistEntry(string Id, string? Name = null, string? WorkshopId = null, string? Version = null);
 
 /// <summary>A named load order the player keeps: switch to it, share it, or import it on another PC.</summary>
 public sealed class Modlist
@@ -29,20 +30,27 @@ public sealed class Modlist
         {
             var k = key(id);
             if (list.Mods.Any(e => key(e.Id) == k)) continue;
-            list.Mods.Add(byId.TryGetValue(k, out var m) ? new ModlistEntry(m.Id.Length > 0 ? m.Id : id, m.DisplayName, m.WorkshopId) : new ModlistEntry(id));
+            list.Mods.Add(byId.TryGetValue(k, out var m) ? new ModlistEntry(m.Id.Length > 0 ? m.Id : id, m.DisplayName, m.WorkshopId, m.ModVersion.Length > 0 ? m.ModVersion : null) : new ModlistEntry(id));
         }
         return list;
     }
 
-    /// <summary>Which entries are installed (in list order, as the game writes them) and which are missing.</summary>
+    /// <summary>
+    /// Which entries are installed (in list order, as the game writes them) and which are missing. An entry whose id is
+    /// not installed but whose Workshop item is (a list made from a Steam collection names items before their ids are
+    /// known) counts as that mod.
+    /// </summary>
     public (List<string> Installed, List<ModlistEntry> Missing) Match(LibraryScan scan, IGameModule game)
     {
         var have = scan.ById();
+        var byWorkshop = new Dictionary<string, string>();
+        foreach (var m in have.Values) if (m.WorkshopId != null) byWorkshop.TryAdd(m.WorkshopId, m.Key);
         var installed = new List<string>();
         var missing = new List<ModlistEntry>();
         foreach (var e in Mods)
         {
             var k = game.ActiveKey(e.Id);
+            if (!have.ContainsKey(k) && e.WorkshopId != null && byWorkshop.TryGetValue(e.WorkshopId, out var viaWorkshop)) k = viaWorkshop;
             if (have.ContainsKey(k)) { if (!installed.Contains(k)) installed.Add(k); }
             else missing.Add(e);
         }
@@ -108,14 +116,15 @@ public sealed class Modlist
     const string CodePrefix = "DROPPOD1:";
 
     /// <summary>
-    /// The list as one line of text to paste in a chat: "DROPPOD1:" then the name, app id and each "id|workshopId",
-    /// deflated and base64url-encoded. Names of mods are left out to keep it short.
+    /// The list as one line of text to paste in a chat: "DROPPOD1:" then the name, app id and each "id|workshopId|version",
+    /// deflated and base64url-encoded. Names of mods are left out to keep it short. Older codes have no version; older
+    /// readers ignore it.
     /// </summary>
     public string ToShareCode()
     {
         var sb = new StringBuilder();
         sb.Append(Name.Replace('\n', ' ')).Append('\n').Append(AppId).Append('\n').Append(GameVersion.Replace('\n', ' ')).Append('\n');
-        foreach (var e in Mods) sb.Append(e.Id).Append('|').Append(e.WorkshopId).Append('\n');
+        foreach (var e in Mods) sb.Append(e.Id).Append('|').Append(e.WorkshopId).Append(e.Version is { Length: > 0 } v ? "|" + v.Replace('|', '/').Replace('\n', ' ') : "").Append('\n');
         using var ms = new MemoryStream();
         using (var z = new DeflateStream(ms, CompressionLevel.SmallestSize)) z.Write(Encoding.UTF8.GetBytes(sb.ToString()));
         return CodePrefix + Convert.ToBase64String(ms.ToArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
@@ -149,7 +158,7 @@ public sealed class Modlist
         foreach (var line in lines.Skip(3).Where(l => l.Length > 0))
         {
             var parts = line.Split('|');
-            if (parts[0].Length > 0) list.Mods.Add(new ModlistEntry(parts[0], null, parts.Length > 1 && parts[1].Length > 0 ? parts[1] : null));
+            if (parts[0].Length > 0) list.Mods.Add(new ModlistEntry(parts[0], null, parts.Length > 1 && parts[1].Length > 0 ? parts[1] : null, parts.Length > 2 && parts[2].Length > 0 ? parts[2] : null));
         }
         return list;
     }
