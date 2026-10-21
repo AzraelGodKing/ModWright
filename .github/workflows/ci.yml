@@ -75,7 +75,7 @@ jobs:
       # Screenshots of both themes for reviewing UI changes. Best effort: never fails the build.
       - name: Screenshots
         continue-on-error: true
-        timeout-minutes: 3
+        timeout-minutes: 6
         shell: pwsh
         run: |
           # A 1920x1080 screen, so the wide-window shots (the details panel beside the mod list) fit.
