@@ -8,7 +8,7 @@ public sealed class WhatsNewForm : Form
 
     public WhatsNewForm(string heading, IEnumerable<(string Version, string Text)> sections)
     {
-        Text = "What's new in SteamCMD Helper";
+        Text = "What's new in Modwright";
         Font = Theme.BodyFont;
         StartPosition = FormStartPosition.CenterParent;
         MinimizeBox = false;

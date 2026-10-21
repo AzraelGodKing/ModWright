@@ -69,7 +69,7 @@ public sealed class Publisher
     }
 
     /// <summary>The line <see cref="Credit"/> adds, in Steam's BBCode, linking to the newest release.</summary>
-    public const string CreditLine = "[i]Uploaded via [url=" + UpdateCheck.ReleasesPage + "/latest]SteamCMD Helper[/url][/i]";
+    public const string CreditLine = "[i]Uploaded via [url=" + UpdateCheck.ReleasesPage + "/latest]Modwright[/url][/i]";
 
     /// <summary>Raised once a mod is packaged, with what the package holds (also used by "Preview package").</summary>
     public event Action<ModInfo, PackageReport>? Packaged;

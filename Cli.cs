@@ -49,7 +49,7 @@ public static class Cli
     static readonly string[] Commands = { "upload", "list", "version", "update", "download", "verify", "game-builds", "test-install", "ci-setup", "login-secret", "game-version", "note", "history", "doctor", "schedule", "lint", "help" };
 
     public const string Usage = """
-        SteamCMD Helper command line
+        Modwright command line
 
         Usage:
           SteamCmdHelper upload <mod> [<mod>...] [options]   upload these mods (folder or display name)
@@ -353,8 +353,8 @@ public static class Cli
     {
         var current = UpdateCheck.CurrentVersion;
         var r = await UpdateCheck.FindNewerAsync(current, ct);
-        if (r == null) { say($"SteamCMD Helper {current} is the newest version (or GitHub could not be reached)."); return ExitOk; }
-        say($"SteamCMD Helper {r.Version} is available (you have {current}): {r.PageUrl}");
+        if (r == null) { say($"Modwright {current} is the newest version (or GitHub could not be reached)."); return ExitOk; }
+        say($"Modwright {r.Version} is available (you have {current}): {r.PageUrl}");
         if (checkOnly) return ExitOk;
 
         var cannot = AppUpdates.CannotUpdateReason(r);

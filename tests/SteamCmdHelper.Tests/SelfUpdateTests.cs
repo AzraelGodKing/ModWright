@@ -268,7 +268,7 @@ public class SelfUpdateTests : IDisposable
     public void Crash_report_has_the_version_and_the_error_and_old_ones_are_pruned()
     {
         var text = CrashReport.Build(new InvalidOperationException("Boom\nsecond line"), "1.2.3", new DateTime(2026, 10, 15, 12, 0, 0));
-        Assert.Contains("SteamCMD Helper 1.2.3", text);
+        Assert.Contains("Modwright 1.2.3", text);
         Assert.Contains("InvalidOperationException: Boom", text);
         Assert.Equal("Crash: InvalidOperationException: Boom", CrashReport.Summary(new InvalidOperationException("Boom\nsecond line")));
 

@@ -36,7 +36,7 @@ public static class Announce
         if (body.Length > 3900) body = body[..3900] + "\n…";
         var payload = new
         {
-            username = "SteamCMD Helper",
+            username = "Modwright",
             allowed_mentions = new { parse = Array.Empty<string>() },
             embeds = new[]
             {

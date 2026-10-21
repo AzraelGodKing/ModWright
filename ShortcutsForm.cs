@@ -46,7 +46,7 @@ public sealed class ShortcutsForm : Form
         }
 
         var close = new Button { Text = "Close", AutoSize = true, DialogResult = DialogResult.OK, Padding = new Padding(14, 2, 14, 2), Anchor = AnchorStyles.Right, Margin = new Padding(0, 12, 0, 0) }.Role(ThemeRole.Accent);
-        var intro = new Label { Text = "Everything in SteamCMD Helper works from the keyboard.", AutoSize = true, Margin = new Padding(0, 0, 0, 8) }.Role(ThemeRole.Muted);
+        var intro = new Label { Text = "Everything in Modwright works from the keyboard.", AutoSize = true, Margin = new Padding(0, 0, 0, 8) }.Role(ThemeRole.Muted);
         var root = new TableLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, Location = new Point(16, 12) };
         table.Dock = DockStyle.None;
         table.AutoSizeMode = AutoSizeMode.GrowAndShrink;

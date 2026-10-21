@@ -41,7 +41,7 @@ public sealed partial class MainForm : Form
     readonly CheckBox _ghReleases = new() { AutoSize = true, Text = "Make a GitHub &release for each upload (needs the gh tool, logged in with \"gh auth login\")" };
     Button _profileSave = null!, _profileDelete = null!, _webhookTest = null!;
     readonly CheckBox _tagUploads = new() { AutoSize = true, Text = "&Tag each upload in git as <mod folder>-v<version>" };
-    readonly CheckBox _uploadCredit = new() { AutoSize = true, Text = "End each change note with \"Uploaded via SteamCMD Helper\" and a link to its download page" };
+    readonly CheckBox _uploadCredit = new() { AutoSize = true, Text = "End each change note with \"Uploaded via Modwright\" and a link to its download page" };
     readonly CheckBox _markdownNotes = new() { AutoSize = true, Text = "Turn &Markdown in .md changelogs into Steam formatting (headings, bold, lists, links)" };
     readonly TextBox _noteTemplate = new()
     {
@@ -191,7 +191,7 @@ public sealed partial class MainForm : Form
             if (NoStartupPrompts) RefreshNow(); // --shot expects the list filled as soon as the window shows
             else await RefreshAllAsync();
             if (IsDisposed) return;
-            if (UpdatedFrom != null) Append($"Updated SteamCMD Helper from {UpdatedFrom} to {UpdateCheck.CurrentVersion}.", LogKind.Ok);
+            if (UpdatedFrom != null) Append($"Updated Modwright from {UpdatedFrom} to {UpdateCheck.CurrentVersion}.", LogKind.Ok);
             if (!NoStartupPrompts) ShowWhatsNewAfterUpdate();
             if (!NoStartupPrompts) _ = StartupCommentsAsync();
             if (!NoStartupPrompts) _ = Task.Run(() => { SelfUpdate.CleanUp(SelfUpdate.AppDir); SelfUpdate.CleanStaging(UpdateCheck.CurrentVersion); }); // what the last update left
@@ -232,7 +232,7 @@ public sealed partial class MainForm : Form
 
     void BuildUi()
     {
-        Text = "SteamCMD Helper - Workshop uploads";
+        Text = "Modwright - Workshop uploads";
         Width = 1000; Height = 800; MinimumSize = new Size(840, 640); // at 96 DPI; scaled and fitted to the screen after Theme.Apply
         Font = Theme.BodyFont;
         StartPosition = FormStartPosition.CenterScreen;
@@ -359,7 +359,7 @@ public sealed partial class MainForm : Form
         var bar = new TableLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, ColumnCount = 2, RowCount = 1, Padding = new Padding(16, 3, 16, 4) };
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        bar.Controls.Add(new Label { Text = "SteamCMD Helper " + UpdateCheck.CurrentVersion, AutoSize = true, Font = Theme.SmallFont, Anchor = AnchorStyles.Left, Margin = Padding.Empty }.Role(ThemeRole.Muted), 0, 0);
+        bar.Controls.Add(new Label { Text = "Modwright " + UpdateCheck.CurrentVersion, AutoSize = true, Font = Theme.SmallFont, Anchor = AnchorStyles.Left, Margin = Padding.Empty }.Role(ThemeRole.Muted), 0, 0);
         bar.Controls.Add(new Label { Text = Disclaimer, AutoSize = true, Font = Theme.SmallFont, Anchor = AnchorStyles.Right, Margin = Padding.Empty }.Role(ThemeRole.Muted), 1, 0);
         var footer = new Panel { Dock = DockStyle.Bottom, AutoSize = true };
         footer.Controls.Add(bar);
@@ -371,6 +371,9 @@ public sealed partial class MainForm : Form
     /// The brand bar along the top, dark in both themes: the icon and app name on the left, the Upload / Options tabs
     /// and the "?" button on the right, over a Steam-blue line.
     /// </summary>
+    /// <summary>Under the name: which side of the app is open ("WORKSHOP UPLOADER" or "THE DROP POD").</summary>
+    readonly Label _side = new Label { Text = "WORKSHOP UPLOADER", AutoSize = true, Margin = new Padding(0, 10, 0, 0), UseMnemonic = false }.Role(ThemeRole.Muted);
+
     Control BuildHeader()
     {
         var bar = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 6, RowCount = 1, Padding = new Padding(16, 10, 12, 2) }.Role(ThemeRole.Header);
@@ -384,10 +387,11 @@ public sealed partial class MainForm : Form
         var title = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 0, 0, 8), Anchor = AnchorStyles.Left };
         if (Theme.AppIcon != null)
             title.Controls.Add(new PictureBox { Image = new Icon(Theme.AppIcon, 64, 64).ToBitmap(), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(32, 32), Margin = new Padding(0, 0, 10, 0) });
-        // The name in two weights, "SteamCMD" bold and "Helper" light in Steam blue, then what the app is for.
-        title.Controls.Add(new Label { Text = "SteamCMD", AutoSize = true, Font = Theme.TitleFont, Margin = new Padding(0, 2, 0, 0), UseMnemonic = false }.Role(ThemeRole.Title));
-        title.Controls.Add(new Label { Text = "Helper", AutoSize = true, Font = Theme.BrandFont, Margin = new Padding(0, 2, 14, 0) }.Role(ThemeRole.Brand));
-        title.Controls.Add(new Label { Text = "WORKSHOP UPLOADER", AutoSize = true, Font = Theme.SmallFont, Margin = new Padding(0, 10, 0, 0) }.Role(ThemeRole.Muted));
+        // The name in two weights, "Mod" bold and "wright" light in the accent colour, then the side of the app that is open.
+        title.Controls.Add(new Label { Text = "Mod", AutoSize = true, Font = Theme.TitleFont, Margin = new Padding(0, 2, 0, 0), UseMnemonic = false }.Role(ThemeRole.Title));
+        title.Controls.Add(new Label { Text = "wright", AutoSize = true, Font = Theme.BrandFont, Margin = new Padding(0, 2, 14, 0), UseMnemonic = false }.Role(ThemeRole.Brand));
+        _side.Font = Theme.SmallFont;
+        title.Controls.Add(_side);
         bar.Controls.Add(title, 0, 0);
 
         _navUpload = new NavButton { Text = "&UPLOAD", AccessibleName = "Upload" };
@@ -1100,13 +1104,13 @@ public sealed partial class MainForm : Form
         foreach (var t in Display.Themes) _theme.Items.Add(Localizer.T(t.Label));
         Tip(_textSize, "Makes all text, and the layout with it, larger than Windows' own scaling");
         ShowThemeChoice();
-        AddSection("Appearance", "How SteamCMD Helper looks for your Windows user.",
+        AddSection("Appearance", "How Modwright looks for your Windows user.",
             Card("Theme and text", null,
                 Row(Lbl("Theme"), _theme),
                 _contrastNote,
                 Row(Lbl("Te&xt size"), _textSize),
                 Hint("The theme changes straight away; Match Windows follows Windows' light or dark app mode. " +
-                     "A new text size is used the next time SteamCMD Helper starts."),
+                     "A new text size is used the next time Modwright starts."),
                 Row(_showDetails),
                 Hint("Its preview image, numbers on Steam, change note, description and buttons, on the Upload tab when the window is wide enough " +
                      "for the list's columns too. Drag the bar between the list and the details to resize them.")),
@@ -1137,7 +1141,7 @@ public sealed partial class MainForm : Form
         });
         AddSection("About", "Version and updates, where your data is kept, and help.",
             Card("Updates", null,
-                Hint($"SteamCMD Helper {version}."),
+                Hint($"Modwright {version}."),
                 Row(_checkUpdates, _checkUpdateNow, Btn("What's new...", (_, _) => ShowAllChanges())),
                 _autoUpdate,
                 _updateReady),
@@ -1254,6 +1258,12 @@ public sealed partial class MainForm : Form
         _navUpload.Selected = page == _uploadPage;
         _navDropPod.Selected = page == _dropPodPage;
         _navOptions.Selected = page == _optionsPage;
+        if (page != _optionsPage)
+        {
+            var dropPod = page == _dropPodPage;
+            _side.Text = Localizer.T(dropPod ? "THE DROP POD" : "WORKSHOP UPLOADER");
+            Text = Localizer.T(dropPod ? "Modwright - The Drop Pod" : "Modwright - Workshop uploads");
+        }
         if (page == _dropPodPage) DropPodShown();
     }
 
@@ -1299,8 +1309,8 @@ public sealed partial class MainForm : Form
         _s.Language = code;
         _s.Save();
         var name = _language.SelectedItem as string ?? code;
-        Append($"Language set to {name}. It is used the next time SteamCMD Helper starts.", LogKind.Note);
-        Say($"{name} is used the next time SteamCMD Helper starts.");
+        Append($"Language set to {name}. It is used the next time Modwright starts.", LogKind.Note);
+        Say($"{name} is used the next time Modwright starts.");
     }
 
     /// <summary>Writes a translation file with every window text seen so far, filled in from the language picked (or empty for a new one).</summary>
@@ -1329,8 +1339,8 @@ public sealed partial class MainForm : Form
         if (size == Display.NormalizeTextSize(_s.TextSize)) return;
         _s.TextSize = size;
         _s.Save();
-        Append($"Text size set to {size}%. It is used the next time SteamCMD Helper starts.", LogKind.Note);
-        Say($"Text size {size}% is used the next time SteamCMD Helper starts.");
+        Append($"Text size set to {size}%. It is used the next time Modwright starts.", LogKind.Note);
+        Say($"Text size {size}% is used the next time Modwright starts.");
     }
 
     /// <summary>Colours everything again after the theme changed (a new choice, or Windows changed its mode or contrast).</summary>
@@ -2184,7 +2194,7 @@ public sealed partial class MainForm : Form
         ShowProfiles();
         ShowAnnounce();
         _ = RefreshAllAsync();
-        MessageBox.Show(this, "Settings imported. Restart SteamCMD Helper so every option shows its imported value.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+        MessageBox.Show(this, "Settings imported. Restart Modwright so every option shows its imported value.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     /// <summary>The empty mod list says why it is empty and offers the button that fixes it.</summary>
@@ -3529,11 +3539,11 @@ public sealed partial class MainForm : Form
         if (IsDisposed) return;
         if (r == null)
         {
-            if (manual) MessageBox.Show(this, $"No newer version found. You have SteamCMD Helper {UpdateCheck.CurrentVersion} (or GitHub could not be reached).", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (manual) MessageBox.Show(this, $"No newer version found. You have Modwright {UpdateCheck.CurrentVersion} (or GitHub could not be reached).", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
         if (!manual && r.Version == _s.SkippedUpdate) return;
-        Append($"SteamCMD Helper {r.Version} is available (you have {UpdateCheck.CurrentVersion}): {r.PageUrl}", LogKind.Note);
+        Append($"Modwright {r.Version} is available (you have {UpdateCheck.CurrentVersion}): {r.PageUrl}", LogKind.Note);
 
         var cannot = AppUpdates.CannotUpdateReason(r);
         if (!manual && _s.AutoUpdate && cannot == null)
@@ -3554,7 +3564,7 @@ public sealed partial class MainForm : Form
         var page = new TaskDialogPage
         {
             Caption = Text,
-            Heading = $"SteamCMD Helper {r.Version} is available",
+            Heading = $"Modwright {r.Version} is available",
             Text = $"You have {UpdateCheck.CurrentVersion}. " + (cannot == null
                 ? "Update now downloads it, checks it, and restarts the app."
                 : r.DownloadUrl != null
@@ -3585,7 +3595,7 @@ public sealed partial class MainForm : Form
         var progress = new TaskDialogPage
         {
             Caption = Text,
-            Heading = $"Downloading SteamCMD Helper {r.Version}...",
+            Heading = $"Downloading Modwright {r.Version}...",
             Text = "The download is checked against the release's SHA-256 checksums before anything is changed.",
             ProgressBar = new TaskDialogProgressBar { Minimum = 0, Maximum = 100, Value = 0 },
             Buttons = { cancel },
@@ -3598,7 +3608,7 @@ public sealed partial class MainForm : Form
         var ready = new TaskDialogPage
         {
             Caption = Text,
-            Heading = $"SteamCMD Helper {r.Version} is ready",
+            Heading = $"Modwright {r.Version} is ready",
             Text = _busy ? "An upload is running, so it will be installed when you close the app." : "Restart now to start using it, or it is installed when you close the app.",
             Icon = TaskDialogIcon.ShieldSuccessGreenBar,
             Buttons = { restart, onClose },
@@ -3637,10 +3647,10 @@ public sealed partial class MainForm : Form
     void ShowUpdateReady()
     {
         if (_pendingUpdate == null) return;
-        _updateReady.Text = $"SteamCMD Helper {_pendingUpdate.Version} is downloaded and is installed when you close the app. Restart now";
+        _updateReady.Text = $"Modwright {_pendingUpdate.Version} is downloaded and is installed when you close the app. Restart now";
         _updateReady.LinkArea = new LinkArea(_updateReady.Text.Length - "Restart now".Length, "Restart now".Length);
         _updateReady.Visible = true;
-        Append($"SteamCMD Helper {_pendingUpdate.Version} is downloaded; it is installed when you close the app (or Options > About > Restart now).", LogKind.Note);
+        Append($"Modwright {_pendingUpdate.Version} is downloaded; it is installed when you close the app (or Options > About > Restart now).", LogKind.Note);
     }
 
     /// <summary>Installs the downloaded update and starts the new version, unless an upload is running.</summary>
@@ -4215,8 +4225,8 @@ public sealed partial class MainForm : Form
         var url = _s.WebhookFor(_s.RepoPath);
         if (url.Length == 0) { MessageBox.Show(this, "Paste the channel's webhook link first.", Text); _webhook.Focus(); return; }
         _webhookTest.Enabled = false;
-        var error = await Announce.PostDiscordAsync(url, Announce.DiscordPayload("SteamCMD Helper", "test", "0",
-            "This is a test from SteamCMD Helper. Uploads from this mods folder will be announced here.", _cfg.GameName));
+        var error = await Announce.PostDiscordAsync(url, Announce.DiscordPayload("Modwright", "test", "0",
+            "This is a test from Modwright. Uploads from this mods folder will be announced here.", _cfg.GameName));
         _webhookTest.Enabled = true;
         Append(error == null ? "Discord test message sent." : "Discord test failed: " + error, error == null ? LogKind.Ok : LogKind.Error);
     }

@@ -302,7 +302,7 @@ public static class SelfUpdate
         catch (Exception e)
         {
             Log("Failed before anything was replaced: " + e);
-            fail($"Could not install SteamCMD Helper {version}: {e.Message}\n\nNothing was changed.");
+            fail($"Could not install Modwright {version}: {e.Message}\n\nNothing was changed.");
             return 1;
         }
         try
@@ -319,7 +319,7 @@ public static class SelfUpdate
             Log("Installed but could not be used, putting the old version back: " + e);
             var back = PutBack(update, appDir, exeName);
             if (back && restart) try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = false, WorkingDirectory = appDir }); } catch { }
-            fail($"SteamCMD Helper {version} was installed, but Windows would not use it: {e.Message}\n\n" +
+            fail($"Modwright {version} was installed, but Windows would not use it: {e.Message}\n\n" +
                 (back ? $"Version {fromVersion} was put back." : $"Version {fromVersion} is kept as {exeName}{OldSuffix} in {appDir}; rename it to {exeName} to use it again.") +
                 " If your antivirus quarantined the new version, allow it there, or download it from " + UpdateCheck.ReleasesPage);
             return 1;
@@ -363,7 +363,7 @@ public static class SelfUpdate
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 if (DateTime.UtcNow >= until)
-                    throw new TimeoutException($"{Path.GetFileName(file)} is still in use. Close every copy of SteamCMD Helper and try again.", e);
+                    throw new TimeoutException($"{Path.GetFileName(file)} is still in use. Close every copy of Modwright and try again.", e);
                 Thread.Sleep(250);
             }
         }
@@ -388,7 +388,7 @@ public static class SelfUpdate
         try
         {
             using var p = Process.GetProcessById(pid);
-            if (!p.WaitForExit(timeout)) throw new TimeoutException("The old copy of SteamCMD Helper did not close.");
+            if (!p.WaitForExit(timeout)) throw new TimeoutException("The old copy of Modwright did not close.");
         }
         catch (ArgumentException) { /* already gone */ }
     }

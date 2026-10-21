@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **SteamCMD Helper is now Modwright**, with two sides: the Workshop uploader and the Drop Pod for RimWorld players.
+  The name in the window, the brand bar (which also says which side is open) and the messages changed; the program
+  file, the settings folder and the download page stay the same, so updates and settings carry on. The Drop Pod's
+  buttons and lists are translated into German, Russian and Simplified Chinese.
 - **The Drop Pod: a new tab for the RimWorld mods you play with.** It finds RimWorld through your Steam libraries (or a
   folder you pick), reads every mod from the base game and DLC, the Mods folder and the Workshop, and lists each one's
   name, author, package ID, where it came from, the game versions it supports and its place in the current load order.

@@ -204,7 +204,7 @@ static class Program
             return SelfUpdate.Finish(args[1..], message =>
             {
                 ApplicationConfiguration.Initialize();
-                MessageBox.Show(message, "SteamCMD Helper", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(message, "Modwright", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             });
 
         // Setting one Workshop item's tags through the Steam client, for a window or command line run (see WorkshopTags).
@@ -420,9 +420,9 @@ static class Program
             var quit = new TaskDialogButton("Close the app");
             var page = new TaskDialogPage
             {
-                Caption = "SteamCMD Helper",
+                Caption = "Modwright",
                 Heading = "Something went wrong",
-                Text = "SteamCMD Helper hit an error it did not expect. " +
+                Text = "Modwright hit an error it did not expect. " +
                     (canContinue ? "You can keep going, but if anything looks wrong, restart the app. " : "It has to close. ") +
                     "Report it sends the details below as a bug report, after you review them." +
                     (path != null ? $"\n\nSaved to {path}" : ""),

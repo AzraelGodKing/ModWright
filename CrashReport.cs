@@ -15,7 +15,7 @@ public static class CrashReport
 
     /// <summary>The report text for <paramref name="e"/>.</summary>
     public static string Build(Exception e, string version, DateTime now) =>
-        $"SteamCMD Helper {version}\n" +
+        $"Modwright {version}\n" +
         $"Time: {now:yyyy-MM-dd HH:mm:ss zzz}\n" +
         $"Windows: {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture})\n" +
         $".NET: {RuntimeInformation.FrameworkDescription}\n\n" +

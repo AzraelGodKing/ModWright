@@ -1,14 +1,22 @@
-# SteamCMD Helper
+# Modwright
 
-Windows desktop app for uploading Steam Workshop mod updates without remembering any commands. Open it,
-tick the mods, press **Upload**. It shows each mod's version and Workshop id, checks the changelog before
-sending anything, handles the Steam login, and shows progress bars and a live log.
+Windows desktop app for Steam Workshop mods, with two sides in one program:
 
-It works for **any game with a Steam Workshop**: you give it the game's Steam app ID and tell it how your
+- **The Workshop uploader** (for mod authors): upload mod updates without remembering any commands. Open it, tick
+  the mods, press **Upload**. It shows each mod's version and Workshop id, checks the changelog before sending
+  anything, handles the Steam login, and shows progress bars and a live log.
+- **The Drop Pod** (for RimWorld players): see every installed mod, sort the load order, keep modlists, find
+  missing dependencies and clashes, run separate instances, match a save's mods and read the game's log. See
+  [The Drop Pod](#the-drop-pod-rimworld-players).
+
+The uploader works for **any game with a Steam Workshop**: you give it the game's Steam app ID and tell it how your
 mods are laid out. The upload logic is built in; the only outside tool it needs is SteamCMD.
 
-SteamCMD Helper is an independent tool. It is not affiliated with or endorsed by Valve Corporation or Steam.
-Steam and SteamCMD are trademarks of Valve Corporation.
+Modwright was called SteamCMD Helper before 1.7.0. The program file (`SteamCmdHelper.exe`), its settings folder and
+the GitHub repository keep the old name, so updates and existing settings carry on as before.
+
+Modwright is an independent tool. It is not affiliated with or endorsed by Valve Corporation, Steam or Ludeon
+Studios. Steam and SteamCMD are trademarks of Valve Corporation; RimWorld is a trademark of Ludeon Studios.
 
 ## Requirements
 
@@ -539,6 +547,58 @@ your password), the next job that needs it says so and offers to log in again. A
 
 Tick **Allow creating new items**. They are created private, with the title, description and preview image
 from your layout. The new id is saved to the id file; commit it.
+
+## The Drop Pod (RimWorld players)
+
+The **DROP POD** tab is for the mods you play with. It finds RimWorld through your Steam libraries (or a folder you
+pick with **Game folder...**) and reads every mod from the base game and DLC, the game's Mods folder and the Workshop.
+Nothing in the game folder is changed until you press **Save to game**, which writes `ModsConfig.xml` and keeps the
+old one as a timestamped backup next to it. It refuses while RimWorld is running, because the game writes its own
+list when it closes.
+
+- **Mods:** tick a mod to make it active; Up and Down (Alt+Up/Down) move it. **Sort** orders the active mods by
+  their dependencies and loadAfter/loadBefore lists (version-specific ones included), base game and DLC first; where
+  no rule decides it keeps your order, or goes A to Z. Mods whose rules loop are named, not dropped.
+- **Modlists:** **Save as...** keeps the active mods as a named list and **Switch to it** makes one active.
+  **More** imports and exports lists (also RimWorld's own `.rml` files), copies a share code (`DROPPOD1:...`) to
+  paste in a chat, adds a list from one, and sends the active mods to a **Steam collection**: a new one, or one you
+  made before, updated to match exactly (inactive mods are taken out; the base game, DLC and local mods without a
+  Workshop id can't be in a collection). Collections go through the Steam client, so Steam must be running and
+  signed in with an account that owns RimWorld.
+- **Problems:** missing or inactive dependencies, mods loading before what they need, broken load rules,
+  incompatible pairs, mods for another game version, mods installed twice and unreadable About.xml files.
+  **Activate needed mods** ticks installed dependencies; **Download missing** fetches linked Workshop items with
+  SteamCMD and your saved login into the Mods folder; **Check for updates** asks Steam which Workshop mods are newer.
+- **Instances:** **New...** makes a separate setup with its own options, mod list, saves and log (through
+  RimWorld's `-savedatafolder` switch), optionally on another RimWorld install. Pick it in the Instance list to edit
+  its mods; **Play** starts it. **More** exports an instance to a zip (with or without saves), imports one, opens its
+  folder or deletes it. Mods are shared between instances.
+- **Saves...:** each save with its game version and how its mods differ from the active ones. **Use this save's
+  mods** makes the active list match (and offers to download missing Workshop mods); only the top of each save is
+  read, so large saves open at once.
+- **Test** and **Read the log:** Test starts the game and watches its log; Read the log reads the last one.
+  Errors and warnings are grouped and each names the mod most likely at fault: its code in the stack trace (read
+  from the mod's DLLs, never run), its Harmony patch on a method there, a file in its folder, or its package ID.
+- **Insight:** hints about the active mods: methods two mods both rewrite with Harmony transpilers, prefixes that
+  can stop other mods' changes, mods that patch per-tick methods, mods heavy on textures or definitions, and your
+  rules file's notes.
+
+### Your own load-order rules
+
+No community rules list is bundled. To add your own rules, pick a JSON file with **More > Use my own load-order
+rules file**. Keys are package IDs; every field is optional, and comments and trailing commas are allowed:
+
+```json
+{
+  "rules": {
+    "some.mod": { "loadAfter": ["other.mod"], "loadBefore": ["third.mod"] },
+    "big.framework": { "loadFirst": true },
+    "slow.mod": { "note": "Slows down long games", "incompatibleWith": ["clashing.mod"] }
+  }
+}
+```
+
+Sort follows the rules, Problems reports `incompatibleWith` pairs, and notes show in Problems and Insight.
 
 ## Custom layouts: `.steamhelper.json`
 

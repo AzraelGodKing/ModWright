@@ -16,7 +16,7 @@ public static class Notify
         {
             _icon ??= new NotifyIcon();
             _icon.Icon = owner.Icon ?? SystemIcons.Application;
-            _icon.Text = "SteamCMD Helper";
+            _icon.Text = "Modwright";
             _icon.Visible = true;
             void Back(object? sender, EventArgs e)
             {

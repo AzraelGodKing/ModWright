@@ -59,7 +59,7 @@ public static class SecretScan
             if (KeyFiles.Contains(name, StringComparer.OrdinalIgnoreCase)) { hits.Add(new SecretHit(f.Path, "an SSH private key", 0, true)); continue; }
             if (KeyStores.Contains(ext)) { hits.Add(new SecretHit(f.Path, "a certificate or key store", 0, true)); continue; }
             if (EnvFile.IsMatch(name) && !EnvExamples.Contains(name, StringComparer.OrdinalIgnoreCase)) { hits.Add(new SecretHit(f.Path, "an .env file (usually passwords and keys)", 0, true)); continue; }
-            if (name.Equals("request.key", StringComparison.OrdinalIgnoreCase)) { hits.Add(new SecretHit(f.Path, "SteamCMD Helper's request key file", 0, true)); continue; }
+            if (name.Equals("request.key", StringComparison.OrdinalIgnoreCase)) { hits.Add(new SecretHit(f.Path, "Modwright's request key file", 0, true)); continue; }
             if (f.Bytes > MaxTextBytes) continue;
             var full = System.IO.Path.Combine(stage, ProjectConfig.Norm(f.Path));
             string? text;
