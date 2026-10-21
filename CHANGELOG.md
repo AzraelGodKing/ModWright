@@ -15,6 +15,15 @@
   silently dropped. Save to game writes ModsConfig.xml, keeping the old one as a backup, and refuses while RimWorld is
   running (it would overwrite the list when it closes). You can add your own rules file (More > Use my own load-order
   rules file) to put mods after or before others, or first or last; nothing is bundled.
+- **The Drop Pod finds problems before you start the game.** Under the mod list it shows, errors first: mods that need
+  a mod that isn't installed or isn't active, needed mods that load too late, rules the order breaks, two active mods
+  that say they don't work together (in their About.xml or your rules file), mods for another game version, list
+  entries that aren't installed, a package ID installed twice (and which copy the game uses), and broken About.xml
+  files. Double-click one to find its mod. Activate needed mods ticks the installed ones that are missing from the list,
+  each before the first mod that needs it. Download missing gets the missing ones that link a Workshop item with
+  SteamCMD and your saved login, straight into RimWorld's Mods folder (an older copy is only replaced once the new one
+  is complete). Check for updates asks Steam which installed Workshop mods have a newer version, and which are no
+  longer public.
 - **Modlists.** Save the active mods as a named modlist and switch between them in one click. Export one to a file,
   import a file (also RimWorld's own saved .rml lists), or share it as a single line of text that starts with
   DROPPOD1: and paste one in. Mods a list names that aren't installed are listed when you switch.
