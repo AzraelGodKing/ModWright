@@ -2,14 +2,14 @@
 
 Windows desktop app for Steam Workshop mods, with two sides in one program:
 
-- **The Workshop uploader** (for mod authors): upload mod updates without remembering any commands. Open it, tick
-  the mods, press **Upload**. It shows each mod's version and Workshop id, checks the changelog before sending
-  anything, handles the Steam login, and shows progress bars and a live log.
+- **The Launch Pad** (the Workshop uploader, for mod authors): upload mod updates without remembering any commands.
+  Open it, tick the mods, press **Upload**. It shows each mod's version and Workshop id, checks the changelog before
+  sending anything, handles the Steam login, and shows progress bars and a live log.
 - **The Drop Pod** (for RimWorld players): see every installed mod, sort the load order, keep modlists, find
   missing dependencies and clashes, run separate instances, match a save's mods and read the game's log. See
   [The Drop Pod](#the-drop-pod-rimworld-players).
 
-The uploader works for **any game with a Steam Workshop**: you give it the game's Steam app ID and tell it how your
+The Launch Pad works for **any game with a Steam Workshop**: you give it the game's Steam app ID and tell it how your
 mods are laid out. The upload logic is built in; the only outside tool it needs is SteamCMD.
 
 Modwright was called SteamCMD Helper before 1.7.0. The program file (`SteamCmdHelper.exe`), its settings folder and
@@ -85,7 +85,7 @@ in the `screenshot-diffs` artifact). That step is informational and never fails 
 
 ## Using it
 
-Until everything below is in place, a **Get set up** box at the top of the Upload tab lists the four steps
+Until everything below is in place, a **Get set up** box at the top of the Launch Pad tab lists the four steps
 (SteamCMD, Steam account, mods folder, app ID), each a link that does it, says how many are done and offers the next
 one as a button. It goes away once they are done. Once the mods folder, app ID and mods are all found, the **Project**
 card folds into one line (folder, game, layout, branch); **Change...** or a click on that line opens it again, which
@@ -550,9 +550,9 @@ from your layout. The new id is saved to the id file; commit it.
 
 ## The Drop Pod (RimWorld players)
 
-**Only want one side?** The first start asks whether you want the mod manager (The Drop Pod), the mod uploader, or
-both, and shows only what you pick. Change it any time under **Options > Appearance > Show**; nothing else changes.
-Settings from an earlier version keep both.
+**Only want one side?** The first start asks whether you want the mod manager (The Drop Pod), the mod uploader (The
+Launch Pad), or both, and shows only what you pick. Change it any time under **Options > Appearance > Show**; nothing
+else changes. Settings from an earlier version keep both.
 
 The **DROP POD** tab is for the mods you play with. It finds RimWorld through your Steam libraries (or a folder you
 pick with **Game folder...**) and reads every mod from the base game and DLC, the game's Mods folder and the Workshop.

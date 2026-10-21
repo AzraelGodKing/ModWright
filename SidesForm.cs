@@ -1,7 +1,7 @@
 namespace SteamCmdHelper;
 
 /// <summary>
-/// Asked on the first start: use Modwright as a mod manager (The Drop Pod), a mod uploader, or both. Only the sides
+/// Asked on the first start: use Modwright as a mod manager (The Drop Pod), a mod uploader (The Launch Pad), or both. Only the sides
 /// picked are shown; Options > Appearance changes it later.
 /// </summary>
 public sealed class SidesForm : Form
@@ -36,10 +36,10 @@ public sealed class SidesForm : Form
         }
         Choice(Display.Manager, "Mod &manager (The Drop Pod)",
             "Pick, sort and check the RimWorld mods you play with, keep modlists and instances, and read the game's log.");
-        Choice(Display.Uploader, "Mod &uploader",
+        Choice(Display.Uploader, "Mod &uploader (The Launch Pad)",
             "Upload and update your own mods on the Steam Workshop, with change notes, tags and checks before each upload.");
         Choice(Display.Both, "&Both",
-            "The mod manager and the mod uploader, each on its own tab.");
+            "The Drop Pod and The Launch Pad, each on its own tab.");
 
         var ok = new Button { Text = "Continue", AutoSize = true, DialogResult = DialogResult.OK, Padding = new Padding(14, 2, 14, 2), Margin = new Padding(0, 14, 0, 0), Anchor = AnchorStyles.Right }.Role(ThemeRole.Primary);
         root.Controls.Add(ok);

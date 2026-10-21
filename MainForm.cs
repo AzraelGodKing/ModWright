@@ -238,7 +238,7 @@ public sealed partial class MainForm : Form
 
     void BuildUi()
     {
-        Text = "Modwright - Workshop uploads";
+        Text = "Modwright - The Launch Pad";
         Width = 1000; Height = 800; MinimumSize = new Size(840, 640); // at 96 DPI; scaled and fitted to the screen after Theme.Apply
         Font = Theme.BodyFont;
         StartPosition = FormStartPosition.CenterScreen;
@@ -377,8 +377,8 @@ public sealed partial class MainForm : Form
     /// The brand bar along the top, dark in both themes: the icon and app name on the left, the Upload / Options tabs
     /// and the "?" button on the right, over a Steam-blue line.
     /// </summary>
-    /// <summary>Under the name: which side of the app is open ("WORKSHOP UPLOADER" or "THE DROP POD").</summary>
-    readonly Label _side = new Label { Text = "WORKSHOP UPLOADER", AutoSize = true, Margin = new Padding(0, 10, 0, 0), UseMnemonic = false }.Role(ThemeRole.Muted);
+    /// <summary>Under the name: which side of the app is open ("THE LAUNCH PAD" or "THE DROP POD").</summary>
+    readonly Label _side = new Label { Text = "THE LAUNCH PAD", AutoSize = true, Margin = new Padding(0, 10, 0, 0), UseMnemonic = false }.Role(ThemeRole.Muted);
 
     Control BuildHeader()
     {
@@ -399,13 +399,14 @@ public sealed partial class MainForm : Form
         title.Controls.Add(_side);
         bar.Controls.Add(title, 0, 0);
 
-        _navUpload = new NavButton { Text = "&UPLOAD", AccessibleName = "Upload" };
+        _navUpload = new NavButton { Text = "LA&UNCH PAD", AccessibleName = "The Launch Pad: upload your mods" };
         _navDropPod = new NavButton { Text = "DROP POD", AccessibleName = "The Drop Pod: your RimWorld mods" };
         _navOptions = new NavButton { Text = "&OPTIONS", AccessibleName = "Options" };
         _navUpload.Click += (_, _) => ShowPage(_uploadPage);
         _navDropPod.Click += (_, _) => ShowPage(_dropPodPage);
         _navOptions.Click += (_, _) => ShowPage(_optionsPage);
         _navUpload.Anchor = _navDropPod.Anchor = _navOptions.Anchor = AnchorStyles.Bottom;
+        Tip(_navUpload, "The Launch Pad: upload and update your own mods on the Steam Workshop");
         Tip(_navDropPod, "The Drop Pod: the RimWorld mods you play with");
         bar.Controls.Add(_navUpload, 2, 0);
         bar.Controls.Add(_navDropPod, 3, 0);
@@ -1121,11 +1122,11 @@ public sealed partial class MainForm : Form
                 Hint("The theme changes straight away; Match Windows follows Windows' light or dark app mode. " +
                      "A new text size is used the next time Modwright starts."),
                 Row(_showDetails),
-                Hint("Its preview image, numbers on Steam, change note, description and buttons, on the Upload tab when the window is wide enough " +
+                Hint("Its preview image, numbers on Steam, change note, description and buttons, on the Launch Pad tab when the window is wide enough " +
                      "for the list's columns too. Drag the bar between the list and the details to resize them.")),
-            Card("Mod manager and uploader", null,
+            Card("The Drop Pod and The Launch Pad", null,
                 Row(Lbl("Sh&ow"), _sidesChoice),
-                Hint("The mod manager (The Drop Pod) is for the RimWorld mods you play with; the uploader puts your own mods on the Steam Workshop. " +
+                Hint("The mod manager (The Drop Pod) is for the RimWorld mods you play with; the uploader (The Launch Pad) puts your own mods on the Steam Workshop. " +
                      "Only what is picked here is shown, and switching changes nothing else: your settings, mods folder and modlists stay as they are.")),
             Card("Language", null,
                 Row(Lbl("&Language"), _language),
@@ -1319,8 +1320,8 @@ public sealed partial class MainForm : Form
         if (page != _optionsPage)
         {
             var dropPod = page == _dropPodPage;
-            _side.Text = Localizer.T(dropPod ? "THE DROP POD" : "WORKSHOP UPLOADER");
-            Text = Localizer.T(dropPod ? "Modwright - The Drop Pod" : "Modwright - Workshop uploads");
+            _side.Text = Localizer.T(dropPod ? "THE DROP POD" : "THE LAUNCH PAD");
+            Text = Localizer.T(dropPod ? "Modwright - The Drop Pod" : "Modwright - The Launch Pad");
         }
         if (page == _dropPodPage && IsHandleCreated) DropPodShown(); // on opening, read once the window shows (see Shown)
     }
