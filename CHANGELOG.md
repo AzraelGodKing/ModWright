@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.0
+
+- **Two more themes: Triphlx and Tohma.** Options > Appearance > Theme now also offers Triphlx (true black with an
+  electric blue) and Tohma (deep royal blue with crimson). Triphlx puts dark text on its blue and Tohma white text on
+  its crimson, so buttons and selected rows stay easy to read.
+
 ## 1.9.0
 
 - **Six new themes: Koneko, Serina, Wolfie, Vickra, Kitomi and Szendoo.** Options > Appearance > Theme now also offers

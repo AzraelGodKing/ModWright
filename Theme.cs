@@ -36,7 +36,7 @@ public static class Theme
 {
     public const string DarkName = Display.Dark, LightName = Display.Light, KatsName = Display.Kats, KonekoName = Display.Koneko,
         SerinaName = Display.Serina, WolfieName = Display.Wolfie, VickraName = Display.Vickra, KitomiName = Display.Kitomi,
-        SzendooName = Display.Szendoo, SystemName = Display.System, HighContrastName = "HighContrast";
+        SzendooName = Display.Szendoo, TriphlxName = Display.Triphlx, TohmaName = Display.Tohma, SystemName = Display.System, HighContrastName = "HighContrast";
 
     // The look follows Steam's own desktop client: deep slate-blue surfaces, a near-black brand bar, Steam blue for
     // links, ticks and selection, light-blue secondary buttons and a green button for the main job. Neither theme uses
@@ -207,6 +207,46 @@ public static class Theme
     };
 
     /// <summary>
+    /// Triphlx: true black surfaces with an electric blue for buttons, ticks and selection, light blue for the other
+    /// buttons' text, and dark text on the blue.
+    /// </summary>
+    public static readonly Palette TriphlxPalette = new(
+        TriphlxName, true,
+        Back: Color.FromArgb(8, 8, 10), Surface: Color.FromArgb(16, 18, 24), Header: Color.FromArgb(3, 3, 5),
+        Input: Color.FromArgb(12, 13, 17), Border: Color.FromArgb(40, 52, 76),
+        Text: Color.FromArgb(226, 234, 248), Muted: Color.FromArgb(148, 160, 184), Title: Color.White,
+        Button: Color.FromArgb(20, 30, 48), ButtonText: Color.FromArgb(110, 180, 255),
+        ButtonHover: Color.FromArgb(28, 42, 66), ButtonDown: Color.FromArgb(24, 36, 58),
+        Accent: Color.FromArgb(30, 144, 255), AccentHover: Color.FromArgb(70, 166, 255), AccentText: Color.FromArgb(2, 10, 24),
+        Primary: Color.FromArgb(30, 144, 255), PrimaryHover: Color.FromArgb(70, 166, 255),
+        Track: Color.FromArgb(26, 32, 44), ListHeader: Color.FromArgb(12, 13, 18),
+        Ok: Color.FromArgb(80, 220, 130), Warn: Color.FromArgb(240, 200, 80), Error: Color.FromArgb(240, 110, 100), Info: Color.FromArgb(110, 180, 255))
+    {
+        AccentDeep = Color.FromArgb(10, 80, 180),
+        PrimaryDeep = Color.FromArgb(10, 80, 180),
+    };
+
+    /// <summary>
+    /// Tohma: deep royal blue surfaces with a crimson for buttons, ticks and selection, white text on the crimson, and
+    /// light red for the other buttons' text.
+    /// </summary>
+    public static readonly Palette TohmaPalette = new(
+        TohmaName, true,
+        Back: Color.FromArgb(16, 30, 72), Surface: Color.FromArgb(24, 42, 96), Header: Color.FromArgb(10, 20, 52),
+        Input: Color.FromArgb(14, 26, 62), Border: Color.FromArgb(52, 76, 140),
+        Text: Color.FromArgb(232, 238, 255), Muted: Color.FromArgb(160, 176, 220), Title: Color.White,
+        Button: Color.FromArgb(34, 56, 120), ButtonText: Color.FromArgb(255, 150, 150),
+        ButtonHover: Color.FromArgb(46, 72, 148), ButtonDown: Color.FromArgb(40, 64, 134),
+        Accent: Color.FromArgb(210, 36, 52), AccentHover: Color.FromArgb(228, 56, 70), AccentText: Color.White,
+        Primary: Color.FromArgb(210, 36, 52), PrimaryHover: Color.FromArgb(228, 56, 70),
+        Track: Color.FromArgb(32, 52, 112), ListHeader: Color.FromArgb(20, 36, 84),
+        Ok: Color.FromArgb(90, 220, 140), Warn: Color.FromArgb(240, 200, 80), Error: Color.FromArgb(255, 120, 110), Info: Color.FromArgb(150, 190, 255))
+    {
+        AccentDeep = Color.FromArgb(130, 14, 28),
+        PrimaryDeep = Color.FromArgb(130, 14, 28),
+    };
+
+    /// <summary>
     /// Windows High Contrast: every colour comes from the user's contrast theme, so the app reads exactly like the rest
     /// of Windows. Status colours fall back to the text colour; the words (badges, notes) carry the meaning.
     /// </summary>
@@ -241,7 +281,7 @@ public static class Theme
 
     public static Palette Current { get; private set; } = DarkPalette;
 
-    /// <summary>What the user picked: "Dark", "Light", "Kats", "Koneko", "Serina", "Wolfie", "Vickra", "Kitomi", "Szendoo" or "System". <see cref="Current"/> is what that resolves to now.</summary>
+    /// <summary>What the user picked: "Dark", "Light", "Kats", "Koneko", "Serina", "Wolfie", "Vickra", "Kitomi", "Szendoo", "Triphlx", "Tohma" or "System". <see cref="Current"/> is what that resolves to now.</summary>
     public static string Choice { get; private set; } = DarkName;
 
     /// <summary>True while Windows High Contrast is on; it overrides the chosen theme.</summary>
@@ -261,7 +301,8 @@ public static class Theme
                 LightName => LightPalette, KatsName => KatsPalette, KonekoName => KonekoPalette,
                 SerinaName => SerinaPalette, WolfieName => WolfiePalette,
                 VickraName => VickraPalette, KitomiName => KitomiPalette,
-                SzendooName => SzendooPalette, _ => DarkPalette,
+                SzendooName => SzendooPalette,
+                TriphlxName => TriphlxPalette, TohmaName => TohmaPalette, _ => DarkPalette,
             };
         return Current != before;
     }
