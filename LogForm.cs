@@ -13,6 +13,8 @@ public sealed class LogForm : Form
     readonly Label _summary = new() { AutoSize = true, UseMnemonic = false, Margin = new Padding(0, 0, 0, 6) };
     readonly CheckBox _errorsOnly = new() { Text = "&Errors only", AutoSize = true };
     readonly Button _untick = new() { Text = "&Untick the mod at fault", AutoSize = true, Enabled = false };
+    readonly Button _reportBtn = new() { Text = "Report to the &author", AutoSize = true, Enabled = false };
+    readonly Func<LogIssue, (string? Url, string Body)?>? _reportOf;
     readonly System.Windows.Forms.Timer _watch = new() { Interval = 3000 };
     readonly string _path;
     readonly Func<string, CancellationToken, LogReport> _read;
@@ -26,8 +28,11 @@ public sealed class LogForm : Form
     /// <param name="name">A mod key's display name.</param>
     /// <param name="untick">Unticks a mod in the Drop Pod's list.</param>
     /// <param name="watch">Keep reading the log as the game writes it.</param>
-    public LogForm(string path, Func<string, CancellationToken, LogReport> read, Func<string, string> name, Action<string> untick, bool watch)
+    /// <param name="report">For a problem: where to report it to the author of the mod at fault, and the text; null hides the button.</param>
+    public LogForm(string path, Func<string, CancellationToken, LogReport> read, Func<string, string> name, Action<string> untick, bool watch,
+        Func<LogIssue, (string? Url, string Body)?>? report = null)
     {
+        _reportOf = report;
         _path = path;
         _read = read;
         _name = name;
@@ -49,7 +54,8 @@ public sealed class LogForm : Form
         var top = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = false, Margin = Padding.Empty };
         top.Controls.Add(_summary);
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 8, 0, 0) };
-        foreach (var c in new Control[] { _errorsOnly, again, open, copy, _untick, close }) buttons.Controls.Add(c);
+        foreach (var c in new Control[] { _errorsOnly, again, open, copy, _untick, _reportBtn, close }) buttons.Controls.Add(c);
+        _reportBtn.Visible = report != null;
         var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 300 };
         split.Panel1.Controls.Add(_list);
         split.Panel2.Controls.Add(_details);
@@ -75,6 +81,15 @@ public sealed class LogForm : Form
             _untickMod(b.Mod);
             _untick.Enabled = false;
             _summary.Text = $"Unticked {_name(b.Mod)}. Press Save to game in the Drop Pod, then test again.";
+        };
+        _reportBtn.Click += (_, _) =>
+        {
+            if (Selected() is not { } i || _reportOf?.Invoke(i) is not { } r) return;
+            try { Clipboard.SetText(r.Body); } catch { }
+            if (r.Url != null)
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(r.Url) { UseShellExecute = true }); } catch { }
+            _summary.Text = r.Url == null ? "The report is on the clipboard; the mod names no page to report on." :
+                r.Url.Contains("github.com") ? "Opened a new GitHub issue with the report filled in (it's on the clipboard too)." : "Opened the mod's page; the report is on the clipboard to paste in a comment.";
         };
         _watch.Tick += async (_, _) => await ReadAsync(force: false);
         Shown += async (_, _) => { await ReadAsync(force: true); if (watch) _watch.Start(); };
@@ -141,6 +156,7 @@ public sealed class LogForm : Form
     {
         var i = Selected();
         _untick.Enabled = i?.Mods.Count > 0;
+        _reportBtn.Enabled = i?.Mods.Count > 0;
         if (i == null) { _details.Text = ""; return; }
         var head = i.Mods.Count == 0 ? "No mod could be pinned on this one." : string.Join(Environment.NewLine, i.Mods.Select(b => $"{_name(b.Mod)}: {Why[b.Why]}"));
         _details.Text = $"{head}{Environment.NewLine}Line {i.Line}, {i.Count} time{(i.Count == 1 ? "" : "s")}.{Environment.NewLine}{Environment.NewLine}{i.Text.Replace("\n", Environment.NewLine)}";

@@ -95,6 +95,9 @@ public sealed class InstanceStore
                 var from = Path.Combine(settingsFrom, rel);
                 if (File.Exists(from)) { Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(inst.DataFolder, rel))!); File.Copy(from, Path.Combine(inst.DataFolder, rel), true); }
             }
+        // The mods' own settings too, so the instance plays like the normal game until changed.
+        if (settingsFrom != null)
+            foreach (var f in ModSettings.Files(settingsFrom)) File.Copy(f, Path.Combine(inst.DataFolder, "Config", Path.GetFileName(f)), true);
         Save(inst);
         if (active != null) game.WriteActiveMods(usual with { DataFolder = inst.DataFolder }, active);
         return inst;

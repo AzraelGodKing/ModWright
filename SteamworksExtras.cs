@@ -52,6 +52,10 @@ static class SteamworksExtras
     {
         var result = new ExtrasResult { Ok = true };
         if (req.CountComments is { Length: > 0 } countIds) result.Comments = await CommentsAsync(countIds);
+        if (req.Unsubscribe is { Length: > 0 } drop)
+            foreach (var u in drop)
+                if (ulong.TryParse(u, out var uid) && await new Steamworks.Ugc.Item(new PublishedFileId { Value = uid }).Unsubscribe())
+                    result.Done.Add("unsubscribed from " + u);
         if (req.Required == null && req.Gallery == null && req.Languages == null) return result;
 
         var id = new PublishedFileId { Value = itemId };
