@@ -19,7 +19,11 @@ public sealed partial class MainForm
     readonly Label _dpCount = new Label { AutoSize = true, UseMnemonic = false }.Role(ThemeRole.Muted);
     readonly Label _dpNote = new Label { AutoSize = true, UseMnemonic = false, MaximumSize = new Size(900, 0), Visible = false };
     readonly List<ListViewItem> _dpRows = new();
-    Button _dpSave = null!, _dpUndo = null!, _dpSort = null!, _dpMore = null!;
+    readonly ListView _dpProblems = new() { View = View.Details, FullRowSelect = true, HideSelection = false, Dock = DockStyle.Fill, ShowItemToolTips = true, HeaderStyle = ColumnHeaderStyle.None, AccessibleName = "Problems with the active mods" };
+    readonly Label _dpProblemCount = new Label { AutoSize = true, UseMnemonic = false }.Role(ThemeRole.Muted);
+    Button _dpSave = null!, _dpUndo = null!, _dpSort = null!, _dpMore = null!, _dpActivateDeps = null!, _dpDownload = null!, _dpUpdates = null!;
+    List<ModProblem> _dpFound = new();
+    bool _dpBusy;
     LibraryScan? _dpScan;
     /// <summary>The active mods (ids as the game writes them) in load order, as edited here; saved to the game with Save to game.</summary>
     List<string> _dpActive = new();
@@ -31,10 +35,11 @@ public sealed partial class MainForm
 
     Control BuildDropPodPage()
     {
-        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Padding = new Padding(14, 12, 14, 12), Visible = false };
+        var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(14, 12, 14, 12), Visible = false };
         page.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        page.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        page.RowStyles.Add(new RowStyle(SizeType.Percent, 68));
+        page.RowStyles.Add(new RowStyle(SizeType.Percent, 32));
 
         var pick = Btn("Game folder...", (_, _) => PickGameFolder());
         var rescan = SmallBtn("Rescan", (_, _) => _ = ScanDropPodAsync());
@@ -68,6 +73,18 @@ public sealed partial class MainForm
         Tip(_dpSave, "Write the ticked mods, in this order, to the game's ModsConfig.xml (the old one is kept as a backup)");
         page.Controls.Add(Card("Mods", new Control[] { _dpCount, _dpSort, up, down, _dpUndo, _dpSave, _dpFilter }, _dpList), 0, 1);
         ((Control)page.Controls[1]).Dock = DockStyle.Fill;
+
+        _dpProblems.Columns.Add("", (int)(80 * Theme.TextScale));
+        _dpProblems.Columns.Add("", (int)(900 * Theme.TextScale));
+        _dpProblems.DoubleClick += (_, _) => SelectProblemMod();
+        _dpActivateDeps = SmallBtn("Activate needed mods", (_, _) => ActivateDependencies());
+        _dpDownload = SmallBtn("Download missing", async (_, _) => await DownloadMissingAsync());
+        _dpUpdates = SmallBtn("Check for updates", async (_, _) => await CheckDropPodUpdatesAsync());
+        Tip(_dpActivateDeps, "Tick the installed mods the active ones need, each placed before the first mod that needs it");
+        Tip(_dpDownload, "Download the missing dependencies that link a Workshop item, with SteamCMD and your saved login, into RimWorld's Mods folder");
+        Tip(_dpUpdates, "Ask Steam which installed Workshop mods have a newer version");
+        page.Controls.Add(Card("Problems", new Control[] { _dpProblemCount, _dpActivateDeps, _dpDownload, _dpUpdates }, _dpProblems), 0, 2);
+        ((Control)page.Controls[2]).Dock = DockStyle.Fill;
         UpdateDropPodButtons();
         return page;
     }
@@ -189,6 +206,7 @@ public sealed partial class MainForm
             _dpCount.Text = $"{_dpScan.Mods.Count} installed, {_dpActive.Count} active" + (missing > 0 ? $" ({missing} not installed)" : "") + (_dpDirty ? "  ·  not saved" : "");
         }
         ColorDropPodRows();
+        FindDropPodProblems();
         UpdateDropPodButtons();
     }
 
@@ -209,8 +227,127 @@ public sealed partial class MainForm
 
     void UpdateDropPodButtons()
     {
-        _dpSave.Enabled = _dpUndo.Enabled = _dpDirty && _dpScan != null;
-        _dpSort.Enabled = _dpScan != null && _dpActive.Count > 1;
+        _dpSave.Enabled = _dpUndo.Enabled = _dpDirty && _dpScan != null && !_dpBusy;
+        _dpSort.Enabled = _dpScan != null && _dpActive.Count > 1 && !_dpBusy;
+        _dpActivateDeps.Enabled = !_dpBusy && _dpFound.Any(p => p.Kind == ProblemKind.MissingDependency && p.WorkshopId == null && _dpScan?.ById().ContainsKey(p.Other ?? "") == true);
+        _dpDownload.Enabled = !_dpBusy && Problems.DownloadableFixes(_dpFound).Count > 0;
+        _dpUpdates.Enabled = !_dpBusy && _dpScan != null;
+    }
+
+    // ------------------------------------------------------------ problems, downloads and updates
+
+    SortRules? DropPodRules()
+    {
+        if (_s.DropPodRulesFile.Length == 0) return null;
+        try { return SortRules.Parse(File.ReadAllText(_s.DropPodRulesFile)); }
+        catch { return null; }
+    }
+
+    void FindDropPodProblems()
+    {
+        _dpFound = _dpScan == null ? new() : Problems.Find(_dpScan, _dpActive, _dpGame, DropPodRules());
+        _dpProblems.BeginUpdate();
+        _dpProblems.Items.Clear();
+        foreach (var p in _dpFound)
+        {
+            var it = new ListViewItem(new[] { p.Level switch { ProblemLevel.Error => "Error", ProblemLevel.Warning => "Warning", _ => "Note" }, p.Message })
+            { Tag = p, ToolTipText = p.Message, UseItemStyleForSubItems = true };
+            it.ForeColor = Theme.Of(p.Level switch { ProblemLevel.Error => Tone.Error, ProblemLevel.Warning => Tone.Warn, _ => Tone.Muted });
+            it.BackColor = _dpProblems.BackColor;
+            _dpProblems.Items.Add(it);
+        }
+        _dpProblems.EndUpdate();
+        var errors = _dpFound.Count(p => p.Level == ProblemLevel.Error);
+        var warnings = _dpFound.Count(p => p.Level == ProblemLevel.Warning);
+        _dpProblemCount.Text = _dpScan == null ? "" : _dpFound.Count == 0 ? "None found" : $"{errors} error{(errors == 1 ? "" : "s")}, {warnings} warning{(warnings == 1 ? "" : "s")}";
+    }
+
+    /// <summary>Double-clicking a problem selects its mod in the list above.</summary>
+    void SelectProblemMod()
+    {
+        if (_dpProblems.SelectedItems.Count == 0 || _dpProblems.SelectedItems[0].Tag is not ModProblem p) return;
+        if (_dpList.Items[p.Mod] is not { } row) return;
+        _dpList.SelectedItems.Clear();
+        row.Selected = row.Focused = true;
+        row.EnsureVisible();
+        _dpList.Focus();
+    }
+
+    void ActivateDependencies()
+    {
+        if (_dpScan == null) return;
+        var before = _dpActive.Count;
+        _dpActive = Problems.WithInactiveDependencies(_dpScan, _dpActive, _dpGame);
+        _dpDirty |= _dpActive.Count != before;
+        ShowDropPodGame($"Ticked {_dpActive.Count - before} mod{(_dpActive.Count - before == 1 ? "" : "s")} the active ones need. Press Save to game to use the list.");
+        FillDropPodList();
+    }
+
+    async Task DownloadMissingAsync()
+    {
+        if (_dpScan == null) return;
+        var ids = Problems.DownloadableFixes(_dpFound);
+        if (ids.Count == 0) return;
+        if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd) || _s.Account.Length == 0)
+        {
+            ShowDropPodGame("Downloading needs SteamCMD and a saved Steam login of an account that owns RimWorld: set both up under Options > Account.");
+            return;
+        }
+        var mods = SafeFiles.Child(_dpScan.Install.GameFolder, "Mods", directory: true) ?? Path.Combine(_dpScan.Install.GameFolder, "Mods");
+        _dpBusy = true;
+        UpdateDropPodButtons();
+        var record = new DownloadRecord(Path.Combine(AppSettings.Folder, "droppod", "downloads.json"));
+        var done = new List<string>();
+        var failed = new List<string>();
+        try
+        {
+            foreach (var id in ids)
+            {
+                ShowDropPodGame($"Downloading Workshop item {id} with SteamCMD ({done.Count + failed.Count + 1} of {ids.Count})...");
+                try
+                {
+                    await WorkshopUpdates.InstallAsync(_s.EffectiveSteamCmd, _s.Account, _dpGame.AppId, id, mods, record, null, CancellationToken.None);
+                    done.Add(id);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { failed.Add($"{id} ({e.Message})"); }
+            }
+        }
+        finally { _dpBusy = false; }
+        var keep = _dpActive;
+        _dpDirty = false; // the rescan below rereads the game's list; put the edits back after it
+        await ScanDropPodAsync();
+        _dpActive = keep;
+        _dpActive = Problems.WithInactiveDependencies(_dpScan!, _dpActive, _dpGame);
+        _dpDirty = true;
+        FillDropPodList();
+        ShowDropPodGame($"Downloaded {done.Count} of {ids.Count} into the Mods folder and ticked them." + (failed.Count > 0 ? " Failed: " + string.Join("; ", failed) : "") + " Press Save to game to use the list.");
+    }
+
+    async Task CheckDropPodUpdatesAsync()
+    {
+        if (_dpScan == null) return;
+        _dpBusy = true;
+        UpdateDropPodButtons();
+        try
+        {
+            ShowDropPodGame("Asking Steam about the installed Workshop mods...");
+            var withId = _dpScan.Mods.Where(m => m.WorkshopId != null && m.Source != ModSource.Official).ToList();
+            var remote = await WorkshopStatus.FetchAsync(withId.Select(m => m.WorkshopId!));
+            if (remote.Count == 0 && withId.Count > 0) { ShowDropPodGame("Steam could not be reached, so updates were not checked."); return; }
+            var local = new Dictionary<string, DateTimeOffset>(WorkshopUpdates.SteamClientTimes(_dpScan.Install.WorkshopFolder, _dpGame.AppId));
+            foreach (var (id, t) in new DownloadRecord(Path.Combine(AppSettings.Folder, "droppod", "downloads.json")).Times) local.TryAdd(id, t);
+            var outdated = WorkshopUpdates.Outdated(withId, remote, local);
+            var gone = withId.Where(m => remote.TryGetValue(m.WorkshopId!, out var r) && !r.Public).Select(m => m.DisplayName).ToList();
+            var lines = new List<string>
+            {
+                outdated.Count == 0 ? $"All {withId.Count} Workshop mods are up to date." :
+                $"{outdated.Count} have a newer version on Steam: " + string.Join(", ", outdated.Take(10).Select(u => $"{u.Mod.DisplayName} ({u.Remote.ToLocalTime():d MMM})")) + (outdated.Count > 10 ? ", ..." : "") +
+                (outdated.Any(u => u.Mod.Source == ModSource.Workshop) ? ". The Steam client updates subscribed mods itself; if it hasn't, restart Steam." : "."),
+            };
+            if (gone.Count > 0) lines.Add($"{gone.Count} are no longer public on Steam (removed or made private): {string.Join(", ", gone.Take(8))}.");
+            ShowDropPodGame(string.Join("\n", lines));
+        }
+        finally { _dpBusy = false; UpdateDropPodButtons(); }
     }
 
     void DropPodTicked(ListViewItem it)
