@@ -9,13 +9,17 @@ public enum LogFilter { All, WarningsAndErrors, ErrorsOnly }
 /// <summary>Display choices that need no WinForms (theme, text size, log filtering), so the tests can check them.</summary>
 public static class Display
 {
-    public const string Dark = "Dark", Light = "Light", System = "System";
+    public const string Dark = "Dark", Light = "Light", Kats = "Kats", System = "System";
 
-    /// <summary>The saved theme choice: "Dark", "Light" or "System" (follow Windows). Anything else is dark, the default.</summary>
+    /// <summary>The themes in Options > Appearance, in the drop-down's order: saved name and the name shown.</summary>
+    public static readonly (string Name, string Label)[] Themes =
+    {
+        (Dark, "Dark"), (Light, "Light"), (Kats, "Kats (orange and gunmetal)"), (System, "Match Windows"),
+    };
+
+    /// <summary>The saved theme choice: one of <see cref="Themes"/> ("System" follows Windows). Anything else is dark, the default.</summary>
     public static string NormalizeTheme(string? name) =>
-        string.Equals(name, Light, StringComparison.OrdinalIgnoreCase) ? Light
-        : string.Equals(name, System, StringComparison.OrdinalIgnoreCase) ? System
-        : Dark;
+        Themes.Select(t => t.Name).FirstOrDefault(t => string.Equals(name, t, StringComparison.OrdinalIgnoreCase)) ?? Dark;
 
     /// <summary>
     /// The palette to use for a choice. "System" follows Windows' app mode (<paramref name="windowsAppsUseLight"/>, null
