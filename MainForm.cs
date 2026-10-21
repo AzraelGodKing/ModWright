@@ -388,8 +388,7 @@ public sealed partial class MainForm : Form
         if (Theme.AppIcon != null)
             title.Controls.Add(new PictureBox { Image = new Icon(Theme.AppIcon, 64, 64).ToBitmap(), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(32, 32), Margin = new Padding(0, 0, 10, 0) });
         // The name in two weights, "Mod" bold and "wright" light in the accent colour, then the side of the app that is open.
-        title.Controls.Add(new Label { Text = "Mod", AutoSize = true, Font = Theme.TitleFont, Margin = new Padding(0, 2, 0, 0), UseMnemonic = false }.Role(ThemeRole.Title));
-        title.Controls.Add(new Label { Text = "wright", AutoSize = true, Font = Theme.BrandFont, Margin = new Padding(0, 2, 14, 0), UseMnemonic = false }.Role(ThemeRole.Brand));
+        title.Controls.Add(new BrandName { Font = Theme.TitleFont, Margin = new Padding(0, 6, 14, 0) }.Role(ThemeRole.Title));
         _side.Font = Theme.SmallFont;
         title.Controls.Add(_side);
         bar.Controls.Add(title, 0, 0);
