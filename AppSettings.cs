@@ -99,6 +99,12 @@ public sealed class AppSettings
     public Dictionary<string, string> SteamCollections { get; set; } = new();
     /// <summary>Drop Pod: the instance last picked, by Steam app id; missing or "" = the normal game.</summary>
     public Dictionary<string, string> CurrentInstances { get; set; } = new();
+    /// <summary>Drop Pod: extra arguments for starting the normal game (instances keep their own).</summary>
+    public string DropPodLaunchArgs { get; set; } = "";
+    /// <summary>Drop Pod: width of the details panel beside the mod list; 0 = the default.</summary>
+    public int DropPodDetailsWidth { get; set; }
+    /// <summary>Drop Pod: offer to back up the newest save before starting with mods it wasn't played with.</summary>
+    public bool DropPodSaveBackups { get; set; } = true;
     /// <summary>Discord webhook to announce uploads to, per mods folder. Kept here, not in the repo, because the link is a secret.</summary>
     public Dictionary<string, string> DiscordWebhooks { get; set; } = new();
     /// <summary>Mods folders whose uploads also get a GitHub release (made with the gh tool).</summary>

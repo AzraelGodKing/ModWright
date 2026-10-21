@@ -192,6 +192,42 @@ static class Program
         public override void Flush() { a.Flush(); foreach (var b in more) b?.Flush(); }
     }
 
+    /// <summary>
+    /// Starts RimWorld the way the Drop Pod's Play button does (instance folders, launch options, frozen mods) and waits
+    /// for it to close when frozen mods were linked in, so they come out again. Errors are shown in a message box.
+    /// </summary>
+    static int PlayFromJumpList(string? instance)
+    {
+        var game = new DropPod.RimWorld.RimWorldModule();
+        var s = AppSettings.Load();
+        string? Fail(string why)
+        {
+            ApplicationConfiguration.Initialize();
+            MessageBox.Show(why, "Modwright", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return null;
+        }
+        s.GameFolders.TryGetValue(game.AppId, out var gameFolder);
+        s.GameDataFolders.TryGetValue(game.AppId, out var dataFolder);
+        var steam = DropPod.SteamLibraries.Find();
+        var usual = game.Detect(steam, gameFolder, dataFolder);
+        if (usual == null) { Fail("RimWorld was not found. Open Modwright's Drop Pod and pick its folder."); return 1; }
+        var inst = string.IsNullOrEmpty(instance) ? null : new DropPod.InstanceStore(Path.Combine(AppSettings.Folder, "droppod", "instances")).Get(game.AppId, instance);
+        if (!string.IsNullOrEmpty(instance) && inst == null) { Fail($"There is no instance called {instance} any more."); return 1; }
+        if (game.ProcessNames.Any(n => { try { return System.Diagnostics.Process.GetProcessesByName(n).Length > 0; } catch { return false; } })) { Fail("RimWorld is already running."); return 1; }
+        var install = inst?.Apply(usual, game, steam) ?? usual;
+        var psi = DropPod.Launcher.StartInfo(game, install, inst, inst?.LaunchArgs ?? s.DropPodLaunchArgs);
+        if (psi == null) { Fail("RimWorld's program was not found in " + install.GameFolder + "."); return 1; }
+        try
+        {
+            var done = new ManualResetEventSlim(false);
+            var frozen = inst != null && DropPod.Freezer.IsFrozen(inst);
+            using var p = DropPod.Launcher.Start(psi, game, install, inst, frozen ? _ => done.Set() : null);
+            if (frozen) done.Wait();
+            return 0;
+        }
+        catch (Exception e) { Fail("Could not start RimWorld: " + e.Message); return 1; }
+    }
+
     [STAThread]
     static int Main(string[] args)
     {
@@ -213,6 +249,9 @@ static class Program
         if (args.Length > 0 && args[0] == DropPod.SteamCollections.ChildArg) return SteamworksCollections.RunChild(args[1..]);
 
         if (Cli.IsCommand(args)) return RunCommandLine(args);
+
+        // The taskbar jump list's "Play ..." entries: start RimWorld (normally, or with an instance) without the window.
+        if (args.Length > 0 && args[0] == "--play") return PlayFromJumpList(args.Length > 1 ? args[1] : null);
 
         // Headless checks used for testing (the real command line is "SteamCmdHelper upload ...", see Cli):
         //   SteamCmdHelper.exe --selftest <output.txt>                       list what the scanner sees

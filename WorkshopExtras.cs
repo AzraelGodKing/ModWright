@@ -23,6 +23,8 @@ public sealed class ExtrasRequest
     public List<LanguagePage>? Languages { get; set; }
     /// <summary>Items to count comments on (the Steam client's statistics); null counts nothing. Needs no ownership.</summary>
     public string[]? CountComments { get; set; }
+    /// <summary>Items to unsubscribe the signed-in account from (the Drop Pod's clean-up); null leaves subscriptions alone. Needs no ownership.</summary>
+    public string[]? Unsubscribe { get; set; }
 }
 
 /// <summary>The gallery images (full paths, with a hash of each) and YouTube video ids an item should show.</summary>

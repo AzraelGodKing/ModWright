@@ -30,7 +30,8 @@ public sealed partial class MainForm
     List<string> _dpActive = new();
     bool _dpScanning, _dpScannedOnce, _dpDirty, _dpFilling;
 
-    static readonly string[] DropPodColumns = { "Name", "Author", "Package ID", "Source", "Game versions", "Load order" };
+    static readonly string[] DropPodColumns = { "Name", "Author", "Package ID", "Source", "Game versions", "Load order", "Tag", "Note" };
+    const int DropPodTagColumn = 6;
 
     InstanceStore DropPodInstances => new(Path.Combine(AppSettings.Folder, "droppod", "instances"));
     /// <summary>The normal game's install, before an instance's folders are put in; null until found.</summary>
@@ -66,16 +67,18 @@ public sealed partial class MainForm
         var test = Btn("Test", (_, _) => { if (LaunchDropPod() is { } log) OpenDropPodLog(log, watch: true); });
         Tip(test, "Start RimWorld and watch its log: errors and warnings are grouped as they come, with the mod most likely at fault");
         _dpInstMore = Btn("More ▾", (_, _) => ShowInstanceMenu());
+        _dpTools = SmallBtn("Tools ▾", (_, _) => ShowDropPodTools());
+        Tip(_dpTools, "Find the broken mod, load a Steam collection, compare with a friend's list, the load order history, load times and cleaning up");
         Tip(_dpInstance, "The normal game, or an instance: a separate setup with its own options, mod list, saves and log");
         Tip(newInst, "Make a new instance");
         Tip(_dpPlay, "Start RimWorld with the picked instance (or normally)");
         Tip(_dpInstMore, "Export or import an instance, open its folder, or delete it");
         _dpInstance.SelectedIndexChanged += async (_, _) => await PickInstanceAsync();
-        page.Controls.Add(Card("RimWorld", new Control[] { rescan }, Row(_dpGameText, pick), Row(Lbl("Instance"), _dpInstance, newInst, _dpPlay, test, saves, _dpInstMore),
+        page.Controls.Add(Card("RimWorld", new Control[] { _dpTools, rescan }, Row(_dpGameText, pick), Row(Lbl("Instance"), _dpInstance, newInst, _dpPlay, test, saves, _dpInstMore),
             Row(Lbl("Modlist"), _dpModlist, switchTo, saveAs, _dpMore), Row(_dpNote)), 0, 0);
 
         for (var i = 0; i < DropPodColumns.Length; i++)
-            _dpList.Columns.Add(Localizer.T(DropPodColumns[i]), (int)(new[] { 240, 140, 200, 90, 110, 80 }[i] * Theme.TextScale));
+            _dpList.Columns.Add(Localizer.T(DropPodColumns[i]), (int)(new[] { 240, 140, 200, 90, 110, 80, 80, 200 }[i] * Theme.TextScale));
         _dpFilter.TextChanged += (_, _) => FillDropPodList();
         _dpList.ItemChecked += (_, e) => DropPodTicked(e.Item);
         _dpList.KeyDown += (_, e) =>
@@ -85,14 +88,14 @@ public sealed partial class MainForm
         _dpSort = SmallBtn("Sort ▾", (_, _) => ShowSortMenu());
         var up = SmallBtn("Up", (_, _) => MoveDropPodMod(-1));
         var down = SmallBtn("Down", (_, _) => MoveDropPodMod(1));
-        _dpUndo = SmallBtn("Undo changes", (_, _) => { _dpActive = ActiveFromGame(); _dpDirty = false; FillDropPodList(); });
+        _dpUndo = SmallBtn("Undo changes", (_, _) => { DropPodEdit(); _dpActive = ActiveFromGame(); _dpDirty = false; FillDropPodList(); });
         _dpSave = SmallBtn("Save to game", (_, _) => SaveDropPodToGame()).Role(ThemeRole.Primary);
         Tip(_dpSort, "Order the active mods by their dependencies and load rules (and your rules file), or A to Z where no rule decides");
         Tip(up, "Load the selected mod earlier (Alt+Up)");
         Tip(down, "Load the selected mod later (Alt+Down)");
-        Tip(_dpUndo, "Go back to the game's current mod list");
+        Tip(_dpUndo, "Go back to the game's current mod list (Ctrl+Z steps back one change at a time)");
         Tip(_dpSave, "Write the ticked mods, in this order, to the game's ModsConfig.xml (the old one is kept as a backup)");
-        page.Controls.Add(Card("Mods", new Control[] { _dpCount, _dpSort, up, down, _dpUndo, _dpSave, _dpFilter }, _dpList), 0, 1);
+        page.Controls.Add(Card("Mods", new Control[] { _dpCount, _dpSort, up, down, _dpUndo, _dpSave, _dpFilter }, BuildDropPodListArea()), 0, 1);
         ((Control)page.Controls[1]).Dock = DockStyle.Fill;
 
         _dpProblems.Columns.Add("", (int)(80 * Theme.TextScale));
@@ -141,15 +144,20 @@ public sealed partial class MainForm
                 if (install == null) return (null, null);
                 return (install, ModLibrary.Scan(_dpGame, inst?.Apply(install, _dpGame, steam) ?? install));
             });
+            if (_dpInst?.Name != inst?.Name) _dpEdits.Clear();
             _dpUsual = usual;
             _dpInst = inst;
             _dpScan = scan;
+            // Frozen copies are only linked in while their instance plays; take out any a crash left behind.
+            if (usual != null && GameRunning() == null) Freezer.Unlink(Launcher.ModsFolder(usual));
             FillInstances();
             _dpActive = ActiveFromGame();
             _dpDirty = false;
             ShowDropPodGame(null);
             FillModlists();
             FillDropPodList();
+            ShowDropPodDetails();
+            UpdateJumpList();
         }
         catch (Exception e)
         {
@@ -203,9 +211,10 @@ public sealed partial class MainForm
                 {
                     m?.DisplayName ?? key, m == null ? "" : string.Join(", ", m.Authors), m == null ? key : m.Id.Length > 0 ? m.Id : "(none)",
                     m == null ? "Not installed" : m.Source switch { ModSource.Official => "Game", ModSource.Local => "Mods folder", _ => "Workshop" },
-                    m == null ? "" : string.Join(", ", m.SupportedVersions), "",
+                    m == null ? "" : string.Join(", ", m.SupportedVersions), "", "", "",
                 };
-                if (filter.Length > 0 && !cells.Any(c => c.Contains(filter, StringComparison.OrdinalIgnoreCase))) return;
+                if (DropPodNotes.Get(key) is { } note) { cells[DropPodTagColumn] = note.Color.Length > 0 ? "● " + Localizer.T(note.Color) : ""; cells[DropPodTagColumn + 1] = note.Note; }
+                if (filter.Length > 0 && !cells.Any(c => c.Contains(filter, StringComparison.OrdinalIgnoreCase)) && !(DropPodNotes.Get(key)?.Color.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)) return;
                 var it = new ListViewItem(cells) { Tag = m, Name = key, Checked = active, UseItemStyleForSubItems = false };
                 var tip = new List<string>();
                 if (m == null) tip.Add("In the mod list, but not installed. RimWorld skips it.");
@@ -255,6 +264,7 @@ public sealed partial class MainForm
                 sub.BackColor = _dpList.BackColor;
                 sub.ForeColor = Theme.Of(tone);
             }
+            FillNoteCells(it);
         }
     }
 
@@ -265,6 +275,7 @@ public sealed partial class MainForm
         _dpActivateDeps.Enabled = !_dpBusy && _dpFound.Any(p => p.Kind == ProblemKind.MissingDependency && p.WorkshopId == null && _dpScan?.ById().ContainsKey(p.Other ?? "") == true);
         _dpDownload.Enabled = !_dpBusy && Problems.DownloadableFixes(_dpFound).Count > 0;
         _dpUpdates.Enabled = !_dpBusy && _dpScan != null;
+        _dpTools.Enabled = !_dpBusy;
     }
 
     // ------------------------------------------------------------ problems, downloads and updates
@@ -310,6 +321,7 @@ public sealed partial class MainForm
     {
         if (_dpScan == null) return;
         var before = _dpActive.Count;
+        DropPodEdit();
         _dpActive = Problems.WithInactiveDependencies(_dpScan, _dpActive, _dpGame);
         _dpDirty |= _dpActive.Count != before;
         ShowDropPodGame($"Ticked {_dpActive.Count - before} mod{(_dpActive.Count - before == 1 ? "" : "s")} the active ones need. Press Save to game to use the list.");
@@ -386,6 +398,7 @@ public sealed partial class MainForm
                 (outdated.Any(u => u.Mod.Source == ModSource.Workshop) ? ". The Steam client updates subscribed mods itself; if it hasn't, restart Steam." : "."),
             };
             if (gone.Count > 0) lines.Add($"{gone.Count} are no longer public on Steam (removed or made private): {string.Join(", ", gone.Take(8))}.");
+            if (outdated.Count > 0) await ShowUpdateNotesAsync(outdated);
             ShowDropPodGame(string.Join("\n", lines));
         }
         finally { _dpBusy = false; UpdateDropPodButtons(); }
@@ -396,6 +409,7 @@ public sealed partial class MainForm
         if (_dpFilling) return;
         var on = _dpActive.Contains(it.Name);
         if (it.Checked == on) return;
+        DropPodEdit();
         if (it.Checked) _dpActive.Add(it.Name);
         else _dpActive.Remove(it.Name);
         _dpDirty = true;
@@ -409,6 +423,7 @@ public sealed partial class MainForm
         var i = _dpActive.IndexOf(key);
         var j = i + by;
         if (i < 0 || j < 0 || j >= _dpActive.Count) return;
+        DropPodEdit();
         (_dpActive[i], _dpActive[j]) = (_dpActive[j], _dpActive[i]);
         _dpDirty = true;
         FillDropPodList();
@@ -437,6 +452,7 @@ public sealed partial class MainForm
         var installed = _dpActive.Where(byId.ContainsKey).Select(k => byId[k]).ToList();
         var result = LoadOrder.Sort(installed, _dpScan.Install.Version, mode, rules, _dpGame.SortTier);
         var sorted = result.Order.Select(m => m.Key).Concat(_dpActive.Where(k => !byId.ContainsKey(k))).ToList();
+        if (!sorted.SequenceEqual(_dpActive)) DropPodEdit();
         _dpDirty |= !sorted.SequenceEqual(_dpActive);
         _dpActive = sorted;
         var notes = new List<string>();
@@ -452,7 +468,8 @@ public sealed partial class MainForm
     string? GameRunning() =>
         _dpGame.ProcessNames.FirstOrDefault(n => { try { return Process.GetProcessesByName(n).Length > 0; } catch { return false; } });
 
-    bool WriteActiveToGame(IReadOnlyList<string> keys)
+    /// <param name="label">What to call this list in the load-order history; null keeps it out (the broken-mod search's rounds).</param>
+    bool WriteActiveToGame(IReadOnlyList<string> keys, string? label)
     {
         if (_dpScan == null) return false;
         if (GameRunning() != null)
@@ -466,12 +483,13 @@ public sealed partial class MainForm
             ShowDropPodGame("Could not write ModsConfig.xml: " + e.Message);
             return false;
         }
+        if (label != null) RecordDropPodHistory(keys, label);
         return true;
     }
 
     void SaveDropPodToGame()
     {
-        if (!WriteActiveToGame(_dpActive)) return;
+        if (!WriteActiveToGame(_dpActive, "Save to game")) return;
         _dpDirty = false;
         _ = ScanDropPodAsync();
         Say("Saved the mod list to the game.");
@@ -504,7 +522,7 @@ public sealed partial class MainForm
         if (_dpScan == null || SelectedModlist() is not { } list) return;
         if (_dpDirty && !ConfirmDiscardDropPod()) return;
         var (installed, missing) = list.Match(_dpScan, _dpGame);
-        if (!WriteActiveToGame(installed)) return;
+        if (!WriteActiveToGame(installed, "Switched to " + list.Name)) return;
         _s.CurrentModlists[_dpGame.AppId] = list.Name;
         _s.Save();
         _dpDirty = false;
@@ -533,10 +551,12 @@ public sealed partial class MainForm
         var menu = new ContextMenuStrip();
         menu.Items.Add("Import a modlist file (.json, or RimWorld's .rml)...", null, (_, _) => ImportModlist());
         menu.Items.Add("Export the active mods to a file...", null, (_, _) => ExportModlist()).Enabled = _dpScan != null;
+        menu.Items.Add("Export the active mods with their mod settings (.zip)...", null, (_, _) => ExportWithSettings()).Enabled = _dpScan != null;
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Copy a share code of the active mods", null, (_, _) => CopyShareCode()).Enabled = _dpScan != null;
         menu.Items.Add("Add a modlist from a share code...", null, (_, _) => PasteShareCode());
         menu.Items.Add("Send the active mods to a Steam collection...", null, (_, _) => SendToCollection()).Enabled = _dpScan != null;
+        menu.Items.Add("Load a Steam collection as a modlist...", null, async (_, _) => await LoadCollectionAsync()).Enabled = _dpScan != null && !_dpBusy;
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(selected == null ? "Delete the modlist" : $"Delete the modlist \"{selected}\"", null, (_, _) => DeleteModlist()).Enabled = selected != null;
         menu.Items.Add(new ToolStripSeparator());
@@ -562,11 +582,15 @@ public sealed partial class MainForm
 
     void ImportModlist()
     {
-        using var dlg = new OpenFileDialog { Filter = "Modlists (*.json;*.rml)|*.json;*.rml|All files (*.*)|*.*", Title = "Import a modlist" };
+        using var dlg = new OpenFileDialog { Filter = "Modlists (*.json;*.rml;*.zip)|*.json;*.rml;*.zip|All files (*.*)|*.*", Title = "Import a modlist" };
         if (_dpScan != null) dlg.InitialDirectory = Path.Combine(_dpScan.Install.DataFolder, "ModLists");
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
-        try { AddModlist(Modlist.Parse(File.ReadAllText(dlg.FileName), Path.GetFileNameWithoutExtension(dlg.FileName))); }
-        catch (Exception e) when (e is FormatException or IOException) { ShowDropPodGame("Could not import it: " + e.Message); }
+        try
+        {
+            if (dlg.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) ImportWithSettings(dlg.FileName);
+            else AddModlist(Modlist.Parse(File.ReadAllText(dlg.FileName), Path.GetFileNameWithoutExtension(dlg.FileName)));
+        }
+        catch (Exception e) when (e is FormatException or IOException or InvalidDataException) { ShowDropPodGame("Could not import it: " + e.Message); }
     }
 
     void ExportModlist()
@@ -710,6 +734,9 @@ public sealed partial class MainForm
         var inst = _dpInst;
         menu.Items.Add(inst == null ? "Open the game's config and saves folder" : $"Open the folder of \"{inst.Name}\"", null, (_, _) =>
             OpenFolder(inst?.Folder ?? _dpScan?.Install.DataFolder)).Enabled = inst != null || _dpScan != null;
+        menu.Items.Add(inst == null ? "Launch options for the normal game..." : $"Launch options for \"{inst.Name}\"...", null, (_, _) => EditLaunchOptions());
+        if (inst != null)
+            menu.Items.Add(Freezer.IsFrozen(inst) ? "Unfreeze its Workshop mods..." : "Freeze its Workshop mods (Steam updates can't change them)...", null, async (_, _) => await FreezeInstanceAsync()).Enabled = !_dpBusy && _dpScan != null;
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Export this instance to a zip...", null, (_, _) => ExportInstance()).Enabled = inst != null;
         menu.Items.Add("Import an instance from a zip...", null, (_, _) => ImportInstance());
@@ -785,6 +812,7 @@ public sealed partial class MainForm
             return;
         }
         var (installed, missing) = save.Mods.Match(scan, _dpGame);
+        DropPodEdit();
         _dpActive = installed;
         _dpDirty = true;
         FillDropPodList();
@@ -825,33 +853,51 @@ public sealed partial class MainForm
             key => byId.TryGetValue(key, out var m) ? m.DisplayName : key,
             key =>
             {
-                if (_dpScan != scan || !_dpActive.Remove(key)) return;
+                if (_dpScan != scan || !_dpActive.Contains(key)) return;
+                DropPodEdit();
+                _dpActive.Remove(key);
                 _dpDirty = true;
                 FillDropPodList();
             },
-            watch);
+            watch,
+            issue =>
+            {
+                if (issue.Mods.FirstOrDefault() is not { } b || !byId.TryGetValue(b.Mod, out var m)) return null;
+                var body = BugReport.Text(issue, m, scan.Install.Version, _dpActive.Count);
+                return (BugReport.Target(m, $"{issue.Title} (RimWorld {GameVersion.Short(scan.Install.Version ?? "")})", body), body);
+            });
         f.Show(this);
     }
 
-    /// <summary>Starts the game with the picked instance's folders (or normally). Returns the log file it will write, or null when it did not start.</summary>
-    string? LaunchDropPod()
+    /// <summary>
+    /// Starts the game with the picked instance's folders (or normally), its launch options and, for a frozen instance,
+    /// its frozen mods. Returns the log file it will write, or null when it did not start.
+    /// </summary>
+    /// <param name="checkSave">Offer a copy of the newest save when this list differs from its mods (off during the broken-mod search).</param>
+    string? LaunchDropPod(bool checkSave = true)
     {
         if (_dpScan == null) return null;
         if (_dpDirty && MessageBox.Show(this, "The mod list has changes that are not saved to the game, so the game won't use them. Start it anyway?", Text,
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return null;
         if (GameRunning() != null) { ShowDropPodGame("RimWorld is already running."); return null; }
-        var log = _dpInst?.LogFile;
-        var launch = _dpGame.Launch(_dpScan.Install, _dpInst != null, log);
-        if (launch == null) { ShowDropPodGame("RimWorld's program was not found in " + _dpScan.Install.GameFolder + "."); return null; }
+        if (checkSave && !OfferSaveBackup()) return null;
+        var psi = Launcher.StartInfo(_dpGame, _dpScan.Install, _dpInst, _dpInst?.LaunchArgs ?? _s.DropPodLaunchArgs);
+        if (psi == null) { ShowDropPodGame("RimWorld's program was not found in " + _dpScan.Install.GameFolder + "."); return null; }
+        var log = _dpInst?.LogFile ?? _dpGame.LogFile(_dpScan.Install);
+        Process game;
         try
         {
-            var psi = new ProcessStartInfo(launch.Exe) { WorkingDirectory = launch.WorkingDirectory, UseShellExecute = false };
-            foreach (var a in launch.Args) psi.ArgumentList.Add(a);
-            Process.Start(psi)?.Dispose();
+            game = Launcher.Start(psi, _dpGame, _dpScan.Install, _dpInst, note =>
+            {
+                if (note.Length == 0) return;
+                try { BeginInvoke(() => ShowDropPodGame(note)); } catch (InvalidOperationException) { }
+            });
         }
         catch (Exception e) { ShowDropPodGame("Could not start RimWorld: " + e.Message); return null; }
+        var byId = _dpScan.ById();
+        MeasureLoadTime(game, log, DropPodSetupName, ActiveFromGame(), _dpActive.Where(byId.ContainsKey).ToDictionary(k => k, k => byId[k].DisplayName));
         Say(_dpInst != null ? $"Started RimWorld with the instance {_dpInst.Name}." : "Started RimWorld.");
-        return log ?? _dpGame.LogFile(_dpScan.Install);
+        return log;
     }
 
     /// <summary>Opens the Drop Pod tab (for --shot).</summary>
