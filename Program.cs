@@ -380,7 +380,12 @@ static class Program
                 Snap(new ConfirmUploadForm("Publish to the Steam Workshop (RimWorld):", new[] { example, other },
                     new Dictionary<string, string> { [example.Dir] = "update 2000000001", [other.Dir] = "update 2000000002  (uncommitted changes will NOT be uploaded)" },
                     new Dictionary<string, string> { [example.Dir] = "1.4.0\n- Storage shelves hold twice as much.\n- Fixed a crash when loading old saves.", [other.Dir] = "2.1.0\n- Faster hauling." },
-                    dry: false, offerCommit: true), Path.Combine(args[sh + 1], $"confirm{suffix}.png"));
+                    dry: false, offerCommit: true, warnings: new[] { "Example Mod changed since its clean-colony test on 20 Oct; test it again (right-click > Test in a clean colony)." },
+                    checklist: new[] { "Tested in a clean colony", "Updated the preview image" }, mustTick: true), Path.Combine(args[sh + 1], $"confirm{suffix}.png"));
+                // The Launch Pad's About.xml editor (with its live checks) and preview image maker.
+                var about = SteamCmdHelper.DropPod.RimWorld.AboutEditor.Read("<ModMetaData><name>Example Mod</name><author>Kat</author><packageId>Kat.ExampleMod</packageId><supportedVersions><li>1.5</li><li>1.6</li></supportedVersions><modDependencies><li><packageId>brrainz.harmony</packageId><displayName>Harmony</displayName><steamWorkshopUrl>https://steamcommunity.com/sharedfiles/filedetails/?id=2009463077</steamWorkshopUrl></li></modDependencies><loadAfter><li>brrainz.harmony</li></loadAfter></ModMetaData>");
+                Snap(new AboutForm("Example Mod", about, null, () => new List<SteamCmdHelper.DropPod.ModManifest>()), Path.Combine(args[sh + 1], $"about-editor{suffix}.png"));
+                Snap(new PreviewMakerForm("Example Mod", new Size(640, 360)), Path.Combine(args[sh + 1], $"preview-maker{suffix}.png"));
                 Snap(new PackagePreviewForm(example, new PackageReport(
                     new[] { new PackageFile("About/About.xml", 812), new PackageFile("About/Preview.png", 412_330), new PackageFile("Assemblies/ExampleMod.dll", 48_640), new PackageFile("Textures/Icon.psd", 5_242_880) },
                     5_704_662, new[] { "has source art files (1): Textures/Icon.psd" })), Path.Combine(args[sh + 1], $"package{suffix}.png"));
