@@ -115,8 +115,9 @@ public static class RimWorldAbout
             var url = Text(li, "steamWorkshopUrl");
             var download = Text(li, "downloadUrl");
             var workshop = Dependencies.FindIn(url).Concat(Dependencies.FindIn(download)).FirstOrDefault();
-            if (id.Length == 0 && workshop == null) continue;
-            into.Add(new ModDependency(id, NullIfEmpty(Text(li, "displayName")), workshop, NullIfEmpty(url.Length > 0 ? url : download)));
+            var display = Text(li, "displayName");
+            if (id.Length == 0 && workshop == null && display.Length == 0 && url.Length == 0 && download.Length == 0) continue;
+            into.Add(new ModDependency(id, NullIfEmpty(display), workshop, NullIfEmpty(url.Length > 0 ? url : download)));
         }
     }
 
@@ -167,6 +168,7 @@ public static class RimWorldAbout
 /// <summary>RimWorld's rules for packageIds.</summary>
 public static class RimWorldIds
 {
+    // RimWorld's own rule (ModMetaData.PackageIdIsValid): letters, digits and dots, with at least one dot inside.
     static readonly Regex Valid = new(@"^[A-Za-z0-9]+(\.[A-Za-z0-9]+)+$");
 
     public static bool IsValid(string id) => Valid.IsMatch(id.Trim());

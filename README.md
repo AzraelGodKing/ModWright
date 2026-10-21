@@ -321,6 +321,7 @@ SteamCmdHelper history --csv                  # this PC's uploads as CSV
 SteamCmdHelper note MyMod                     # the change note exactly as Steam would get it
 SteamCmdHelper game-version 1.7 --all         # add a RimWorld version to every mod (version folder and loadFolders.xml too)
 SteamCmdHelper doctor --login                 # check everything an upload needs and say what to fix
+SteamCmdHelper lint --strict                  # check every mod (About.xml too) without uploading; exit 1 if any is blocked
 SteamCmdHelper schedule --at "tomorrow 18:00" MyMod   # upload later through Windows Task Scheduler (--list, --cancel 1)
 SteamCmdHelper help                           # every option
 ```

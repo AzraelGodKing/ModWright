@@ -8,6 +8,13 @@
   Mods with a broken About.xml show in the warning colour with what is wrong, mods made for another game version are
   greyed out, and package IDs installed twice are named at the top. Ctrl+Tab now steps through Upload, Drop Pod and
   Options.
+- **A closer look at About.xml before uploading.** Besides a missing or malformed packageId, the RimWorld check now
+  warns when About.xml has no name, author, description or supportedVersions, when a version is written as "1.5.4104"
+  instead of "1.5", when a dependency has no packageId, no Workshop or download link, or an id RimWorld can't use, and
+  when loadAfter, loadBefore or incompatibleWith name the mod itself, something that isn't a packageId, a mod that is
+  also a dependency, or the same mod both before and after. Options > Uploading can make these warnings block the
+  upload too, and the new `SteamCmdHelper lint` command runs every check without uploading (`--strict` for the same
+  rule). The check reads About.xml with the same parser as the Drop Pod.
 - **A new Kats theme, and the theme is now a drop-down.** Options > Appearance lists Dark, Light, Kats and Match Windows
   in one drop-down instead of a row of buttons, so more themes fit. Kats pairs gunmetal grey with a vivid orange
   (#FF5C00) for buttons, ticks and selection, with dark text on the orange so it stays easy to read. The brand bar

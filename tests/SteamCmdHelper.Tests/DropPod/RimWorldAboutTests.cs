@@ -24,7 +24,7 @@ public sealed class RimWorldAboutTests
               <displayName>Harmony</displayName>
               <steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl>
             </li>
-            <li><displayName>No id, no link: skipped</displayName></li>
+            <li><displayName>No id or link: kept, so the lint can name it</displayName></li>
           </modDependencies>
           <modDependenciesByVersion>
             <v1.4>
@@ -50,10 +50,12 @@ public sealed class RimWorldAboutTests
         Assert.Equal("Shelves that hold more & better.", m.Description);
         Assert.Equal("2.1.0", m.ModVersion);
         Assert.Equal(new[] { "1.4", "1.5" }, m.SupportedVersions);
-        var dep = Assert.Single(m.Dependencies.All);
+        Assert.Equal(2, m.Dependencies.All.Count);
+        Assert.Equal("", m.Dependencies.All[1].Id);
+        var dep = m.Dependencies.All[0];
         Assert.Equal(("brrainz.harmony", "Harmony", "2009463077"), (dep.Key, dep.DisplayName, dep.WorkshopId));
         Assert.Equal("1234567", Assert.Single(m.Dependencies.For("1.4.3901 rev123")).WorkshopId);
-        Assert.Equal("brrainz.harmony", Assert.Single(m.Dependencies.For("1.5")).Key);
+        Assert.Equal("brrainz.harmony", m.Dependencies.For("1.5")[0].Key);
         Assert.Equal(new[] { "Ludeon.RimWorld", "Other.Mod" }, m.LoadAfter.All); // duplicates differing only in case are one entry
         Assert.Equal(new[] { "New.Mod" }, m.LoadAfter.For("1.5"));
         Assert.Equal(new[] { "Late.Mod" }, m.LoadBefore.All);
