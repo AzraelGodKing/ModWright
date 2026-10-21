@@ -101,6 +101,30 @@ public static class SafeFiles
         return cur;
     }
 
+    /// <summary>
+    /// Replaces <paramref name="path"/> with <paramref name="content"/> safely: written to a temp file first and moved over, so
+    /// a crash never leaves half a file. The old file is kept as "&lt;name&gt;.&lt;yyyyMMdd-HHmmss&gt;.bak" next to it (the
+    /// newest <paramref name="keep"/> backups are kept).
+    /// </summary>
+    public static string? WriteWithBackup(string path, string content, int keep = 5, DateTime? now = null)
+    {
+        var dir = Path.GetDirectoryName(Path.GetFullPath(path))!;
+        Directory.CreateDirectory(dir);
+        string? backup = null;
+        if (File.Exists(path))
+        {
+            backup = $"{path}.{(now ?? DateTime.Now):yyyyMMdd-HHmmss}.bak";
+            File.Copy(path, backup, overwrite: true);
+            var name = Path.GetFileName(path);
+            foreach (var old in Directory.GetFiles(dir, name + ".*.bak").OrderByDescending(f => f, StringComparer.Ordinal).Skip(keep))
+                try { File.Delete(old); } catch (IOException) { }
+        }
+        var tmp = path + ".tmp";
+        File.WriteAllText(tmp, content, new System.Text.UTF8Encoding(false));
+        File.Move(tmp, path, overwrite: true);
+        return backup;
+    }
+
     /// <summary>Reader settings for untrusted XML: no DTDs, no external files, and a size cap so a broken file can't eat memory.</summary>
     public static XmlReaderSettings XmlSettings(long maxChars = 16_000_000) => new()
     {

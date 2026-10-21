@@ -8,6 +8,16 @@
   Mods with a broken About.xml show in the warning colour with what is wrong, mods made for another game version are
   greyed out, and package IDs installed twice are named at the top. Ctrl+Tab now steps through Upload, Drop Pod and
   Options.
+- **The Drop Pod sorts and saves your load order.** Tick mods to make them active, move them with Up and Down
+  (Alt+Up/Down), and Sort orders them so each loads after what it needs and its loadAfter list and before its
+  loadBefore list (the version-specific lists for your game version included), with the base game and DLC first.
+  Where no rule decides it keeps your order, or goes A to Z. Mods whose rules go round in a loop are named instead of
+  silently dropped. Save to game writes ModsConfig.xml, keeping the old one as a backup, and refuses while RimWorld is
+  running (it would overwrite the list when it closes). You can add your own rules file (More > Use my own load-order
+  rules file) to put mods after or before others, or first or last; nothing is bundled.
+- **Modlists.** Save the active mods as a named modlist and switch between them in one click. Export one to a file,
+  import a file (also RimWorld's own saved .rml lists), or share it as a single line of text that starts with
+  DROPPOD1: and paste one in. Mods a list names that aren't installed are listed when you switch.
 - **A closer look at About.xml before uploading.** Besides a missing or malformed packageId, the RimWorld check now
   warns when About.xml has no name, author, description or supportedVersions, when a version is written as "1.5.4104"
   instead of "1.5", when a dependency has no packageId, no Workshop or download link, or an id RimWorld can't use, and
