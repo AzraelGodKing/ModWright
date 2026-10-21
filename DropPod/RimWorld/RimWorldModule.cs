@@ -8,6 +8,7 @@ public sealed class RimWorldModule : IGameModule
     public const string SteamAppId = "294100";
     public string Name => "RimWorld";
     public string AppId => SteamAppId;
+    public IReadOnlyList<string> ProcessNames { get; } = new[] { "RimWorldWin64", "RimWorldWin", "RimWorldLinux", "RimWorldMac" };
 
     /// <summary>The folder name under steamapps/common when the app manifest does not say.</summary>
     const string InstallDir = "RimWorld";
@@ -36,6 +37,27 @@ public sealed class RimWorldModule : IGameModule
         var file = ModsConfigPath(install.DataFolder);
         return File.Exists(file) ? ModsConfig.Parse(File.ReadAllText(file)).Active : null;
     }
+
+    public void WriteActiveMods(GameInstall install, IReadOnlyList<string> ids)
+    {
+        var file = ModsConfigPath(install.DataFolder);
+        var config = File.Exists(file) ? ModsConfig.Parse(File.ReadAllText(file)) : new ModsConfig { Version = install.Version ?? "" };
+        config.Active.Clear();
+        config.Active.AddRange(ids.Select(ModManifest.KeyOf).Distinct());
+        SafeFiles.WriteWithBackup(file, config.ToXml());
+    }
+
+    public string ActiveKey(string id) => RimWorldIds.WithoutSteamSuffix(ModManifest.KeyOf(id));
+
+    /// <summary>The base game first, then the expansions in release order, then everything else.</summary>
+    public int SortTier(ModManifest mod)
+    {
+        if (!RimWorldIds.IsOfficial(mod.Key)) return 100;
+        var i = Array.IndexOf(Expansions, mod.Key);
+        return mod.Key == RimWorldIds.Core ? 0 : i >= 0 ? i + 1 : Expansions.Length + 1;
+    }
+
+    static readonly string[] Expansions = { "ludeon.rimworld.royalty", "ludeon.rimworld.ideology", "ludeon.rimworld.biotech", "ludeon.rimworld.anomaly", "ludeon.rimworld.odyssey" };
 
     /// <summary>The game version from Version.txt in the install ("1.5.4104 rev435"), or null.</summary>
     public static string? ReadVersion(string gameFolder)
@@ -66,6 +88,20 @@ public sealed class ModsConfig
     /// <summary>Active mod ids in load order, as written (the game writes them in lower case).</summary>
     public List<string> Active { get; } = new();
     public List<string> KnownExpansions { get; } = new();
+
+    /// <summary>The file as RimWorld writes it.</summary>
+    public string ToXml()
+    {
+        var doc = new XDocument(new XDeclaration("1.0", "utf-8", null), new XElement("ModsConfigData",
+            new XElement("version", Version),
+            new XElement("activeMods", Active.Select(a => new XElement("li", a))),
+            new XElement("knownExpansions", KnownExpansions.Select(a => new XElement("li", a)))));
+        using var w = new Utf8StringWriter();
+        doc.Save(w);
+        return w.ToString();
+    }
+
+    sealed class Utf8StringWriter : StringWriter { public override System.Text.Encoding Encoding => new System.Text.UTF8Encoding(false); }
 
     public static ModsConfig Parse(string xml)
     {

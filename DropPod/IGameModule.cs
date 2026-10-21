@@ -18,6 +18,8 @@ public interface IGameModule
 {
     string Name { get; }
     string AppId { get; }
+    /// <summary>The game's process names (no ".exe"), to tell whether it is running before its files are changed.</summary>
+    IReadOnlyList<string> ProcessNames { get; }
 
     /// <summary>Finds the install from Steam's libraries, or uses <paramref name="gameFolder"/> / <paramref name="dataFolder"/> when given. Null when the game is not found.</summary>
     GameInstall? Detect(SteamLibraries steam, string? gameFolder, string? dataFolder);
@@ -30,4 +32,13 @@ public interface IGameModule
 
     /// <summary>The ids of the active mods in load order, or null when the game has no list yet.</summary>
     IReadOnlyList<string>? ReadActiveMods(GameInstall install);
+
+    /// <summary>Writes the active mods (ids in load order) where the game reads them, keeping a backup of the old list.</summary>
+    void WriteActiveMods(GameInstall install, IReadOnlyList<string> ids);
+
+    /// <summary>The id the game uses for an entry in its active list (RimWorld: lower case, without "_steam").</summary>
+    string ActiveKey(string id);
+
+    /// <summary>Where a mod goes when no rule decides: lower is earlier (RimWorld: the base game, then each DLC).</summary>
+    int SortTier(ModManifest mod);
 }
