@@ -29,7 +29,10 @@ public static class Saves
         return list.OrderByDescending(s => s.Modified).ToList();
     }
 
-    public static SaveDiff Compare(SaveInfo save, IReadOnlyList<string> active, LibraryScan scan, IGameModule game)
+    public static SaveDiff Compare(SaveInfo save, IReadOnlyList<string> active, LibraryScan scan, IGameModule game) => Compare(save.Mods, active, scan, game);
+
+    /// <summary>How the active mods differ from any list (a save's, a friend's share code, a modlist).</summary>
+    public static SaveDiff Compare(Modlist other, IReadOnlyList<string> active, LibraryScan scan, IGameModule game)
     {
         var byId = scan.ById();
         var activeKeys = active.Select(game.ActiveKey).Distinct().ToList();
@@ -37,7 +40,7 @@ public static class Saves
         var saveKeys = new List<string>();
         var missing = new List<ModlistEntry>();
         var inactive = new List<ModlistEntry>();
-        foreach (var e in save.Mods.Mods)
+        foreach (var e in other.Mods)
         {
             var k = game.ActiveKey(e.Id);
             if (saveKeys.Contains(k)) continue;

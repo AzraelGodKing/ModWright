@@ -71,33 +71,10 @@ public static class LoadOrder
         SortRules? rules = null, Func<ModManifest, int>? tier = null)
     {
         var n = mods.Count;
-        var index = new Dictionary<string, int>(StringComparer.Ordinal);
-        for (var i = 0; i < n; i++) index.TryAdd(mods[i].Key, i);
         var after = Enumerable.Range(0, n).Select(_ => new HashSet<int>()).ToArray(); // after[i]: what must load before i
         var why = new Dictionary<(int Before, int After), string>();
-
-        void Edge(int before, int afterIdx, string reason)
-        {
-            if (before == afterIdx) return;
+        foreach (var (before, afterIdx, reason) in Edges(mods, gameVersion, rules))
             if (after[afterIdx].Add(before)) why[(before, afterIdx)] = reason;
-        }
-        int? Find(string id) => index.TryGetValue(ModManifest.KeyOf(id), out var i) ? i : null;
-
-        for (var i = 0; i < n; i++)
-        {
-            var m = mods[i];
-            foreach (var d in m.Dependencies.For(gameVersion))
-                if (d.Id.Length > 0 && Find(d.Id) is { } j) Edge(j, i, $"{m.DisplayName} needs {mods[j].DisplayName}");
-            foreach (var id in m.LoadAfter.For(gameVersion).Concat(m.ForceLoadAfter.For(gameVersion)))
-                if (Find(id) is { } j) Edge(j, i, $"{m.DisplayName} loads after {mods[j].DisplayName}");
-            foreach (var id in m.LoadBefore.For(gameVersion).Concat(m.ForceLoadBefore.For(gameVersion)))
-                if (Find(id) is { } j) Edge(i, j, $"{m.DisplayName} loads before {mods[j].DisplayName}");
-            if (rules?.For(m.Key) is { } r)
-            {
-                foreach (var id in r.LoadAfter) if (Find(id) is { } j) Edge(j, i, $"your rules: {m.DisplayName} after {mods[j].DisplayName}");
-                foreach (var id in r.LoadBefore) if (Find(id) is { } j) Edge(i, j, $"your rules: {m.DisplayName} before {mods[j].DisplayName}");
-            }
-        }
 
         // Tie-break key: rules-file first/last, then the game's tier, then current position or name.
         var names = Enumerable.Range(0, n).OrderBy(i => mods[i].DisplayName, StringComparer.CurrentCultureIgnoreCase).ThenBy(i => i).ToArray();
@@ -148,6 +125,62 @@ public static class LoadOrder
             return new SortCycle(l.Select(i => mods[i]).ToList(), edges);
         }).ToList();
         return new SortResult(order, cycles);
+    }
+
+    /// <summary>Every "this before that" the mods' rules (and the player's rules file) ask for, by index, with the reason in words.</summary>
+    static List<(int Before, int After, string Why)> Edges(IReadOnlyList<ModManifest> mods, string? gameVersion, SortRules? rules)
+    {
+        var n = mods.Count;
+        var index = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var i = 0; i < n; i++) index.TryAdd(mods[i].Key, i);
+        var edges = new List<(int, int, string)>();
+        void Edge(int before, int afterIdx, string reason) { if (before != afterIdx) edges.Add((before, afterIdx, reason)); }
+        int? Find(string id) => index.TryGetValue(ModManifest.KeyOf(id), out var i) ? i : null;
+
+        for (var i = 0; i < n; i++)
+        {
+            var m = mods[i];
+            foreach (var d in m.Dependencies.For(gameVersion))
+                if (d.Id.Length > 0 && Find(d.Id) is { } j) Edge(j, i, $"{m.DisplayName} needs {mods[j].DisplayName}");
+            foreach (var id in m.LoadAfter.For(gameVersion).Concat(m.ForceLoadAfter.For(gameVersion)))
+                if (Find(id) is { } j) Edge(j, i, $"{m.DisplayName} loads after {mods[j].DisplayName}");
+            foreach (var id in m.LoadBefore.For(gameVersion).Concat(m.ForceLoadBefore.For(gameVersion)))
+                if (Find(id) is { } j) Edge(i, j, $"{m.DisplayName} loads before {mods[j].DisplayName}");
+            if (rules?.For(m.Key) is { } r)
+            {
+                foreach (var id in r.LoadAfter) if (Find(id) is { } j) Edge(j, i, $"your rules: {m.DisplayName} after {mods[j].DisplayName}");
+                foreach (var id in r.LoadBefore) if (Find(id) is { } j) Edge(i, j, $"your rules: {m.DisplayName} before {mods[j].DisplayName}");
+            }
+        }
+        return edges;
+    }
+
+    /// <summary>
+    /// Why the mod at <paramref name="at"/> in <paramref name="mods"/> (the active mods in their current order) sits where it
+    /// does: each rule that puts something before or after it (the nearest first, broken ones marked), the rules file's
+    /// first/last, the game's own tier, or that no rule decides. For the Drop Pod's "Why is this mod here?".
+    /// </summary>
+    public static List<string> Explain(IReadOnlyList<ModManifest> mods, int at, string? gameVersion, SortRules? rules = null, Func<ModManifest, int>? tier = null)
+    {
+        var lines = new List<string>();
+        if (at < 0 || at >= mods.Count) return lines;
+        var m = mods[at];
+        var edges = Edges(mods, gameVersion, rules);
+        var before = edges.Where(e => e.After == at).GroupBy(e => e.Before).OrderByDescending(g => g.Key).ToList();
+        var later = edges.Where(e => e.Before == at).GroupBy(e => e.After).OrderBy(g => g.Key).ToList();
+        foreach (var g in before)
+            lines.Add($"After {mods[g.Key].DisplayName} (#{g.Key + 1}): {string.Join("; ", g.Select(e => e.Why).Distinct())}" + (g.Key > at ? "  (broken: it loads later now)" : ""));
+        foreach (var g in later)
+            lines.Add($"Before {mods[g.Key].DisplayName} (#{g.Key + 1}): {string.Join("; ", g.Select(e => e.Why).Distinct())}" + (g.Key < at ? "  (broken: it loads earlier now)" : ""));
+        if (rules?.For(m.Key) is { } r)
+        {
+            if (r.LoadFirst) lines.Add("Your rules file puts it first.");
+            if (r.LoadLast) lines.Add("Your rules file puts it last.");
+        }
+        if (tier != null && tier(m) < tier(new ModManifest())) lines.Add("It ships with the game, and the base game and DLC load before other mods.");
+        if (lines.Count == 0) lines.Add("No rule places it: it stays where you put it (or in A to Z order after Sort A to Z).");
+        else if (before.Count == 0 && later.Count == 0) lines.Add("No other mod's rule places it.");
+        return lines;
     }
 
     /// <summary>Tarjan's strongly connected components, iterative so a long chain of rules can't overflow the stack.</summary>
