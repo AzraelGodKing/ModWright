@@ -54,6 +54,12 @@
   not active, extra, or in another order. Use this save's mods makes the active list match it (and offers to download
   the missing ones from the Workshop); Save as a modlist keeps it for later. Only the top of each save is read, so
   even very large saves open at once, and a damaged save says so instead of failing.
+- **Test a mod list and read the log.** Drop Pod > Test starts RimWorld (or the picked instance) and watches its log
+  as it plays; Problems > Read the log reads the last one. Errors and warnings are grouped (the same failure in the
+  same code counts once, however many pawns it hits), and each names the mod most likely at fault: its code in the
+  stack trace (read from the mod's DLLs, never run), its Harmony patch on a method there, a file in its folder, or
+  its package ID in the text. Untick the mod at fault takes it off the list to try again; Copy a report gives a
+  short summary to paste in a bug report. Logs of any size are read a line at a time.
 
 ## 1.6.0
 
