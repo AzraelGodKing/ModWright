@@ -68,6 +68,10 @@ public sealed class RimWorldModule : IGameModule
     // ModsConfig.xml carries the known expansions too; a new instance gets its own mod list written over it.
     public IReadOnlyList<string> SettingsFiles { get; } = new[] { Path.Combine("Config", "Prefs.xml"), Path.Combine("Config", "KeyPrefs.xml"), Path.Combine("Config", "ModsConfig.xml") };
 
+    public IReadOnlyList<string> SaveFiles(GameInstall install) => RimWorldSaves.Files(install);
+
+    public SaveInfo ReadSave(string path) => RimWorldSaves.Read(path);
+
     public string ActiveKey(string id) => RimWorldIds.WithoutSteamSuffix(ModManifest.KeyOf(id));
 
     /// <summary>The base game first, then the expansions in release order, then everything else.</summary>

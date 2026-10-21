@@ -60,6 +60,8 @@ public sealed partial class MainForm
         Tip(saveAs, "Save the active mods and their order as a named modlist");
         Tip(_dpMore, "Import or export a modlist file, share it as a code or a Steam collection, delete it, or pick your own load-order rules file");
         var newInst = Btn("New...", (_, _) => NewInstance());
+        var saves = Btn("Saves...", async (_, _) => await ShowSavesAsync());
+        Tip(saves, "See the saves of the picked instance (or the normal game), how each one's mods differ from the active ones, and use a save's mods");
         _dpPlay = Btn("Play", (_, _) => LaunchDropPod());
         _dpInstMore = Btn("More ▾", (_, _) => ShowInstanceMenu());
         Tip(_dpInstance, "The normal game, or an instance: a separate setup with its own options, mod list, saves and log");
@@ -67,7 +69,7 @@ public sealed partial class MainForm
         Tip(_dpPlay, "Start RimWorld with the picked instance (or normally)");
         Tip(_dpInstMore, "Export or import an instance, open its folder, or delete it");
         _dpInstance.SelectedIndexChanged += async (_, _) => await PickInstanceAsync();
-        page.Controls.Add(Card("RimWorld", new Control[] { rescan }, Row(_dpGameText, pick), Row(Lbl("Instance"), _dpInstance, newInst, _dpPlay, _dpInstMore),
+        page.Controls.Add(Card("RimWorld", new Control[] { rescan }, Row(_dpGameText, pick), Row(Lbl("Instance"), _dpInstance, newInst, _dpPlay, saves, _dpInstMore),
             Row(Lbl("Modlist"), _dpModlist, switchTo, saveAs, _dpMore), Row(_dpNote)), 0, 0);
 
         for (var i = 0; i < DropPodColumns.Length; i++)
@@ -311,8 +313,17 @@ public sealed partial class MainForm
     async Task DownloadMissingAsync()
     {
         if (_dpScan == null) return;
-        var ids = Problems.DownloadableFixes(_dpFound);
-        if (ids.Count == 0) return;
+        var keep = _dpActive;
+        await DownloadWorkshopAsync(Problems.DownloadableFixes(_dpFound), () => Problems.WithInactiveDependencies(_dpScan!, keep, _dpGame));
+    }
+
+    /// <summary>
+    /// Downloads Workshop items with SteamCMD into the Mods folder, rescans, and sets the active mods to what
+    /// <paramref name="activeAfter"/> gives on the new scan (unsaved, so the player can look first).
+    /// </summary>
+    async Task DownloadWorkshopAsync(IReadOnlyList<string> ids, Func<List<string>> activeAfter)
+    {
+        if (_dpScan == null || ids.Count == 0) return;
         if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd) || _s.Account.Length == 0)
         {
             ShowDropPodGame("Downloading needs SteamCMD and a saved Steam login of an account that owns RimWorld: set both up under Options > Account.");
@@ -338,11 +349,10 @@ public sealed partial class MainForm
             }
         }
         finally { _dpBusy = false; }
-        var keep = _dpActive;
         _dpDirty = false; // the rescan below rereads the game's list; put the edits back after it
         await ScanDropPodAsync();
-        _dpActive = keep;
-        _dpActive = Problems.WithInactiveDependencies(_dpScan!, _dpActive, _dpGame);
+        if (_dpScan == null) return;
+        _dpActive = activeAfter();
         _dpDirty = true;
         FillDropPodList();
         ShowDropPodGame($"Downloaded {done.Count} of {ids.Count} into the Mods folder and ticked them." + (failed.Count > 0 ? " Failed: " + string.Join("; ", failed) : "") + " Press Save to game to use the list.");
@@ -754,6 +764,30 @@ public sealed partial class MainForm
         _s.CurrentInstances[_dpGame.AppId] = "";
         _s.Save();
         _ = ScanDropPodAsync();
+    }
+
+    async Task ShowSavesAsync()
+    {
+        if (_dpScan is not { } scan) return;
+        var active = _dpActive.ToList();
+        using var f = new SavesForm(_dpInst != null ? "the instance " + _dpInst.Name : "the normal game",
+            () => Saves.List(_dpGame, scan.Install), s => Saves.Compare(s, active, scan, _dpGame));
+        if (f.ShowDialog(this) != DialogResult.OK || f.Picked is not { } save || _dpScan != scan) return;
+        if (f.AsModlist)
+        {
+            AddModlist(Modlist.Parse(save.Mods.ToJson(), save.Name));
+            return;
+        }
+        var (installed, missing) = save.Mods.Match(scan, _dpGame);
+        _dpActive = installed;
+        _dpDirty = true;
+        FillDropPodList();
+        var fetchable = missing.Where(m => m.WorkshopId != null).Select(m => m.WorkshopId!).Distinct().ToList();
+        var note = $"The active mods now match the save {save.Name}" + (missing.Count == 0 ? "." : $", except {missing.Count} that {(missing.Count == 1 ? "is" : "are")} not installed: {string.Join(", ", missing.Take(8).Select(m => m.Name ?? m.Id))}{(missing.Count > 8 ? ", ..." : "")}.") + " Press Save to game to use the list.";
+        ShowDropPodGame(note);
+        if (fetchable.Count == 0 || MessageBox.Show(this, $"{fetchable.Count} of the missing mods are on the Steam Workshop. Download them with SteamCMD into the Mods folder?", Text,
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        await DownloadWorkshopAsync(fetchable, () => save.Mods.Match(_dpScan!, _dpGame).Installed);
     }
 
     /// <summary>Starts the game with the picked instance's folders (or normally). Returns the log file it will write, or null when it did not start.</summary>

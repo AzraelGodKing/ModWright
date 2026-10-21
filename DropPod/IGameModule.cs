@@ -55,6 +55,12 @@ public interface IGameModule
     /// <summary>Files in the data folder worth copying into a new instance (options, key bindings), relative to it.</summary>
     IReadOnlyList<string> SettingsFiles { get; }
 
+    /// <summary>The save game files of <paramref name="install"/>.</summary>
+    IReadOnlyList<string> SaveFiles(GameInstall install);
+
+    /// <summary>Reads a save's game version and mods. Never throws: a save that can't be read has <see cref="SaveInfo.Error"/> set.</summary>
+    SaveInfo ReadSave(string path);
+
     /// <summary>Where a mod goes when no rule decides: lower is earlier (RimWorld: the base game, then each DLC).</summary>
     int SortTier(ModManifest mod);
 }
