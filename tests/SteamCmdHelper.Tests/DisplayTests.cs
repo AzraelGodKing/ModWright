@@ -16,6 +16,7 @@ public class DisplayTests
     [InlineData("SERINA", "Serina")]
     [InlineData("Wolfie", "Wolfie")]
     [InlineData("vickra", "Vickra")]
+    [InlineData("KITOMI", "Kitomi")]
     [InlineData("HighContrast", "Dark")]
     public void Theme_choice_is_normalized_with_dark_as_default(string? saved, string expected) =>
         Assert.Equal(expected, Display.NormalizeTheme(saved));

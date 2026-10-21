@@ -343,7 +343,7 @@ static class Program
                 if (theme == Theme.DarkName)
                 {
                     // The newest themes, each once on the Upload tab with mods (each theme gets a shot only while it is new).
-                    foreach (var (name, file) in new[] { (Theme.KonekoName, "koneko"), (Theme.SerinaName, "serina"), (Theme.WolfieName, "wolfie"), (Theme.VickraName, "vickra") })
+                    foreach (var (name, file) in new[] { (Theme.KonekoName, "koneko"), (Theme.SerinaName, "serina"), (Theme.WolfieName, "wolfie"), (Theme.VickraName, "vickra"), (Theme.KitomiName, "kitomi") })
                     {
                         var fresh = new MainForm(name, new AppSettings { RepoPath = DemoRepo(), Account = "demo_account", AllowCreate = true, DoNotSave = true }) { NoStartupPrompts = true };
                         fresh.Shown += (_, _) => fresh.SelectFirstMod();
