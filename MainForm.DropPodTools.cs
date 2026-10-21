@@ -28,7 +28,8 @@ public sealed partial class MainForm
     /// <summary>The list and the details panel side by side (the panel can be dragged narrower or wider).</summary>
     Control BuildDropPodListArea()
     {
-        _dpSplit = new SplitContainer { Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2, Panel2MinSize = 160, SplitterWidth = 6 };
+        // Panel2MinSize is set once the split is wide enough (FitDropPodSplit): set here, on the new 150-wide split, it throws.
+        _dpSplit = new SplitContainer { Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2, SplitterWidth = 6 };
         _dpSplit.Panel1.Controls.Add(_dpList);
         _dpSplit.Panel2.Controls.Add(_dpDetails);
         _dpSplit.SplitterMoved += (_, _) =>
@@ -56,6 +57,7 @@ public sealed partial class MainForm
     void FitDropPodSplit()
     {
         if (_dpSplit.Width < 400) return;
+        try { if (_dpSplit.Panel2MinSize != 160) _dpSplit.Panel2MinSize = 160; } catch (InvalidOperationException) { }
         var want = _s.DropPodDetailsWidth > 0 ? _s.DropPodDetailsWidth : (int)(320 * Theme.TextScale);
         // Keep the list at least 360 wide; when the window is too narrow for both, the panel gives way.
         var dist = Math.Clamp(_dpSplit.Width - want, Math.Min(360, _dpSplit.Width - 170), _dpSplit.Width - 170);
