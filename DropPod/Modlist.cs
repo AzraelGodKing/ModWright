@@ -189,10 +189,7 @@ public sealed class ModlistStore
     /// <summary>The file for a list name: unsafe characters replaced, so any name maps to a file in <see cref="Folder"/>.</summary>
     public string PathFor(string name)
     {
-        var bad = Path.GetInvalidFileNameChars().Concat(new[] { '/', '\\', ':', '*', '?', '"', '<', '>', '|' }).ToHashSet();
-        var safe = new string(name.Trim().Select(c => bad.Contains(c) || char.IsControl(c) ? '_' : c).ToArray()).Trim('.', ' ');
-        if (safe.Length == 0) safe = "modlist";
-        if (safe.Length > 80) safe = safe[..80];
+        var safe = SafeFiles.SafeName(name, "modlist");
         return Path.Combine(Folder, safe + ".json");
     }
 }

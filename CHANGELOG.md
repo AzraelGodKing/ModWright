@@ -43,6 +43,12 @@
   exactly: inactive mods are taken out and new ones added. The base game, DLC and local mods that aren't on the
   Workshop are left out (and named). Each modlist remembers its collection. It goes through the Steam client, so Steam
   must be running and signed in.
+- **Instances: separate RimWorld setups.** Drop Pod > Instance > New makes one with its own options, mod list, saves
+  and log, so a test list or a heavy modded run never touches your normal game. It can start from the active mods,
+  only the base game and DLC, or a saved modlist, copies your game options and key bindings if you like, and can run
+  another RimWorld install (an older version, say). Pick it in the Instance list to edit its mods, and press Play to
+  start RimWorld with it (RimWorld's own -savedatafolder switch). More exports an instance to a zip, with or without
+  its saves, imports one, opens its folder or deletes it.
 
 ## 1.6.0
 
