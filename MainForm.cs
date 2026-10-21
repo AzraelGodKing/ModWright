@@ -56,6 +56,12 @@ public sealed partial class MainForm : Form
         Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, Width = 520, Height = 64, Font = new Font("Consolas", 9f),
         PlaceholderText = "e.g. [url=https://discord.gg/...]Discord[/url] | [url=https://ko-fi.com/...]Ko-fi[/url]", AccessibleName = "Footer added to every description in this mods folder",
     };
+    readonly TextBox _checklist = new()
+    {
+        Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, Width = 520, Height = 80,
+        PlaceholderText = "e.g.\r\nTested in a clean colony\r\nUpdated the preview image\r\nAnswered the open bug reports", AccessibleName = "Release checklist for this mods folder",
+    };
+    readonly CheckBox _checklistMust = new() { AutoSize = true, Text = "Don't upload until every step is &ticked" };
     readonly CheckBox _countComments = new() { AutoSize = true, Text = "At start-up, count new comments on your mods (at most every 6 hours, only while Steam is running)" };
     readonly ComboBox _descSync = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, AccessibleName = "When a description file differs from Steam" };
     readonly CheckBox _testItems = new() { AutoSize = true, Text = "Upload to t&est items" };
@@ -339,6 +345,14 @@ public sealed partial class MainForm : Form
             _s.SetTemplate(_s.RepoPath, _noteTemplate.Text);
             _s.Save();
         };
+        _checklist.Leave += (_, _) =>
+        {
+            if (_populating || !Directory.Exists(_s.RepoPath)) return;
+            _s.SetChecklist(_s.RepoPath, _checklist.Text);
+            _s.Save();
+        };
+        _checklistMust.Checked = _s.ChecklistMustTick;
+        _checklistMust.CheckedChanged += (_, _) => { _s.ChecklistMustTick = _checklistMust.Checked; _s.Save(); };
         _descFooter.Leave += (_, _) =>
         {
             if (_populating || !Directory.Exists(_s.RepoPath)) return;
@@ -797,6 +811,7 @@ public sealed partial class MainForm : Form
         var bulkVersion = ticked.DropDownItems.Add("Change the versi&on...", null, (_, _) => ChangeTickedVersions());
         var gameVersion = ticked.DropDownItems.Add("Add a &game version...", null, (_, _) => AddGameVersion());
         var thunder = menu.Items.Add("Publish to Th&understore", null, async (_, _) => await PublishThunderstoreAsync(TickedOrSelected().Where(x => Thunderstore.Has(x.Dir)).ToList()));
+        var refreshLaunchPad = AddLaunchPadMenu(menu, package);
 
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("&New mod...", null, async (_, _) => await NewModAsync()) { ShortcutKeyDisplayString = "Ctrl+N" });
@@ -814,6 +829,7 @@ public sealed partial class MainForm : Form
             entry.Available = SelectedMod() is { } m && ModScanner.NeedsChangelogEntry(m, _cfg);
             shrink.Available = SelectedMod() is { PreviewOk: false, PreviewPath.Length: > 0 };
             packages.Available = SelectedMod() is { OnSteam: true } pm && PackageArchive.List(PackageArchive.DefaultDir, pm.WorkshopId!).Count > 0;
+            refreshLaunchPad();
         };
         menu.Opening += (_, e) =>
         {
@@ -986,6 +1002,11 @@ public sealed partial class MainForm : Form
                 _strictAbout,
                 Hint("A missing packageId or broken XML always blocks. With this on, so does what is only a warning otherwise: no author, description or supportedVersions, " +
                      "a dependency without a Workshop link, a load-order rule that names the mod itself or isn't a packageId.")),
+            Card("Release checklist", new Control[] { FolderTag() },
+                _checklist,
+                _checklistMust,
+                Hint("Your own steps before a release, one per line, for the current mods folder. The upload confirmation shows them as boxes to tick. " +
+                     "Lines starting with # are left out. Dry runs never have to be ticked off.")),
             Card("While uploading", null,
                 _autoRetry,
                 _notifyDone,
@@ -2521,6 +2542,7 @@ public sealed partial class MainForm : Form
         var live = await WorkshopStatus.FetchAsync(mods.Select(m => m.WorkshopId!).Concat(deps.Values.SelectMany(d => d)));
         if (!IsDisposed && ReferenceEquals(all, _mods)) { _live = live; UpdateDetail(); }
         var stats = SubscriberStats.Record(mods.Where(m => live.ContainsKey(m.WorkshopId!)).Select(m => live[m.WorkshopId!]), DateOnly.FromDateTime(DateTime.Now));
+        NoteSubscriberChanges(mods, stats);
         foreach (var (m, ids) in deps)
             foreach (var w in Dependencies.Problems(ids, live))
                 if (!m.Warnings.Contains(w)) { m.Warnings.Add(w); Append($"{m.Name} {w}.", LogKind.Warn); }
@@ -2948,19 +2970,36 @@ public sealed partial class MainForm : Form
         var t = new TextBox { Text = m.Version, Location = new Point(12, 36), Width = 336, AccessibleName = "Version" };
         var bumps = new List<Control>();
         var x = 12;
+        // The Launch Pad's hint: what the commits since the last upload point to.
+        var hint = SuggestedBump(m);
+        Button? suggested = null;
         foreach (var (part, label) in new[] { (ModScanner.Bump.Patch, "&Patch"), (ModScanner.Bump.Minor, "Mi&nor"), (ModScanner.Bump.Major, "Ma&jor") })
         {
             var next = ModScanner.NextVersion(m.Version, part);
             var b = new Button { Text = next == null ? label : $"{label} {next}", Location = new Point(x, 68), Width = 108, AutoEllipsis = true, Enabled = next != null };
             b.Click += (_, _) => { t.Text = next; t.Focus(); t.SelectAll(); };
+            if (hint?.Part == part) suggested = b;
             bumps.Add(b);
             x += 114;
         }
-        var ok = new Button { Text = "Save", DialogResult = DialogResult.OK, Location = new Point(192, 108), Width = 75 };
-        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(273, 108), Width = 75 };
+        var extra = 0;
+        if (hint is { } h)
+        {
+            var why = new Label
+            {
+                AutoSize = true, MaximumSize = new Size(336, 0), Location = new Point(12, 102), UseMnemonic = false,
+                Text = $"The commits since the last upload suggest a {h.Part.ToString().ToLowerInvariant()} bump (\"{(h.Reason.Length > 70 ? h.Reason[..70] + "..." : h.Reason)}\").",
+            }.Role(ThemeRole.Muted);
+            bumps.Add(why);
+            extra = 40;
+        }
+        f.ClientSize = new Size(360, 146 + extra);
+        var ok = new Button { Text = "Save", DialogResult = DialogResult.OK, Location = new Point(192, 108 + extra), Width = 75 };
+        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(273, 108 + extra), Width = 75 };
         f.Controls.Add(l); f.Controls.Add(t); f.Controls.AddRange(bumps.ToArray()); f.Controls.Add(ok); f.Controls.Add(cancel);
         f.AcceptButton = ok; f.CancelButton = cancel;
         ok.Role(ThemeRole.Accent);
+        suggested?.Role(ThemeRole.Primary);
         Theme.Apply(f);
         return f.ShowDialog(this) == DialogResult.OK ? t.Text : null;
     }
@@ -3098,7 +3137,7 @@ public sealed partial class MainForm : Form
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _theme, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _tsTeam, _tsCommunity, _tsCategories, _tsToken, _tsAfter, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _testItems, _changed, _groups, _afterCmd, _pushTags, _keepPackages, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _steamBack, _restartSteam, _watchBuilds, _strictAbout })
+        foreach (var c in new Control[] { _browse, _editLayout, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _appId, _preset, _theme, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _tsTeam, _tsCommunity, _tsCategories, _tsToken, _tsAfter, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _checklist, _checklistMust, _testItems, _changed, _groups, _afterCmd, _pushTags, _keepPackages, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _steamBack, _restartSteam, _watchBuilds, _strictAbout })
             c.Enabled = !busy;
         ApplyLocks();
         _cancel.Visible = busy;
@@ -3829,7 +3868,9 @@ public sealed partial class MainForm : Form
         {
             Credit = _s.UploadCredit, NoteTemplate = _s.TemplateFor(_s.RepoPath), MarkdownToSteam = _s.MarkdownNotes,
         };
-        using (var confirm = new ConfirmUploadForm(heading, picked, actions, notes, dry, gitPackaging, DraftNoteFn(), checkFirst, shaper.AsSent))
+        if (rollback == null) checkFirst.AddRange(await LaunchPadChecksAsync(picked, test));
+        var checklist = test ? null : ReleaseChecklist.Items(_s.ChecklistFor(_s.RepoPath));
+        using (var confirm = new ConfirmUploadForm(heading, picked, actions, notes, dry, gitPackaging, DraftNoteFn(), checkFirst, shaper.AsSent, checklist, _s.ChecklistMustTick))
         {
             if (confirm.ShowDialog(this) != DialogResult.OK) return;
             edited = confirm.EditedNotes;
@@ -3897,7 +3938,7 @@ public sealed partial class MainForm : Form
         pub.Stage += (t, p) => BeginInvoke(() => SetStage(t, p));
 
         // One login check above covers the batch; each mod then reuses Steam's saved login.
-        var batch = new BatchUpload(pub) { RetryAfter = _s.AutoRetry ? TimeSpan.FromSeconds(30) : null, OneSession = _s.OneSession };
+        var batch = new BatchUpload(pub) { RetryAfter = _s.AutoRetry ? TimeSpan.FromSeconds(30) : null, OneSession = _s.OneSession, Family = FamilyOf() };
         batch.Retrying += (m, why, wait) => Append($"{m.Name}: Steam was busy or could not be reached ({why}). Trying again in {wait.TotalSeconds:0} seconds...", LogKind.Warn);
         batch.Starting += (m, i, n) =>
         {
@@ -4046,7 +4087,11 @@ public sealed partial class MainForm : Form
             {
                 var since = live.TryGetValue(m.WorkshopId!, out var own) && own.Updated != null ? own.Updated
                     : latest.TryGetValue(m.WorkshopId!, out var last) ? last.Time : (DateTimeOffset?)null;
-                lines.AddRange(Dependencies.UpdatedSince(m.Name, ids, since, live, DateTimeOffset.Now));
+                var updated = Dependencies.UpdatedSince(m.Name, ids, since, live, DateTimeOffset.Now);
+                lines.AddRange(updated);
+                // The Launch Pad's clean-colony test is the quick way to see whether the update broke anything.
+                if (updated.Count > 0 && RimWorldLint.Applies(cfg))
+                    lines.Add($"To see whether {m.Name} still works with that, right-click it > RimWorld > Test in a clean colony.");
             }
             return lines;
         }
@@ -4249,6 +4294,8 @@ public sealed partial class MainForm : Form
         _noteTemplate.Enabled = hasRepo && !_busy;
         _descFooter.Text = hasRepo ? _s.FooterFor(_s.RepoPath).Replace("\n", "\r\n") : "";
         _descFooter.Enabled = hasRepo && !_busy;
+        _checklist.Text = hasRepo ? _s.ChecklistFor(_s.RepoPath).Replace("\n", "\r\n") : "";
+        _checklist.Enabled = hasRepo && !_busy;
         _buildCmd.Text = hasRepo ? _s.BuildFor(_s.RepoPath) : "";
         _packageRef.Text = hasRepo ? _s.RefFor(_s.RepoPath) : "";
         _afterCmd.Text = hasRepo ? _s.AfterFor(_s.RepoPath) : "";

@@ -57,6 +57,10 @@ public sealed class AppSettings
     public bool CountCommentsAtStartup { get; set; }
     /// <summary>When comments were last counted (UTC).</summary>
     public DateTime CommentsCheckedAt { get; set; }
+    /// <summary>The Launch Pad's release checklist (one step per line), per mods folder.</summary>
+    public Dictionary<string, string> ReleaseChecklists { get; set; } = new();
+    /// <summary>Refuse to upload until every checklist step is ticked.</summary>
+    public bool ChecklistMustTick { get; set; }
     /// <summary>A command run in the mods folder before packaging (e.g. "dotnet build -c Release"), per mods folder.</summary>
     public Dictionary<string, string> BuildCommands { get; set; } = new();
     /// <summary>The git branch or tag to upload from instead of the checked-out commit, per mods folder.</summary>
@@ -169,6 +173,15 @@ public sealed class AppSettings
     {
         foreach (var k in DescriptionFooters.Keys.Where(k => Same(k, repo)).ToList()) DescriptionFooters.Remove(k);
         if (!string.IsNullOrWhiteSpace(footer)) DescriptionFooters[Key(repo)] = footer.Replace("\r\n", "\n").Trim('\n');
+    }
+
+    /// <summary>The release checklist for <paramref name="repo"/>, or "" for none.</summary>
+    public string ChecklistFor(string repo) => ReleaseChecklists.FirstOrDefault(kv => Same(kv.Key, repo)).Value ?? "";
+
+    public void SetChecklist(string repo, string text)
+    {
+        foreach (var k in ReleaseChecklists.Keys.Where(k => Same(k, repo)).ToList()) ReleaseChecklists.Remove(k);
+        if (!string.IsNullOrWhiteSpace(text)) ReleaseChecklists[Key(repo)] = text.Replace("\r\n", "\n").Trim('\n');
     }
 
     /// <summary>The build step for <paramref name="repo"/>, or "" for none.</summary>

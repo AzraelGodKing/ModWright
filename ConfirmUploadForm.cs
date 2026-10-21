@@ -36,9 +36,12 @@ public sealed class ConfirmUploadForm : Form
     /// <param name="offerCommit">Git packaging is in use, so uncommitted changes would be left out.</param>
     /// <param name="draft">Drafts a mod's note from its git commits since its last upload; null hides the link.</param>
     /// <param name="warnings">Things to check before sending (such as a version Steam already has), shown above the note.</param>
+    /// <param name="checklist">The author's release checklist for this mods folder, as boxes to tick.</param>
+    /// <param name="mustTick">Upload stays refused until every checklist box is ticked (not for dry runs).</param>
     public ConfirmUploadForm(string heading, IReadOnlyList<ModInfo> mods, IReadOnlyDictionary<string, string> actions,
         IReadOnlyDictionary<string, string> notes, bool dry, bool offerCommit, Func<ModInfo, GitOps.CommitNote?>? draft = null,
-        IReadOnlyList<string>? warnings = null, Func<ModInfo, string, string>? asSent = null)
+        IReadOnlyList<string>? warnings = null, Func<ModInfo, string, string>? asSent = null,
+        IReadOnlyList<string>? checklist = null, bool mustTick = false)
     {
         _draft = draft;
         _asSent = asSent;
@@ -89,8 +92,16 @@ public sealed class ConfirmUploadForm : Form
             Visible = warnings is { Count: > 0 }, Text = string.Join("\n", (warnings ?? Array.Empty<string>()).Select(w => "• " + w)),
         }.Role(ThemeRole.Keep);
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 9, Padding = new Padding(12) };
-        foreach (var size in new[] { 0, 0, 0, 0, 100, 0, 0, 0, 0 })
+        // The Launch Pad's release checklist: the author's own steps, ticked off before sending.
+        var checks = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(0, 8, 0, 0), Visible = checklist is { Count: > 0 } };
+        if (checklist is { Count: > 0 })
+        {
+            checks.Controls.Add(new Label { AutoSize = true, Text = mustTick && !dry ? "Release checklist (tick every step to upload):" : "Release checklist:", Font = new Font("Segoe UI Semibold", 9.5f), Margin = new Padding(0, 0, 0, 2) });
+            foreach (var step in checklist) checks.Controls.Add(new CheckBox { Text = step, AutoSize = true, UseMnemonic = false, Margin = new Padding(0, 0, 0, 0) });
+        }
+
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 10, Padding = new Padding(12) };
+        foreach (var size in new[] { 0, 0, 0, 0, 100, 0, 0, 0, 0, 0 })
             root.RowStyles.Add(size == 0 ? new RowStyle(SizeType.AutoSize) : new RowStyle(SizeType.Percent, size));
         var listHost = new Panel { Dock = DockStyle.Top, Height = _list.Height, Margin = Padding.Empty };
         listHost.Controls.Add(_list);
@@ -101,14 +112,15 @@ public sealed class ConfirmUploadForm : Form
         root.Controls.Add(_note, 0, 4);
         root.Controls.Add(noteRow, 0, 5);
         root.Controls.Add(_commitFirst, 0, 6);
-        root.Controls.Add(foot, 0, 7);
+        root.Controls.Add(checks, 0, 7);
+        root.Controls.Add(foot, 0, 8);
 
         var go = new Button { Text = dry ? "Dry run" : "Upload", AutoSize = true, Padding = new Padding(12, 2, 12, 2), DialogResult = DialogResult.OK }.Role(dry ? ThemeRole.Accent : ThemeRole.Primary);
         var cancel = new Button { Text = "Cancel", AutoSize = true, Padding = new Padding(8, 2, 8, 2), DialogResult = DialogResult.Cancel };
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
         buttons.Controls.Add(cancel);
         buttons.Controls.Add(go);
-        root.Controls.Add(buttons, 0, 8);
+        root.Controls.Add(buttons, 0, 9);
         Controls.Add(root);
         CancelButton = cancel;
 
@@ -141,6 +153,13 @@ public sealed class ConfirmUploadForm : Form
         };
         go.Click += (_, e) =>
         {
+            if (mustTick && !dry && checks.Controls.OfType<CheckBox>().FirstOrDefault(c => !c.Checked) is { } open)
+            {
+                MessageBox.Show(this, $"Tick every step of your release checklist first (\"{open.Text}\" is not ticked).", Text);
+                open.Focus();
+                DialogResult = DialogResult.None;
+                return;
+            }
             var tooLong = _mods.FirstOrDefault(m => _notes[m.Dir].Length > MaxNote);
             if (tooLong == null) return;
             MessageBox.Show(this, $"The change note for {tooLong.Name} is over Steam's {MaxNote} characters. Shorten it first.", Text);
