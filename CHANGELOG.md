@@ -2,6 +2,9 @@
 
 ## 1.8.0
 
+- **The uploader is now The Launch Pad.** In RimWorld, a pod launcher fires transport pods that land as drop pods, so
+  mods take off from The Launch Pad and land in The Drop Pod. The tab, the brand bar, the window title and the
+  first-start choice use the new name; nothing about uploading changes.
 - **Use it as a mod manager, a mod uploader, or both.** The first start asks what Modwright is for: the mod manager (The
   Drop Pod), the mod uploader, or both. Only what is picked is shown; the other tab, its Options sections, shortcuts and
   command palette entries are hidden. Change it any time under Options > Appearance, live and without reinstalling.

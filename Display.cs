@@ -36,7 +36,7 @@ public static class Display
     /// <summary>Which sides of the app to show (first start, then Options > Appearance): saved name and the name shown.</summary>
     public static readonly (string Name, string Label)[] SidesChoices =
     {
-        (Both, "Both: the mod manager and the mod uploader"), (Manager, "Mod manager only (The Drop Pod)"), (Uploader, "Mod uploader only"),
+        (Both, "Both: The Drop Pod and The Launch Pad"), (Manager, "Mod manager only (The Drop Pod)"), (Uploader, "Mod uploader only (The Launch Pad)"),
     };
 
     /// <summary>The saved choice of sides: one of <see cref="SidesChoices"/>. Anything else, or nothing picked yet, is both.</summary>
