@@ -63,13 +63,15 @@ public sealed partial class MainForm
         var saves = Btn("Saves...", async (_, _) => await ShowSavesAsync());
         Tip(saves, "See the saves of the picked instance (or the normal game), how each one's mods differ from the active ones, and use a save's mods");
         _dpPlay = Btn("Play", (_, _) => LaunchDropPod());
+        var test = Btn("Test", (_, _) => { if (LaunchDropPod() is { } log) OpenDropPodLog(log, watch: true); });
+        Tip(test, "Start RimWorld and watch its log: errors and warnings are grouped as they come, with the mod most likely at fault");
         _dpInstMore = Btn("More ▾", (_, _) => ShowInstanceMenu());
         Tip(_dpInstance, "The normal game, or an instance: a separate setup with its own options, mod list, saves and log");
         Tip(newInst, "Make a new instance");
         Tip(_dpPlay, "Start RimWorld with the picked instance (or normally)");
         Tip(_dpInstMore, "Export or import an instance, open its folder, or delete it");
         _dpInstance.SelectedIndexChanged += async (_, _) => await PickInstanceAsync();
-        page.Controls.Add(Card("RimWorld", new Control[] { rescan }, Row(_dpGameText, pick), Row(Lbl("Instance"), _dpInstance, newInst, _dpPlay, saves, _dpInstMore),
+        page.Controls.Add(Card("RimWorld", new Control[] { rescan }, Row(_dpGameText, pick), Row(Lbl("Instance"), _dpInstance, newInst, _dpPlay, test, saves, _dpInstMore),
             Row(Lbl("Modlist"), _dpModlist, switchTo, saveAs, _dpMore), Row(_dpNote)), 0, 0);
 
         for (var i = 0; i < DropPodColumns.Length; i++)
@@ -99,10 +101,12 @@ public sealed partial class MainForm
         _dpActivateDeps = SmallBtn("Activate needed mods", (_, _) => ActivateDependencies());
         _dpDownload = SmallBtn("Download missing", async (_, _) => await DownloadMissingAsync());
         _dpUpdates = SmallBtn("Check for updates", async (_, _) => await CheckDropPodUpdatesAsync());
+        var readLog = SmallBtn("Read the log", (_, _) => { if (_dpScan != null) OpenDropPodLog(_dpInst?.LogFile ?? _dpGame.LogFile(_dpScan.Install), watch: false); });
+        Tip(readLog, "Read the game's last log: errors and warnings grouped, with the mod most likely at fault");
         Tip(_dpActivateDeps, "Tick the installed mods the active ones need, each placed before the first mod that needs it");
         Tip(_dpDownload, "Download the missing dependencies that link a Workshop item, with SteamCMD and your saved login, into RimWorld's Mods folder");
         Tip(_dpUpdates, "Ask Steam which installed Workshop mods have a newer version");
-        page.Controls.Add(Card("Problems", new Control[] { _dpProblemCount, _dpActivateDeps, _dpDownload, _dpUpdates }, _dpProblems), 0, 2);
+        page.Controls.Add(Card("Problems", new Control[] { _dpProblemCount, _dpActivateDeps, _dpDownload, _dpUpdates, readLog }, _dpProblems), 0, 2);
         ((Control)page.Controls[2]).Dock = DockStyle.Fill;
         UpdateDropPodButtons();
         return page;
@@ -788,6 +792,25 @@ public sealed partial class MainForm
         if (fetchable.Count == 0 || MessageBox.Show(this, $"{fetchable.Count} of the missing mods are on the Steam Workshop. Download them with SteamCMD into the Mods folder?", Text,
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         await DownloadWorkshopAsync(fetchable, () => save.Mods.Match(_dpScan!, _dpGame).Installed);
+    }
+
+    /// <summary>Shows the game's log analysed (modeless, so the game and the Drop Pod stay usable); with <paramref name="watch"/> it follows the log as it grows.</summary>
+    void OpenDropPodLog(string path, bool watch)
+    {
+        if (_dpScan is not { } scan) return;
+        ModIndex? index = null;
+        var byId = scan.ById();
+        var f = new LogForm(path,
+            (p, ct) => LogAnalysis.Read(p, index ??= new ModIndex(scan.Mods, ModAssemblies.ForMods(scan.Mods, ct)), ct),
+            key => byId.TryGetValue(key, out var m) ? m.DisplayName : key,
+            key =>
+            {
+                if (_dpScan != scan || !_dpActive.Remove(key)) return;
+                _dpDirty = true;
+                FillDropPodList();
+            },
+            watch);
+        f.Show(this);
     }
 
     /// <summary>Starts the game with the picked instance's folders (or normally). Returns the log file it will write, or null when it did not start.</summary>
