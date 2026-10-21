@@ -150,11 +150,11 @@ static class SteamworksExtras
         return list;
     }
 
-    static MethodInfo Method(string name) => Internal.GetType().GetMethods(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance)
+    internal static MethodInfo Method(string name) => Internal.GetType().GetMethods(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance)
         .First(m => m.Name == name && !m.Name.StartsWith('_'));
 
     /// <summary>Calls an ISteamUGC method that answers at once.</summary>
-    static object Call(string name, params object[] args) => Method(name).Invoke(Internal, args)!;
+    internal static object Call(string name, params object[] args) => Method(name).Invoke(Internal, args)!;
 
     /// <summary>The comment count of each item, read in pages of 50 (Steam's page size).</summary>
     static async Task<Dictionary<string, long>> CommentsAsync(string[] ids)
@@ -181,11 +181,11 @@ static class SteamworksExtras
 
     // ------------------------------------------------------------ Facepunch internals
 
-    static object Internal => typeof(SteamUGC).GetProperty("Internal", BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null)
+    internal static object Internal => typeof(SteamUGC).GetProperty("Internal", BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null)
         ?? throw new InvalidOperationException("This Steamworks library has no Workshop interface to call.");
 
     /// <summary>The item's required items, read from the query's handle.</summary>
-    static ulong[] Children(Steamworks.Ugc.ResultPage page, Steamworks.Ugc.Item item)
+    internal static ulong[] Children(Steamworks.Ugc.ResultPage page, Steamworks.Ugc.Item item)
     {
         var details = typeof(Steamworks.Ugc.Item).GetField("details", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(item)!;
         var count = (uint)details.GetType().GetField("NumChildren")!.GetValue(details)!;
@@ -199,7 +199,14 @@ static class SteamworksExtras
     }
 
     /// <summary>Calls an ISteamUGC method that returns a CallResult, waits for Steam's answer and reads one field of it.</summary>
-    static async Task<T> Ugc<T>(string method, string field, params object[] args)
+    internal static async Task<T> Ugc<T>(string method, string field, params object[] args)
+    {
+        var answer = await UgcAnswer(method, args);
+        return (T)answer.GetType().GetField(field)!.GetValue(answer)!;
+    }
+
+    /// <summary>Calls an ISteamUGC method that returns a CallResult and waits for Steam's whole answer.</summary>
+    internal static async Task<object> UgcAnswer(string method, params object[] args)
     {
         var ugc = Internal;
         var call = Method(method).Invoke(ugc, args)!;
@@ -211,7 +218,6 @@ static class SteamworksExtras
             if (DateTime.UtcNow > until) throw new TimeoutException($"Steam did not answer {method} within a minute.");
             await Task.Delay(50);
         }
-        var answer = type.GetMethod("GetResult")!.Invoke(call, null) ?? throw new InvalidOperationException($"Steam gave no answer to {method}.");
-        return (T)answer.GetType().GetField(field)!.GetValue(answer)!;
+        return type.GetMethod("GetResult")!.Invoke(call, null) ?? throw new InvalidOperationException($"Steam gave no answer to {method}.");
     }
 }

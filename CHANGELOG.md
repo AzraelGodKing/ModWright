@@ -38,6 +38,11 @@
   in one drop-down instead of a row of buttons, so more themes fit. Kats pairs gunmetal grey with a vivid orange
   (#FF5C00) for buttons, ticks and selection, with dark text on the orange so it stays easy to read. The brand bar
   follows a dark theme's own colours; only the light theme keeps the dark bar.
+- **Send your modlist to a Steam collection.** Drop Pod > More > Send the active mods to a Steam collection creates a
+  Workshop collection of the ticked Workshop mods, in load order, or updates one you made before so it matches
+  exactly: inactive mods are taken out and new ones added. The base game, DLC and local mods that aren't on the
+  Workshop are left out (and named). Each modlist remembers its collection. It goes through the Steam client, so Steam
+  must be running and signed in.
 
 ## 1.6.0
 

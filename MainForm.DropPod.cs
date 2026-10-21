@@ -50,7 +50,7 @@ public sealed partial class MainForm
         Tip(rescan, "Read every mod folder again (F5 on this tab)");
         Tip(switchTo, "Make this modlist the game's active mods (writes ModsConfig.xml; the old one is kept as a backup)");
         Tip(saveAs, "Save the active mods and their order as a named modlist");
-        Tip(_dpMore, "Import or export a modlist file, share it as a code, delete it, or pick your own load-order rules file");
+        Tip(_dpMore, "Import or export a modlist file, share it as a code or a Steam collection, delete it, or pick your own load-order rules file");
         page.Controls.Add(Card("RimWorld", new Control[] { rescan }, Row(_dpGameText, pick), Row(Lbl("Modlist"), _dpModlist, switchTo, saveAs, _dpMore), Row(_dpNote)), 0, 0);
 
         for (var i = 0; i < DropPodColumns.Length; i++)
@@ -495,6 +495,7 @@ public sealed partial class MainForm
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Copy a share code of the active mods", null, (_, _) => CopyShareCode()).Enabled = _dpScan != null;
         menu.Items.Add("Add a modlist from a share code...", null, (_, _) => PasteShareCode());
+        menu.Items.Add("Send the active mods to a Steam collection...", null, (_, _) => SendToCollection()).Enabled = _dpScan != null;
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(selected == null ? "Delete the modlist" : $"Delete the modlist \"{selected}\"", null, (_, _) => DeleteModlist()).Enabled = selected != null;
         menu.Items.Add(new ToolStripSeparator());
@@ -556,6 +557,24 @@ public sealed partial class MainForm
         if (string.IsNullOrWhiteSpace(code)) return;
         try { AddModlist(Modlist.FromShareCode(code)); }
         catch (FormatException e) { ShowDropPodGame(e.Message); }
+    }
+
+    void SendToCollection()
+    {
+        if (_dpScan == null) return;
+        var (items, leftOut) = SteamCollections.Contents(_dpScan, _dpActive, _dpGame);
+        if (items.Count == 0)
+        {
+            ShowDropPodGame("None of the active mods are on the Steam Workshop, so there is nothing to put in a collection.");
+            return;
+        }
+        var name = _dpModlist.SelectedItem as string ?? "My modlist";
+        var key = SteamCollections.Key(_dpGame.AppId, name);
+        using var f = new CollectionForm(_dpGame.AppId, name, items, leftOut, _s.SteamCollections.GetValueOrDefault(key));
+        f.ShowDialog(this);
+        if (f.CollectionId == null) return;
+        _s.SteamCollections[key] = f.CollectionId;
+        _s.Save();
     }
 
     void DeleteModlist()
