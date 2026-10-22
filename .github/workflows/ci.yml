@@ -84,12 +84,6 @@ jobs:
           Start-Process -FilePath publish/SteamCmdHelper.exe -ArgumentList '--shot', "$PWD\shots" -Wait
           Get-ChildItem shots
           if (Test-Path shots/error.txt) { Get-Content shots/error.txt }
-          foreach ($f in Get-ChildItem shots -Filter 'main-mods-*.png' | Where-Object { $_.Name -match 'skywolf' }) {
-            "B64BEGIN $($f.Name)"
-            $b = [Convert]::ToBase64String([IO.File]::ReadAllBytes($f.FullName))
-            for ($i = 0; $i -lt $b.Length; $i += 4000) { "Z B64 " + $b.Substring($i, [Math]::Min(4000, $b.Length - $i)) }
-            "B64END $($f.Name)"
-          }
 
       - name: Upload screenshots
         if: always()
