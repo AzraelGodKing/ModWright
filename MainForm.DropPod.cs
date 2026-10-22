@@ -97,7 +97,7 @@ public sealed partial class MainForm
         var up = SmallBtn("Up", (_, _) => MoveDropPodMod(-1));
         var down = SmallBtn("Down", (_, _) => MoveDropPodMod(1));
         _dpUndo = SmallBtn("Undo changes", (_, _) => { DropPodEdit(); _dpActive = ActiveFromGame(); _dpDirty = false; FillDropPodList(); });
-        _dpSave = SmallBtn("Save to game", (_, _) => SaveDropPodToGame()).Role(ThemeRole.Primary);
+        _dpSave = SmallBtn("Save to game", (_, _) => { SaveDropPodToGame(); }).Role(ThemeRole.Primary);
         Tip(_dpSort, "Order the active mods by their dependencies and load rules (and your rules file), or A to Z where no rule decides");
         Tip(up, "Load the selected mod earlier (Alt+Up)");
         Tip(down, "Load the selected mod later (Alt+Down)");
@@ -203,6 +203,7 @@ public sealed partial class MainForm
     void FillDropPodList()
     {
         var keep = (_dpList.SelectedItems.Count > 0 ? _dpList.SelectedItems[0].Name : null);
+        var top = _dpList.TopItem?.Name; // kept, so a refill (undo, sort, rescan) doesn't jump back to the top
         _dpFilling = true;
         _dpList.BeginUpdate();
         try
@@ -239,6 +240,8 @@ public sealed partial class MainForm
             var active = _dpActive.ToHashSet();
             foreach (var m in _dpScan.Mods.Where(m => !active.Contains(m.Key)).DistinctBy(m => m.Key)) Add(m.Key, m, false);
             _dpList.Items.AddRange(_dpRows.ToArray());
+            if (top != null && _dpList.Items[top] is { } topRow)
+                try { _dpList.TopItem = topRow; } catch { } // only once the list has a handle
             if (keep != null && _dpList.Items[keep] is { } again) { again.Selected = again.Focused = true; again.EnsureVisible(); }
             NumberDropPodRows();
         }
@@ -252,7 +255,8 @@ public sealed partial class MainForm
         foreach (var it in _dpRows) it.SubItems[5].Text = pos.TryGetValue(it.Name, out var p) ? p.ToString() : "";
         if (_dpScan != null)
         {
-            var missing = _dpActive.Count(k => !_dpScan.ById().ContainsKey(k));
+            var byId = _dpScan.ById(); // once, not once per active mod
+            var missing = _dpActive.Count(k => !byId.ContainsKey(k));
             _dpCount.Text = $"{_dpScan.Mods.Count} installed, {_dpActive.Count} active" + (missing > 0 ? $" ({missing} not installed)" : "") + (_dpDirty ? "  ·  not saved" : "");
         }
         ColorDropPodRows();
@@ -280,7 +284,8 @@ public sealed partial class MainForm
     {
         _dpSave.Enabled = _dpUndo.Enabled = _dpDirty && _dpScan != null && !_dpBusy;
         _dpSort.Enabled = _dpScan != null && _dpActive.Count > 1 && !_dpBusy;
-        _dpActivateDeps.Enabled = !_dpBusy && _dpFound.Any(p => p.Kind == ProblemKind.MissingDependency && p.WorkshopId == null && _dpScan?.ById().ContainsKey(p.Other ?? "") == true);
+        var installed = _dpScan?.ById();
+        _dpActivateDeps.Enabled = !_dpBusy && installed != null && _dpFound.Any(p => p.Kind == ProblemKind.MissingDependency && p.WorkshopId == null && installed.ContainsKey(p.Other ?? ""));
         _dpDownload.Enabled = !_dpBusy && Problems.DownloadableFixes(_dpFound).Count > 0;
         _dpUpdates.Enabled = !_dpBusy && _dpScan != null;
         _dpTools.Enabled = !_dpBusy;
@@ -288,11 +293,21 @@ public sealed partial class MainForm
 
     // ------------------------------------------------------------ problems, downloads and updates
 
+    (string Path, DateTime Stamp, SortRules? Rules)? _dpRulesRead;
+
+    /// <summary>Your load-order rules file, read again only when it changes (it is asked for on every tick and move).</summary>
     SortRules? DropPodRules()
     {
-        if (_s.DropPodRulesFile.Length == 0) return null;
-        try { return SortRules.Parse(File.ReadAllText(_s.DropPodRulesFile)); }
-        catch { return null; }
+        var path = _s.DropPodRulesFile;
+        if (path.Length == 0) return null;
+        DateTime stamp;
+        try { stamp = File.GetLastWriteTimeUtc(path); } catch { return null; }
+        if (_dpRulesRead is { } r && r.Path == path && r.Stamp == stamp) return r.Rules;
+        SortRules? rules;
+        try { rules = SortRules.Parse(File.ReadAllText(path)); }
+        catch { rules = null; }
+        _dpRulesRead = (path, stamp, rules);
+        return rules;
     }
 
     void FindDropPodProblems()
@@ -434,7 +449,23 @@ public sealed partial class MainForm
         DropPodEdit();
         (_dpActive[i], _dpActive[j]) = (_dpActive[j], _dpActive[i]);
         _dpDirty = true;
-        FillDropPodList();
+        // The two rows trade places where they are, so the list doesn't redraw from the top and holding Alt+Down
+        // walks a mod down smoothly. A filter can hide the neighbour; then the list is filled again.
+        var moved = _dpList.Items[key];
+        var other = _dpList.Items[_dpActive[i]];
+        if (moved == null || other == null || Math.Abs(moved.Index - other.Index) != 1) { FillDropPodList(); return; }
+        var to = other.Index;
+        _dpFilling = true;
+        _dpList.BeginUpdate();
+        try
+        {
+            _dpList.Items.Remove(moved);
+            _dpList.Items.Insert(to, moved);
+            moved.Selected = moved.Focused = true;
+            moved.EnsureVisible();
+        }
+        finally { _dpList.EndUpdate(); _dpFilling = false; }
+        NumberDropPodRows();
     }
 
     void ShowSortMenu()
@@ -495,12 +526,24 @@ public sealed partial class MainForm
         return true;
     }
 
-    void SaveDropPodToGame()
+    bool SaveDropPodToGame()
     {
-        if (!WriteActiveToGame(_dpActive, "Save to game")) return;
+        if (!WriteActiveToGame(_dpActive, "Save to game")) return false;
         _dpDirty = false;
         _ = ScanDropPodAsync();
         Say("Saved the mod list to the game.");
+        return true;
+    }
+
+    /// <summary>
+    /// When the mod list has unsaved changes: Yes saves them, No leaves them, Cancel stops. False means stop (Cancel,
+    /// or the save failed); <paramref name="question"/> is what to ask.
+    /// </summary>
+    bool OfferSaveDropPod(string question)
+    {
+        if (!_dpDirty || _dpScan == null) return true;
+        var answer = MessageBox.Show(this, question, Text, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+        return answer == DialogResult.No || answer == DialogResult.Yes && SaveDropPodToGame();
     }
 
     bool ConfirmDiscardDropPod() =>
@@ -885,8 +928,9 @@ public sealed partial class MainForm
     string? LaunchDropPod(bool checkSave = true)
     {
         if (_dpScan == null) return null;
-        if (_dpDirty && MessageBox.Show(this, "The mod list has changes that are not saved to the game, so the game won't use them. Start it anyway?", Text,
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return null;
+        // Yes saves and starts in one go; No starts with the list the game already has.
+        if (!OfferSaveDropPod("The mod list has changes that are not saved to the game. Save them before starting RimWorld?\n\n" +
+                "Yes saves and starts, No starts with the game's current list.")) return null;
         if (GameRunning() != null) { ShowDropPodGame("RimWorld is already running."); return null; }
         if (checkSave && !OfferSaveBackup()) return null;
         var psi = Launcher.StartInfo(_dpGame, _dpScan.Install, _dpInst, _dpInst?.LaunchArgs ?? _s.DropPodLaunchArgs);

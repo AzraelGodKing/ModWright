@@ -17,6 +17,20 @@ A polish pass on what is already there: smoother and quicker, with nothing new t
 - **Esc closes Find the broken mod** and puts your mod list back, like its button does.
 - **Fewer disk reads while drawing.** The Launch Pad's preview thumbnails no longer check the file every time a row is
   drawn.
+- **Closing Modwright no longer loses Drop Pod changes.** With a mod list that isn't saved to the game, closing asks
+  whether to save it first (or cancel), instead of dropping the changes without a word.
+- **Save and start in one click.** Play or Test with unsaved changes now offers to save them and start, start with the
+  game's current list, or cancel.
+- **Ctrl+S saves The Drop Pod's mod list to the game.**
+- **Ticking and moving mods in The Drop Pod is quicker.** The count of mods that aren't installed no longer looks
+  every mod up again for each active one, and your load-order rules file is read again only when it changes.
+- **Moving a mod up or down doesn't redraw the list.** The two rows swap where they are, so holding Alt+Down walks a
+  mod down smoothly.
+- **The Drop Pod list keeps its place.** Undo, sorting and reading the mods again no longer scroll back to the top.
+- **Tooltips stay long enough to read.** They used to vanish after 5 seconds; now they stay while the mouse rests.
+- **Esc in Options goes back** to The Launch Pad or The Drop Pod, wherever you came from.
+- **The keyboard shortcuts list (F1) is up to date.** It uses the tabs' current names and adds The Drop Pod's keys
+  (Alt+Up and Alt+Down, Ctrl+Z and Ctrl+Y, Ctrl+S) and Esc in Options.
 
 ## 1.10.0
 
