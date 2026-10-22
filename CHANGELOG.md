@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.11.0
+
+A polish pass on what is already there: smoother and quicker, with nothing new to learn.
+
+- **The Drop Pod's details panel no longer stutters.** Each mod's preview image is now read in the background and kept
+  at the size the panel shows, so moving through a long mod list stays smooth and Modwright no longer holds hundreds of
+  full-size pictures in memory. The Launch Pad's details panel works the same way.
+- **No flicker in the mod lists.** They are drawn off-screen first, so scrolling, resizing and picking rows look clean.
+- **Filter boxes keep up with your typing.** The list is filtered once you pause instead of on every key, which matters
+  with hundreds of RimWorld mods. Esc now clears The Drop Pod's filter too, and Enter filters at once.
+- **The details panel doesn't blink.** Moving between mods with the arrow keys no longer flashes the "nothing selected"
+  summary in between.
+- **Ctrl+F works in The Drop Pod**, going to its filter instead of jumping to The Launch Pad.
+- **Modwright opens on the side you used last** when you use both The Drop Pod and The Launch Pad.
+- **Esc closes Find the broken mod** and puts your mod list back, like its button does.
+- **Fewer disk reads while drawing.** The Launch Pad's preview thumbnails no longer check the file every time a row is
+  drawn.
+
 ## 1.10.0
 
 - **Three more themes: Triphlx, Tohma and Skywolf.** Options > Appearance > Theme now also offers Triphlx (true black

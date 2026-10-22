@@ -94,6 +94,8 @@ public sealed partial class MainForm : Form
     readonly ListView _list = new() { AccessibleName = "Mods" };
     readonly TextBox _filter = new() { Width = 150, PlaceholderText = "Filter mods  (Ctrl+F)", AccessibleName = "Filter mods" };
     readonly CheckBox _hideUpToDate = new() { AutoSize = true, Text = "&Hide up to date" };
+    /// <summary>Filters the list once typing pauses (see <see cref="Debouncer"/>).</summary>
+    Debouncer _filterPause = null!;
     readonly CheckBox _showDetails = new() { AutoSize = true, Text = "Show the selected mod's details beside the mod list" };
     readonly FlatProgressBar _modBar = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 6), AccessibleName = "Current mod progress" };
     readonly FlatProgressBar _overall = new() { Dock = DockStyle.Top, Margin = new Padding(0, 4, 0, 2), AccessibleName = "Overall progress" };
@@ -161,6 +163,8 @@ public sealed partial class MainForm : Form
     int _sortCol = -1;
     bool _sortDesc;
     readonly Dictionary<string, (DateTime Stamp, Image? Image)> _thumbs = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Thumbnails whose file was checked since the folder was last read, so painting a row doesn't ask the disk.</summary>
+    readonly HashSet<string> _thumbsChecked = new(StringComparer.OrdinalIgnoreCase);
     CancellationTokenSource? _cts;
     bool _busy, _populating;
     int _idx, _count;
@@ -197,6 +201,7 @@ public sealed partial class MainForm : Form
         RestoreWindow();
         Shown += async (_, _) =>
         {
+            if (!NoStartupPrompts && HasUploader && HasDropPod && _s.OpenOnDropPod) ShowPage(_dropPodPage); // back where it was left
             if (_dropPodPage.Visible) DropPodShown();
             if (!HasUploader) { } // the mods folder is read when the uploader is switched on
             else if (NoStartupPrompts) RefreshNow(); // --shot expects the list filled as soon as the window shows
@@ -368,8 +373,14 @@ public sealed partial class MainForm : Form
         };
         _autoUpdate.CheckedChanged += (_, _) => { if (!_populating) { _s.AutoUpdate = _autoUpdate.Checked; _s.Save(); } };
         _updateReady.LinkClicked += (_, _) => RestartToUpdate();
-        _filter.TextChanged += (_, _) => ApplyFilter();
-        _filter.KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape && _filter.Text.Length > 0) { _filter.Text = ""; e.SuppressKeyPress = true; } };
+        _filterPause = new Debouncer(120, ApplyFilter);
+        Disposed += (_, _) => _filterPause.Dispose();
+        _filter.TextChanged += (_, _) => { if (_filter.TextLength == 0) { _filterPause.Cancel(); ApplyFilter(); } else _filterPause.Poke(); }; // clearing shows everything at once
+        _filter.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape && _filter.Text.Length > 0) { _filter.Text = ""; e.SuppressKeyPress = true; }
+            else if (e.KeyCode == Keys.Enter) { _filterPause.Flush(); e.SuppressKeyPress = true; }
+        };
         _hideUpToDate.CheckedChanged += (_, _) => { if (_populating) return; _s.HideUpToDate = _hideUpToDate.Checked; _s.Save(); ApplyFilter(); };
     }
 
@@ -498,7 +509,7 @@ public sealed partial class MainForm : Form
         _list.MouseDoubleClick += OnListDoubleClick;
         _list.KeyDown += OnListKey;
         _list.ColumnClick += (_, e) => SortBy(e.Column);
-        _list.SelectedIndexChanged += (_, _) => { UpdateSelectionButtons(); UpdateDetail(); };
+        _list.SelectedIndexChanged += (_, _) => QueueDetail();
         _list.GotFocus += (_, _) => _list.Invalidate();
         _list.LostFocus += (_, _) => _list.Invalidate();
         _list.Resize += (_, _) => StretchLastColumn();
@@ -1328,6 +1339,9 @@ public sealed partial class MainForm : Form
         Say(Localizer.T(label));
     }
 
+    /// <summary>Which side was shown last (Options aside), kept for the next start in <see cref="AppSettings.OpenOnDropPod"/>.</summary>
+    bool _onDropPod;
+
     void ShowPage(Control page)
     {
         if (page == _uploadPage && !HasUploader || page == _dropPodPage && !HasDropPod) page = HomePage;
@@ -1341,6 +1355,7 @@ public sealed partial class MainForm : Form
         if (page != _optionsPage)
         {
             var dropPod = page == _dropPodPage;
+            _onDropPod = dropPod;
             _side.Text = Localizer.T(dropPod ? "THE DROP POD" : "THE LAUNCH PAD");
             Text = Localizer.T(dropPod ? "Modwright - The Drop Pod" : "Modwright - The Launch Pad");
         }
@@ -1471,6 +1486,8 @@ public sealed partial class MainForm : Form
                 BrowseRepo(); return true;
             case Keys.Control | Keys.N when !_busy && HasUploader:
                 _ = NewModAsync(); return true;
+            case Keys.Control | Keys.F when _dropPodPage.Visible:
+                _dpFilter.Focus(); _dpFilter.SelectAll(); return true;
             case Keys.Control | Keys.F when HasUploader:
                 ShowPage(_uploadPage); _filter.Focus(); _filter.SelectAll(); return true;
             case Keys.Control | Keys.Enter when _go.Enabled && HasUploader:
@@ -1497,7 +1514,7 @@ public sealed partial class MainForm : Form
                 ShowSection(NextSection(_section, (keyData & Keys.KeyCode) == Keys.PageUp));
                 _sections[_section].Tab.Focus();
                 return true;
-            case Keys.Escape when _busy && _cts != null && !_filter.Focused:
+            case Keys.Escape when _busy && _cts != null && !_filter.Focused && !_dpFilter.Focused:
                 Append("Stopping after the current step...", LogKind.Warn);
                 Say("Stopping the upload.");
                 Cancel(); return true;
@@ -1938,6 +1955,7 @@ public sealed partial class MainForm : Form
 
         _folderStamp = scan.Stamp;
         _repoIsGit = scan.IsGit;
+        _thumbsChecked.Clear(); // a changed preview image shows after a refresh
         _mods = scan.Mods;
         var uploaded = scan.Uploaded;
         var history = scan.History;
@@ -2198,6 +2216,7 @@ public sealed partial class MainForm : Form
         _s.WindowMaximized = WindowState == FormWindowState.Maximized;
         _s.ColumnWidths = _list.Columns.Cast<ColumnHeader>().Select(c => c.Width).ToArray();
         _s.ColumnLayout = ColumnLayoutKey;
+        if (HasUploader && HasDropPod) _s.OpenOnDropPod = _onDropPod;
         _s.Save();
     }
 
@@ -2479,11 +2498,16 @@ public sealed partial class MainForm : Form
         g.DrawRectangle(pen, r.X, r.Y, r.Width - 1, r.Height - 1);
     }
 
-    /// <summary>A small copy of the preview image, made once per file version and kept for the session.</summary>
+    /// <summary>
+    /// A small copy of the preview image, made once per file version and kept for the session. The file's date is
+    /// checked once per read of the folder, not on every repaint.
+    /// </summary>
     Image? Thumbnail(string path, int height, int maxWidth)
     {
+        if (_thumbsChecked.Contains(path) && _thumbs.TryGetValue(path, out var known) && (known.Image == null || known.Image.Height == height)) return known.Image;
         DateTime stamp;
         try { stamp = File.GetLastWriteTimeUtc(path); } catch { return null; }
+        _thumbsChecked.Add(path);
         if (_thumbs.TryGetValue(path, out var c) && c.Stamp == stamp && (c.Image == null || c.Image.Height == height)) return c.Image;
         Image? img = null;
         try
@@ -3111,7 +3135,25 @@ public sealed partial class MainForm : Form
     /// <summary>Ticked mods, including any the filter currently hides (the confirmation lists them all).</summary>
     IEnumerable<ModInfo> Selected() => _rows.Where(i => i.Checked).Select(i => (ModInfo)i.Tag!);
 
-    bool _goQueued;
+    bool _goQueued, _detailQueued;
+
+    /// <summary>
+    /// Updates the details panel once the selection settles: moving to another row first unselects the old one, and
+    /// drawing the panel for that moment in between made it blink through the "nothing selected" summary.
+    /// </summary>
+    void QueueDetail()
+    {
+        if (_detailQueued) return;
+        if (!IsHandleCreated) { UpdateSelectionButtons(); UpdateDetail(); return; }
+        _detailQueued = true;
+        BeginInvoke(() =>
+        {
+            _detailQueued = false;
+            if (IsDisposed) return;
+            UpdateSelectionButtons();
+            UpdateDetail();
+        });
+    }
 
     void QueueGoButton()
     {

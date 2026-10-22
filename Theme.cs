@@ -520,6 +520,7 @@ public static class Theme
                 lv.BackColor = p.Input; lv.ForeColor = p.Text;
                 lv.BorderStyle = BorderStyle.None;
                 lv.OwnerDraw = true;
+                SmoothPaint(lv);
                 lv.DrawColumnHeader -= DrawHeader; lv.DrawColumnHeader += DrawHeader;
                 lv.DrawItem -= DrawItemDefault; lv.DrawItem += DrawItemDefault;
                 lv.DrawSubItem -= DrawSubItemDefault; lv.DrawSubItem += DrawSubItemDefault;
@@ -555,6 +556,19 @@ public static class Theme
         }
 
         foreach (Control child in c.Controls) Apply(child, back, p);
+    }
+
+    static readonly System.Reflection.PropertyInfo? DoubleBufferedProp =
+        typeof(Control).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+    /// <summary>
+    /// Draws the control off-screen first, so scrolling, resizing and picking rows don't flicker (for a list this turns
+    /// on Windows' own double-buffered drawing). The property is protected, so it is set from outside this way.
+    /// </summary>
+    static void SmoothPaint(Control c)
+    {
+        try { DoubleBufferedProp?.SetValue(c, true); }
+        catch { /* cosmetic only */ }
     }
 
     /// <summary>Adds a paint step once, however often the theme is applied.</summary>
