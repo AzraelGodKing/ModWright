@@ -13,7 +13,7 @@ public sealed partial class MainForm
 {
     readonly IGameModule _dpGame = new RimWorldModule();
     readonly ListView _dpList = new() { View = View.Details, FullRowSelect = true, HideSelection = false, Dock = DockStyle.Fill, ShowItemToolTips = true, CheckBoxes = true, AccessibleName = "Installed mods; ticked mods are active, in load order" };
-    readonly TextBox _dpFilter = new() { Width = 150, PlaceholderText = "Filter mods", AccessibleName = "Filter installed mods" };
+    readonly TextBox _dpFilter = new() { Width = 150, PlaceholderText = "Filter mods  (Ctrl+F)", AccessibleName = "Filter installed mods" };
     readonly ComboBox _dpModlist = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220, AccessibleName = "Modlist" };
     readonly ComboBox _dpInstance = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220, AccessibleName = "Instance" };
     readonly Label _dpGameText = new() { AutoSize = true, UseMnemonic = false, Tag = "fill" };
@@ -79,7 +79,15 @@ public sealed partial class MainForm
 
         for (var i = 0; i < DropPodColumns.Length; i++)
             _dpList.Columns.Add(Localizer.T(DropPodColumns[i]), (int)(new[] { 240, 140, 200, 90, 110, 80, 80, 200 }[i] * Theme.TextScale));
-        _dpFilter.TextChanged += (_, _) => FillDropPodList();
+        // A RimWorld list can hold hundreds of mods, so it is rebuilt once typing pauses; clearing shows everything at once.
+        var filterPause = new Debouncer(150, FillDropPodList);
+        Disposed += (_, _) => filterPause.Dispose();
+        _dpFilter.TextChanged += (_, _) => { if (_dpFilter.TextLength == 0) { filterPause.Cancel(); FillDropPodList(); } else filterPause.Poke(); };
+        _dpFilter.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape && _dpFilter.TextLength > 0) { _dpFilter.Text = ""; e.SuppressKeyPress = true; }
+            else if (e.KeyCode == Keys.Enter) { filterPause.Flush(); e.SuppressKeyPress = true; }
+        };
         _dpList.ItemChecked += (_, e) => DropPodTicked(e.Item);
         _dpList.KeyDown += (_, e) =>
         {

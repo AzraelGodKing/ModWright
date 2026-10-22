@@ -16,12 +16,13 @@ public sealed class ModDetailsPanel : Panel
     readonly Label _needsHead = Heading("Needs"), _notesHead = Heading("Change note"), _descHead = Heading("Description");
     readonly Label _needs = Wrapping().Role(ThemeRole.Keep), _notes = Wrapping(), _desc = Wrapping().Role(ThemeRole.Muted);
     readonly List<(Button Button, Func<ModInfo, bool> Applies)> _buttons = new();
-    readonly Dictionary<string, (DateTime Stamp, Image? Image)> _images = new(StringComparer.OrdinalIgnoreCase);
+    readonly PreviewCache _images = new();
     ModInfo? _mod;
 
     public ModDetailsPanel()
     {
         AutoScroll = true;
+        DoubleBuffered = true;
         AccessibleName = "Mod details";
         _facts.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         _facts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -65,9 +66,7 @@ public sealed class ModDetailsPanel : Panel
         SuspendLayout();
         var other = !ReferenceEquals(_mod, m) && (_mod == null || _mod.Dir != m.Dir);
         _mod = m;
-        var img = m.PreviewPath.Length > 0 ? Load(m.PreviewPath) : null;
-        _preview.Image = img;
-        _preview.Visible = img != null;
+        ShowPreview(m.PreviewPath.Length > 0 ? m.PreviewPath : null);
         _name.Text = m.Name;
         _state.Text = stateLabel + (stateLine.Length > 0 ? " · " + stateLine : "");
         _state.ForeColor = Theme.Of(stateTone);
@@ -97,8 +96,7 @@ public sealed class ModDetailsPanel : Panel
     {
         SuspendLayout();
         _mod = null;
-        _preview.Image = null;
-        _preview.Visible = false;
+        ShowPreview(null);
         _name.Text = folderName.Length > 0 ? folderName : "Mods";
         _state.Text = summary;
         _state.ForeColor = Theme.Current.Muted;
@@ -149,32 +147,36 @@ public sealed class ModDetailsPanel : Panel
         }
     }
 
-    /// <summary>The preview image, read once per file version without keeping the file open (the mod's files stay editable).</summary>
-    Image? Load(string path)
+    string? _previewPath;
+
+    /// <summary>Shows the preview at once when it was read before; otherwise reads it in the background and shows it then.</summary>
+    void ShowPreview(string? path)
     {
-        DateTime stamp;
-        try { stamp = File.GetLastWriteTimeUtc(path); } catch { return null; }
-        if (_images.TryGetValue(path, out var c) && c.Stamp == stamp) return c.Image;
+        _previewPath = path;
         Image? img = null;
-        try
-        {
-            using var fs = File.OpenRead(path);
-            using var src = Image.FromStream(fs, false, false);
-            img = new Bitmap(src);
-        }
-        catch { /* not an image Windows can read: the panel goes without */ }
-        if (_images.TryGetValue(path, out var old) && !ReferenceEquals(old.Image, _preview.Image)) old.Image?.Dispose();
-        _images[path] = (stamp, img);
-        return img;
+        if (path != null && !_images.TryGet(path, out img)) _ = LoadPreviewAsync(path);
+        _preview.Image = img;
+        _preview.Visible = img != null;
+    }
+
+    async Task LoadPreviewAsync(string path)
+    {
+        var img = await _images.LoadAsync(path, () => _preview.Image);
+        if (IsDisposed || _previewPath != path) return; // another mod was picked meanwhile
+        SuspendLayout();
+        _preview.Image = img;
+        _preview.Visible = img != null;
+        ResumeLayout(true);
+        FitWidth();
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
+            _previewPath = null;
             _preview.Image = null;
-            foreach (var (_, image) in _images.Values) image?.Dispose();
-            _images.Clear();
+            _images.Dispose();
         }
         base.Dispose(disposing);
     }

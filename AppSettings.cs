@@ -131,6 +131,8 @@ public sealed class AppSettings
     public bool SortDescending { get; set; }
     /// <summary>The Options section that was open last.</summary>
     public int OptionsSection { get; set; }
+    /// <summary>With both sides shown: The Drop Pod (not The Launch Pad) was the side open last, so the window opens on it.</summary>
+    public bool OpenOnDropPod { get; set; }
     /// <summary>Named sets of mods (their paths in the repo) to tick in one click, per mods folder.</summary>
     public Dictionary<string, Dictionary<string, List<string>>> ModGroups { get; set; } = new();
     /// <summary>Push the tags "Tag each upload in git" makes to the remote straight away.</summary>

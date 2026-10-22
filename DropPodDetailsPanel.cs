@@ -16,13 +16,14 @@ public sealed class DropPodDetailsPanel : Panel
     readonly Label _note = new Label { AutoSize = true, UseMnemonic = false, Margin = new Padding(0, 0, 0, 6) }.Role(ThemeRole.Keep);
     readonly FlowLayoutPanel _actions = new() { AutoSize = true, WrapContents = true, Margin = new Padding(0, 2, 0, 6) };
     readonly Label _desc = new Label { AutoSize = true, UseMnemonic = false }.Role(ThemeRole.Muted);
-    readonly Dictionary<string, Image?> _images = new(StringComparer.OrdinalIgnoreCase);
+    readonly PreviewCache _images = new();
     readonly List<(Button Button, Func<ModManifest, bool> Applies)> _buttons = new();
     ModManifest? _mod;
 
     public DropPodDetailsPanel()
     {
         AutoScroll = true;
+        DoubleBuffered = true;
         AccessibleName = "Mod details";
         _body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         foreach (var c in new Control[] { _preview, _name, _facts, _note, _actions, _desc })
@@ -51,9 +52,7 @@ public sealed class DropPodDetailsPanel : Panel
     {
         SuspendLayout();
         _mod = m;
-        var img = m.PreviewPath != null ? Load(m.PreviewPath) : null;
-        _preview.Image = img;
-        _preview.Visible = img != null;
+        ShowPreview(m.PreviewPath);
         _name.Text = m.DisplayName;
         _facts.Text = string.Join("\n", facts);
         _note.Text = note ?? "";
@@ -72,8 +71,7 @@ public sealed class DropPodDetailsPanel : Panel
     {
         SuspendLayout();
         _mod = null;
-        _preview.Image = null;
-        _preview.Visible = false;
+        ShowPreview(null);
         _name.Text = title;
         _facts.Text = string.Join("\n", lines);
         _note.Visible = _actions.Visible = _desc.Visible = false;
@@ -81,21 +79,27 @@ public sealed class DropPodDetailsPanel : Panel
         ResumeLayout(true);
     }
 
-    Image? Load(string path)
+    string? _previewPath;
+
+    /// <summary>Shows the preview at once when it was read before; otherwise reads it in the background and shows it then.</summary>
+    void ShowPreview(string? path)
     {
-        if (_images.TryGetValue(path, out var hit)) return hit;
+        _previewPath = path;
         Image? img = null;
-        try
-        {
-            // Read into memory so the file isn't kept locked while the player edits or deletes the mod.
-            using var ms = new MemoryStream(File.ReadAllBytes(path));
-            using var tmp = Image.FromStream(ms);
-            img = new Bitmap(tmp);
-        }
-        catch { }
-        if (_images.Count > 200) { foreach (var i in _images.Values) i?.Dispose(); _images.Clear(); }
-        _images[path] = img;
-        return img;
+        if (path != null && !_images.TryGet(path, out img)) _ = LoadPreviewAsync(path);
+        _preview.Image = img;
+        _preview.Visible = img != null;
+    }
+
+    async Task LoadPreviewAsync(string path)
+    {
+        var img = await _images.LoadAsync(path, () => _preview.Image);
+        if (IsDisposed || _previewPath != path) return; // another mod was picked meanwhile
+        SuspendLayout();
+        _preview.Image = img;
+        _preview.Visible = img != null;
+        FitWidth();
+        ResumeLayout(true);
     }
 
     void FitWidth()
@@ -112,7 +116,12 @@ public sealed class DropPodDetailsPanel : Panel
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) foreach (var i in _images.Values) i?.Dispose();
+        if (disposing)
+        {
+            _previewPath = null;
+            _preview.Image = null;
+            _images.Dispose();
+        }
         base.Dispose(disposing);
     }
 }

@@ -31,6 +31,7 @@ public sealed class BisectForm : Form
         _start = start;
         _finish = finish;
         Text = "Find the broken mod";
+        CancelButton = _stop; // Esc puts the list back, like the button
         Font = Theme.BodyFont;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;

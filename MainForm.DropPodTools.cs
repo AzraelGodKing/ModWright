@@ -44,7 +44,7 @@ public sealed partial class MainForm
         _dpDetails.AddAction("Folder", "Open the mod's folder", _tip, m => OpenFolder(m.Folder));
         _dpDetails.AddAction("Why here?", "Why the mod sits where it does in the load order", _tip, _ => ExplainSelected(), m => _dpActive.Contains(_dpGame.ActiveKey(m.Key)));
         _dpDetails.AddAction("Note...", "Your own note and colour on this mod", _tip, _ => EditNote());
-        _dpList.SelectedIndexChanged += (_, _) => ShowDropPodDetails();
+        _dpList.SelectedIndexChanged += (_, _) => QueueDropPodDetails();
         _dpList.KeyDown += (_, e) =>
         {
             if (e.Control && e.KeyCode == Keys.Z) { DropPodUndo(redo: false); e.Handled = e.SuppressKeyPress = true; }
@@ -65,6 +65,21 @@ public sealed partial class MainForm
     }
 
     // ------------------------------------------------------------ details, notes and colours
+
+    bool _dpDetailsQueued;
+
+    /// <summary>Shows the details once the selection settles, so moving between rows doesn't blink through the summary.</summary>
+    void QueueDropPodDetails()
+    {
+        if (_dpDetailsQueued) return;
+        if (!IsHandleCreated) { ShowDropPodDetails(); return; }
+        _dpDetailsQueued = true;
+        BeginInvoke(() =>
+        {
+            _dpDetailsQueued = false;
+            if (!IsDisposed) ShowDropPodDetails();
+        });
+    }
 
     void ShowDropPodDetails()
     {
