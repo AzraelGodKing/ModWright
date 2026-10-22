@@ -787,6 +787,8 @@ public static class Theme
     /// <summary>Tooltips are drawn in the theme's colours.</summary>
     public static void Style(ToolTip tip)
     {
+        // Windows hides a tip after 5 seconds, too soon to read the longer ones; it now stays while the mouse rests.
+        tip.AutoPopDelay = 30000;
         tip.OwnerDraw = true;
         tip.Draw -= DrawTip;
         tip.Draw += DrawTip;

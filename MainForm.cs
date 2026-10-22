@@ -220,6 +220,9 @@ public sealed partial class MainForm : Form
         Activated += async (_, _) => await RefreshIfChangedAsync();
         FormClosing += (_, e) =>
         {
+            // Closing used to drop unsaved Drop Pod edits without a word.
+            if (e.CloseReason == CloseReason.UserClosing && !OfferSaveDropPod("The Drop Pod's mod list has changes that are not saved to the game. Save them before closing?"))
+            { e.Cancel = true; return; }
             if (!_busy) return;
             if (MessageBox.Show(this, "An upload is running. Stop it and close?", Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) { e.Cancel = true; return; }
             Cancel();
@@ -1490,6 +1493,8 @@ public sealed partial class MainForm : Form
                 _dpFilter.Focus(); _dpFilter.SelectAll(); return true;
             case Keys.Control | Keys.F when HasUploader:
                 ShowPage(_uploadPage); _filter.Focus(); _filter.SelectAll(); return true;
+            case Keys.Control | Keys.S when _dropPodPage.Visible && _dpSave.Enabled:
+                SaveDropPodToGame(); return true;
             case Keys.Control | Keys.Enter when _go.Enabled && HasUploader:
                 _go.PerformClick(); return true;
             case Keys.F1:
@@ -1518,8 +1523,19 @@ public sealed partial class MainForm : Form
                 Append("Stopping after the current step...", LogKind.Warn);
                 Say("Stopping the upload.");
                 Cancel(); return true;
+            case Keys.Escape when _optionsPage.Visible && !Focused<ComboBox>(c => c.DroppedDown):
+                ShowPage(_onDropPod ? _dropPodPage : _uploadPage); // back to the side Options was opened from
+                return true;
         }
         return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    /// <summary>Whether the focused control is a <typeparamref name="T"/> that <paramref name="test"/> holds for.</summary>
+    bool Focused<T>(Func<T, bool> test) where T : Control
+    {
+        Control? c = ActiveControl;
+        while (c is ContainerControl { ActiveControl: { } inner }) c = inner;
+        return c is T t && test(t);
     }
 
     /// <summary>Keyboard versions of the list's double-clicks: Enter edits the Workshop page, F2 changes the version.</summary>
