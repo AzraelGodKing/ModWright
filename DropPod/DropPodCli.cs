@@ -23,10 +23,11 @@ public sealed class DropPodCli
           SteamCmdHelper droppod play [<modlist>]            start the game (after switching to the modlist)
 
         Options:
-          --instance <name>      use an instance instead of the normal game
+          --game <name>          RimWorld or SunHaven (default: the game The Drop Pod shows)
+          --instance <name>      use an instance instead of the normal game (RimWorld)
           --json                 print JSON, for scripts
 
-        Exit codes: 0 done, 1 problems found or it failed, 2 bad arguments or RimWorld not found.
+        Exit codes: 0 done, 1 problems found or it failed, 2 bad arguments or the game not found.
         """;
 
     readonly IGameModule _game;
@@ -103,7 +104,7 @@ public sealed class DropPodCli
         if (command == "switch" && name == null) return Bad("switch needs a modlist name");
 
         var usual = _detect();
-        if (usual == null) { Say("Error: RimWorld was not found. Open The Drop Pod in the window and pick its folder."); return 2; }
+        if (usual == null) { Say($"Error: {_game.Name} was not found. Open The Drop Pod in the window and pick its folder."); return 2; }
         GameInstance? inst = null;
         if (instance != null && (inst = _instances.Get(_game.AppId, instance)) == null)
         {
@@ -116,11 +117,11 @@ public sealed class DropPodCli
         {
             var list = _lists.All(_game.AppId).FirstOrDefault(l => l.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             if (list == null) { Say($"Error: there is no modlist called {name}. See: SteamCmdHelper droppod lists"); return 2; }
-            if (_gameRunning()) { Say("Error: RimWorld is running, and it writes its own mod list when it closes. Close it first."); return 1; }
+            if (_gameRunning()) { Say($"Error: {_game.Name} is running; close it first."); return 1; }
             var scan = ModLibrary.Scan(_game, install);
             var (installed, missing) = list.Match(scan, _game);
             try { _game.WriteActiveMods(install, installed); }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Say("Error: could not write ModsConfig.xml: " + e.Message); return 1; }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Say("Error: could not write the active mods: " + e.Message); return 1; }
             try { new OrderHistory(OrderHistory.FolderFor(_historyRoot, _game.AppId, inst?.Name)).Record(installed, "Switched to " + list.Name + " (command line)"); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
             if (inst == null) { _settings.CurrentModlists[_game.AppId] = list.Name; _saveSettings(); }
@@ -131,10 +132,10 @@ public sealed class DropPodCli
 
         if (command == "play")
         {
-            if (_gameRunning()) { Say("Error: RimWorld is already running."); return 1; }
+            if (_gameRunning()) { Say($"Error: {_game.Name} is already running."); return 1; }
             var psi = Launcher.StartInfo(_game, install, inst, inst?.LaunchArgs ?? _settings.DropPodLaunchArgs);
-            if (psi == null) { Say("Error: RimWorld's program was not found in " + install.GameFolder + "."); return 1; }
-            Say(inst != null ? $"Starting RimWorld with the instance {inst.Name}." : "Starting RimWorld.");
+            if (psi == null) { Say($"Error: {_game.Name}'s program was not found in " + install.GameFolder + "."); return 1; }
+            Say(inst != null ? $"Starting {_game.Name} with the instance {inst.Name}." : $"Starting {_game.Name}.");
             return _start(psi, install, inst);
         }
 

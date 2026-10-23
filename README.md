@@ -562,7 +562,7 @@ your password), the next job that needs it says so and offers to log in again. A
 Tick **Allow creating new items**. They are created private, with the title, description and preview image
 from your layout. The new id is saved to the id file; commit it.
 
-## The Drop Pod (RimWorld players)
+## The Drop Pod (RimWorld and Sun Haven players)
 
 **Only want one side?** The first start asks whether you want the mod manager (The Drop Pod), the mod uploader (The
 Launch Pad), or both, and shows only what you pick. Change it any time under **Options > Appearance > Show**; nothing
@@ -624,6 +624,25 @@ list when it closes.
   window's **Report to the author** opens a ready bug report on the mod's GitHub issues or Workshop comments.
   Right-click Modwright on the taskbar to start RimWorld or an instance without opening the window.
 
+### Sun Haven in The Drop Pod
+
+Pick **Sun Haven** in the game list at the top of the tab (the choice is remembered). Sun Haven mods are BepInEx
+plugins, so The Drop Pod works the way r2modman lays them out:
+
+- **Mods** are the folders and loose DLLs in `BepInEx\plugins` (name and version from Thunderstore's `manifest.json`,
+  else from the plugin's own BepInPlugin attribute, read without running it). Untick a mod and **Save to game** moves it
+  to `BepInEx\plugins-disabled`; tick it again to move it back. BepInEx loads plugins in no order you set, so Sort,
+  Up, Down and dragging are off.
+- **Problems** lists the dependencies a manifest names that are missing or disabled. **Download missing** fetches them
+  from [Thunderstore](https://thunderstore.io/c/sun-haven/) (with whatever they need in turn) into
+  `BepInEx\plugins\Author-Name`; their config files go to `BepInEx\config` but never over yours.
+- **Check for updates** asks Thunderstore about every plugin that came from it and updates the ticked ones, zipping the
+  old copy into the mod-backups folder first.
+- Modlists, share codes, Compare with a friend's list, Find the broken mod, notes, history, **Play**, **Test** and
+  **Read the log** (BepInEx's `LogOutput.log`) all work as for RimWorld. Instances, saves, Insight and the Workshop and
+  texture tools are RimWorld-only and hidden. BepInEx itself is never installed or changed; if it is missing, the tab
+  says so.
+
 ### The Drop Pod on the command line
 
 ```
@@ -635,7 +654,8 @@ SteamCmdHelper droppod switch <modlist>       make a modlist the game's active m
 SteamCmdHelper droppod play [<modlist>]       start the game, after switching to the modlist
 ```
 
-Add `--instance <name>` to any of them to use an instance. A desktop shortcut to
+Add `--instance <name>` to any of them to use an instance, and `--game SunHaven` (or `--game RimWorld`) to pick the
+game when The Drop Pod is set to the other one. A desktop shortcut to
 `SteamCmdHelper.exe droppod play "Heavy run" --instance Medieval` starts that setup in one click.
 
 ### For mod authors: RimWorld tools in The Launch Pad
@@ -807,6 +827,8 @@ or the person installing or operating it. What it does connect to, and why:
   an upload it posts the mod's name, Workshop link and change note there.
 - **Thunderstore** ([privacy policy](https://thunderstore.io/privacy-policy/)): only when you publish to it; it receives
   the mod's package and your team's token, and the app reads the package's public page to see which version is there.
+  For Sun Haven in The Drop Pod, **Download missing** and **Check for updates** read the public package details of the
+  plugins involved and download the packages you get or update. Nothing about you is sent.
 
 ## Accessibility
 
