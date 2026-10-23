@@ -1,4 +1,7 @@
+using System.Diagnostics;
 using FlaUI.Core;
+using FlaUI.Core.Input;
+using FlaUI.Core.WindowsAPI;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Conditions;
 using FlaUI.Core.Definitions;
@@ -42,7 +45,14 @@ public sealed class DropPodClickTests
         Run(setup, (window, cf) =>
         {
             var game = WaitFor(() => window.FindFirstDescendant(cf.ByName("Game").And(cf.ByControlType(ControlType.ComboBox)))?.AsComboBox(), "the game picker");
-            game.Select("Sun Haven");
+            try { game.Select("Sun Haven"); }
+            catch (Exception e)
+            {
+                // The drop-down's items aren't always reachable through UI Automation; the keyboard always works.
+                _out.WriteLine("Select failed, using the keyboard: " + e.Message);
+                game.Focus();
+                Keyboard.Press(VirtualKeyShort.DOWN);
+            }
             var mods = WaitFor(() => window.FindFirstDescendant(cf.ByName("Installed mods; ticked mods are active, in load order")), "the mod list");
             WaitUntil(() => mods.FindAllChildren(cf.ByControlType(ControlType.ListItem)).Select(i => i.Name).Contains("Farming"), "the Farming plugin listed");
             var problems = WaitFor(() => window.FindFirstDescendant(cf.ByName("Problems with the active mods")), "the problems list");
@@ -56,7 +66,11 @@ public sealed class DropPodClickTests
 
     void Run(FakeSetup setup, Action<Window, ConditionFactory> test)
     {
-        using var app = Application.Launch(new System.Diagnostics.ProcessStartInfo(setup.Exe) { WorkingDirectory = setup.App });
+        // Our own Process, so the app is always ended here: a copy left running would make the next test's start hand
+        // over to it (the app allows one copy at a time) and exit.
+        using var process = Process.Start(new ProcessStartInfo(setup.Exe) { WorkingDirectory = setup.App, UseShellExecute = false })
+            ?? throw new InvalidOperationException("The app did not start.");
+        var app = Application.Attach(process);
         using var automation = new UIA3Automation();
         try
         {
@@ -64,16 +78,16 @@ public sealed class DropPodClickTests
             _out.WriteLine("Window: " + window.Title);
             test(window, automation.ConditionFactory);
         }
-        catch
+        catch (Exception e)
         {
-            try { _out.WriteLine(Dump(app.GetMainWindow(automation, TimeSpan.FromSeconds(2)))); } catch { }
+            _out.WriteLine("Failed: " + e);
+            try { _out.WriteLine(process.HasExited ? $"The app had exited (code {process.ExitCode})." : Dump(app.GetMainWindow(automation, TimeSpan.FromSeconds(2)))); } catch { }
             throw;
         }
         finally
         {
-            try { app.Close(); app.WaitWhileMainHandleIsMissing(TimeSpan.FromSeconds(1)); } catch { }
-            if (!app.HasExited) { try { app.Kill(); } catch { } }
-            Thread.Sleep(500);
+            try { if (!process.HasExited) { process.CloseMainWindow(); process.WaitForExit(5000); } } catch { }
+            try { if (!process.HasExited) { process.Kill(entireProcessTree: true); process.WaitForExit(5000); } } catch { }
         }
     }
 
