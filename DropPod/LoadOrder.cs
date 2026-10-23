@@ -225,3 +225,24 @@ public static class LoadOrder
         return comp;
     }
 }
+
+/// <summary>Moving mods within the active list by hand (drag and drop in the Drop Pod).</summary>
+public static class LoadOrderEdit
+{
+    /// <summary>
+    /// The active list with <paramref name="moving"/> (in their current order, active or not) placed just before
+    /// <paramref name="target"/>, or just after it with <paramref name="after"/>. A target that isn't active, or none,
+    /// puts them at the end. Dropping a group onto one of its own members leaves the list as it was.
+    /// </summary>
+    public static List<string> Move(IReadOnlyList<string> active, IReadOnlyList<string> moving, string? target, bool after)
+    {
+        var set = moving.ToHashSet(StringComparer.Ordinal);
+        if (target != null && set.Contains(target)) return active.ToList();
+        var ordered = active.Where(set.Contains).Concat(moving.Where(m => !active.Contains(m))).Distinct().ToList();
+        var rest = active.Where(k => !set.Contains(k)).ToList();
+        var at = target == null ? -1 : rest.IndexOf(target);
+        var index = at < 0 ? rest.Count : after ? at + 1 : at;
+        rest.InsertRange(index, ordered);
+        return rest;
+    }
+}

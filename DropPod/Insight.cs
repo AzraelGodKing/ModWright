@@ -10,6 +10,10 @@ public enum InsightKind
     LoadWeight,
     /// <summary>A note from the player's rules file.</summary>
     RulesNote,
+    /// <summary>Two mods change the same game data (defs or XML patches); the one loaded later wins.</summary>
+    XmlClash,
+    /// <summary>XML patches that find nothing, or XML files that can't be read: the game logs red errors for them.</summary>
+    XmlError,
 }
 
 /// <param name="Mods">The mods involved (keys).</param>
@@ -123,6 +127,52 @@ public static class Insight
             .Where(x => !string.IsNullOrWhiteSpace(x.Note))
             .Select(x => new InsightItem(InsightKind.RulesNote, ProblemLevel.Info, new[] { x.k }, $"{name(x.k)}: {x.Note!.Trim()}"))
             .ToList();
+
+    /// <summary>
+    /// The XML simulation's findings as hints: defs one mod replaces of another's, patches that undo another mod's
+    /// patch, patches that find nothing and unreadable files. Overrides of the game's own defs are only listed when a
+    /// mod replaces many of them, since replacing a few is a normal way to change the game.
+    /// </summary>
+    public static List<InsightItem> Xml(IEnumerable<RimWorld.XmlFinding> findings, Func<string, string> name, IReadOnlyCollection<string> official)
+    {
+        var list = new List<InsightItem>();
+        foreach (var f in findings)
+        {
+            var targets = Sample(f.Targets);
+            var n = f.Targets.Count;
+            switch (f.Kind)
+            {
+                case RimWorld.XmlFindingKind.DefOverride when official.Contains(f.Mods[0]):
+                    if (n >= 20)
+                        list.Add(new InsightItem(InsightKind.XmlClash, ProblemLevel.Info, new[] { f.Mods[1] },
+                            $"{name(f.Mods[1])} replaces {n} of {name(f.Mods[0])}'s defs outright ({targets}), so other mods' changes to those may not stick."));
+                    break;
+                case RimWorld.XmlFindingKind.DefOverride:
+                    list.Add(new InsightItem(InsightKind.XmlClash, ProblemLevel.Warning, f.Mods,
+                        $"{name(f.Mods[1])} replaces {n} def{(n == 1 ? "" : "s")} {name(f.Mods[0])} also defines ({targets}). {name(f.Mods[1])} loads later, so {name(f.Mods[0])}'s version{(n == 1 ? " is" : "s are")} ignored."));
+                    break;
+                case RimWorld.XmlFindingKind.PatchOverwrite:
+                    list.Add(new InsightItem(InsightKind.XmlClash, ProblemLevel.Warning, f.Mods,
+                        $"{name(f.Mods[1])} {f.Detail} what {name(f.Mods[0])} changed in {n} place{(n == 1 ? "" : "s")} ({targets}). {name(f.Mods[1])} loads later, so its change wins."));
+                    break;
+                case RimWorld.XmlFindingKind.PatchFails:
+                    list.Add(new InsightItem(InsightKind.XmlError, ProblemLevel.Warning, f.Mods,
+                        $"{name(f.Mods[0])} has {n} patch{(n == 1 ? "" : "es")} in {f.Detail} that find{(n == 1 ? "s" : "")} nothing to change, so the game logs a red error: {targets}. Often it's meant for a mod or version you don't have."));
+                    break;
+                case RimWorld.XmlFindingKind.BrokenFile:
+                    list.Add(new InsightItem(InsightKind.XmlError, ProblemLevel.Warning, f.Mods,
+                        $"{name(f.Mods[0])}: {f.Targets[0]} is not valid XML ({f.Detail}), so the game skips it with an error."));
+                    break;
+                case RimWorld.XmlFindingKind.CustomPatches when !official.Contains(f.Mods[0]):
+                    list.Add(new InsightItem(InsightKind.XmlClash, ProblemLevel.Info, f.Mods,
+                        $"{name(f.Mods[0])} uses patch operations from a mod's own code ({targets}); those can't be checked here."));
+                    break;
+            }
+        }
+        return list;
+    }
+
+    static string Sample(IReadOnlyList<string> items) => string.Join("; ", items.Take(3)) + (items.Count > 3 ? $"; and {items.Count - 3} more" : "");
 
     /// <summary>"Pawn.Tick" from "Verse.Pawn.Tick".</summary>
     static string Short(string target)

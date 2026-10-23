@@ -239,6 +239,7 @@ public sealed partial class MainForm
         menu.Items.Add("Load order history...", null, (_, _) => ShowDropPodHistory()).Enabled = scanned;
         menu.Items.Add("Load times...", null, (_, _) => ShowLoadTimes());
         menu.Items.Add("Clean up unused mods and settings...", null, async (_, _) => await ShowCleanupAsync()).Enabled = scanned && !_dpBusy;
+        menu.Items.Add("Turn downloaded copies into subscriptions...", null, async (_, _) => await ConvertDownloadedCopiesAsync()).Enabled = scanned && !_dpBusy;
         menu.Items.Add(new ToolStripSeparator());
         var backups = new ToolStripMenuItem("Back up the newest save before a risky start") { Checked = _s.DropPodSaveBackups, CheckOnClick = true };
         backups.CheckedChanged += (_, _) => { _s.DropPodSaveBackups = backups.Checked; _s.Save(); };
@@ -447,6 +448,55 @@ public sealed partial class MainForm
         _dpDirty = false;
         await ScanDropPodAsync();
         ShowDropPodGame($"Moved {recycled} to the Recycle Bin." + (notes.Count > 0 ? " " + string.Join(" ", notes) : ""));
+    }
+
+    /// <summary>
+    /// Tools > Turn downloaded copies into subscriptions: Workshop mods SteamCMD put in the Mods folder are subscribed
+    /// through Steam, and each copy goes to the Recycle Bin once Steam has its own. The mod list doesn't change, since
+    /// both copies have the same id.
+    /// </summary>
+    async Task ConvertDownloadedCopiesAsync()
+    {
+        if (_dpScan is not { } scan) return;
+        var copies = Subscriptions.DownloadedCopies(scan);
+        if (copies.Count == 0) { ShowDropPodGame("No Mods folder copies of Workshop mods to hand to Steam: every Workshop mod here is already subscribed."); return; }
+        if (!SteamRestart.ReadState().Running) { ShowDropPodGame("Start Steam and sign in with the account that owns RimWorld first; subscribing goes through the Steam client."); return; }
+        if (GameRunning() != null) { ShowDropPodGame("Close RimWorld first; its mods can't be moved while it runs."); return; }
+        if (MessageBox.Show(this,
+                $"{copies.Count} mod{(copies.Count == 1 ? "" : "s")} in the Mods folder came from the Workshop and won't update by themselves:\n\n{string.Join("\n", copies.Take(12).Select(c => c.DisplayName))}{(copies.Count > 12 ? "\n..." : "")}\n\n" +
+                "Subscribe to them through Steam, and move each Mods folder copy to the Recycle Bin once Steam has downloaded it? Your mod list stays the same.",
+                Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        if (!OfferSaveDropPod("The mod list has changes that are not saved to the game. Save them first?\n\nYes saves, No keeps them unsaved.")) return;
+        var keep = _dpActive.ToList();
+        _dpBusy = true;
+        UpdateDropPodButtons();
+        ShowDropPodGame($"Subscribing to {copies.Count} Workshop mod{(copies.Count == 1 ? "" : "s")} through the Steam client and waiting for the downloads...");
+        ExtrasResult r;
+        try
+        {
+            r = await WorkshopExtras.ApplyOnSteamAsync(new ExtrasRequest
+            {
+                AppId = _dpGame.AppId, Subscribe = copies.Select(c => c.WorkshopId!).Distinct().ToArray(), WaitSeconds = Subscriptions.WaitSeconds(copies.Count),
+            }, CancellationToken.None);
+        }
+        finally { _dpBusy = false; }
+        if (!r.Ok) { ShowDropPodGame("Subscribing: " + r.Error); return; }
+        var notes = new List<string>();
+        var moved = 0;
+        foreach (var c in Subscriptions.Replaced(copies, r.Installed))
+        {
+            try
+            {
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(c.Folder, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                moved++;
+            }
+            catch (Exception e) { notes.Add($"{c.FolderName}: {e.Message}"); }
+        }
+        await RescanWithActive(() => keep);
+        var waiting = r.Subscribed.Count - r.Installed.Count;
+        ShowDropPodGame($"Subscribed to {r.Subscribed.Count} and moved {moved} Mods folder cop{(moved == 1 ? "y" : "ies")} to the Recycle Bin." +
+                        (waiting > 0 ? $" Steam is still downloading {waiting}; their Mods folder copies stay until you run this again." : "") +
+                        (notes.Count > 0 ? " " + string.Join(" ", notes) : ""));
     }
 
     // ------------------------------------------------------------ mod settings with modlists
