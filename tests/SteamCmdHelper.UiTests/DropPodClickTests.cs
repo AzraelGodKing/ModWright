@@ -68,8 +68,11 @@ public sealed class DropPodClickTests
     {
         // Our own Process, so the app is always ended here: a copy left running would make the next test's start hand
         // over to it (the app allows one copy at a time) and exit.
+        EndTestCopies();
         using var process = Process.Start(new ProcessStartInfo(setup.Exe) { WorkingDirectory = setup.App, UseShellExecute = false })
             ?? throw new InvalidOperationException("The app did not start.");
+        try { process.WaitForInputIdle(15000); } catch (InvalidOperationException) { } // already gone; said below
+        if (process.HasExited) throw new InvalidOperationException($"The app exited at once (code {process.ExitCode}); another copy may still be running.");
         var app = Application.Attach(process);
         using var automation = new UIA3Automation();
         try
@@ -88,7 +91,25 @@ public sealed class DropPodClickTests
         {
             try { if (!process.HasExited) { process.CloseMainWindow(); process.WaitForExit(5000); } } catch { }
             try { if (!process.HasExited) { process.Kill(entireProcessTree: true); process.WaitForExit(5000); } } catch { }
+            EndTestCopies();
         }
+    }
+
+    /// <summary>Ends any copy of the app started from a test folder (one left behind would take over the next start).</summary>
+    static void EndTestCopies()
+    {
+        var prefix = Path.Combine(Path.GetTempPath(), FakeSetup.FolderPrefix);
+        foreach (var p in Process.GetProcessesByName("SteamCmdHelper"))
+            using (p)
+            {
+                try
+                {
+                    if (p.MainModule?.FileName is not { } file || !file.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                    p.Kill(entireProcessTree: true);
+                    p.WaitForExit(5000);
+                }
+                catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { }
+            }
     }
 
     static void Click(Window window, ConditionFactory cf, string name)

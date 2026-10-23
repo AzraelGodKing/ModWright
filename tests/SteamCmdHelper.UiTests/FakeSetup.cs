@@ -8,7 +8,8 @@ namespace SteamCmdHelper.UiTests;
 /// </summary>
 public sealed class FakeSetup : IDisposable
 {
-    public string Root { get; } = Path.Combine(Path.GetTempPath(), "modwright-ui-" + Guid.NewGuid().ToString("N")[..8]);
+    public const string FolderPrefix = "modwright-ui-";
+    public string Root { get; } = Path.Combine(Path.GetTempPath(), FolderPrefix + Guid.NewGuid().ToString("N")[..8]);
     public string App => Path.Combine(Root, "app");
     public string Exe => Path.Combine(App, "SteamCmdHelper.exe");
     public string RimWorld => Path.Combine(Root, "RimWorld");
