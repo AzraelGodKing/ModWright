@@ -741,6 +741,7 @@ public sealed class Publisher
             ZipFile.ExtractToDirectory(zip, stageRoot, true);
             File.Delete(zip);
             if (!Directory.Exists(stage)) throw new InvalidOperationException("git archive produced nothing for " + m.Folder + ". Commit the mod first.");
+            Prune(stage, _cfg.LeaveOut ?? Array.Empty<string>());
         }
         else
         {
@@ -766,8 +767,20 @@ public sealed class Publisher
         }
     }
 
-    /// <summary>The layout's Exclude list plus the gallery folder.</summary>
-    string[] PackageExclude => (_cfg.Exclude ?? Array.Empty<string>()).Concat((_cfg.GalleryFolder ?? "").Trim() is { Length: > 0 } g ? new[] { g } : Array.Empty<string>()).ToArray();
+    /// <summary>The layout's Exclude list, the mods folder's LeaveOut list and the gallery folder.</summary>
+    string[] PackageExclude => (_cfg.Exclude ?? Array.Empty<string>()).Concat(_cfg.LeaveOut ?? Array.Empty<string>())
+        .Concat((_cfg.GalleryFolder ?? "").Trim() is { Length: > 0 } g ? new[] { g } : Array.Empty<string>()).ToArray();
+
+    /// <summary>Removes files and folders matching <paramref name="patterns"/> from a staged package (git packaging has no Exclude of its own).</summary>
+    public static void Prune(string stage, IReadOnlyCollection<string> patterns)
+    {
+        if (patterns.Count == 0 || !Directory.Exists(stage)) return;
+        foreach (var d in Directory.GetDirectories(stage))
+            if (PackageCheck.Excluded(Path.GetFileName(d), patterns)) Directory.Delete(d, true);
+            else Prune(d, patterns);
+        foreach (var f in Directory.GetFiles(stage))
+            if (PackageCheck.Excluded(Path.GetFileName(f), patterns)) File.Delete(f);
+    }
 
     static void CopyDir(string src, string dst, string[] exclude)
     {

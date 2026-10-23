@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using SteamCmdHelper.DropPod;
+using SteamCmdHelper.DropPod.SunHaven;
 
 namespace SteamCmdHelper;
 
@@ -233,17 +234,26 @@ public sealed partial class MainForm
         var menu = new ContextMenuStrip();
         var scanned = _dpScan != null;
         menu.Items.Add("Find the broken mod for me...", null, (_, _) => StartBisect()).Enabled = scanned && !_dpBusy && _dpBisect == null;
-        menu.Items.Add("Load a Steam collection as a modlist...", null, async (_, _) => await LoadCollectionAsync()).Enabled = scanned && !_dpBusy;
+        if (DpRimWorld) menu.Items.Add("Load a Steam collection as a modlist...", null, async (_, _) => await LoadCollectionAsync()).Enabled = scanned && !_dpBusy;
         menu.Items.Add("Compare with a friend's list...", null, (_, _) => CompareWithFriend()).Enabled = scanned;
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Load order history...", null, (_, _) => ShowDropPodHistory()).Enabled = scanned;
-        menu.Items.Add("Load times...", null, (_, _) => ShowLoadTimes());
-        menu.Items.Add("Clean up unused mods and settings...", null, async (_, _) => await ShowCleanupAsync()).Enabled = scanned && !_dpBusy;
+        if (DpRimWorld)
+        {
+            menu.Items.Add("Load times...", null, (_, _) => ShowLoadTimes());
+            menu.Items.Add("Clean up unused mods and settings...", null, async (_, _) => await ShowCleanupAsync()).Enabled = scanned && !_dpBusy;
+            menu.Items.Add("Turn downloaded copies into subscriptions...", null, async (_, _) => await ConvertDownloadedCopiesAsync()).Enabled = scanned && !_dpBusy;
+            menu.Items.Add("Optimize textures...", null, async (_, _) => await OptimizeTexturesAsync()).Enabled = scanned && !_dpBusy;
+        }
+        else menu.Items.Add("Open the BepInEx folder", null, (_, _) => { if (_dpScan != null) OpenFolder(SunHavenModule.BepInExFolder(_dpScan.Install)); }).Enabled = scanned;
         menu.Items.Add(new ToolStripSeparator());
-        var backups = new ToolStripMenuItem("Back up the newest save before a risky start") { Checked = _s.DropPodSaveBackups, CheckOnClick = true };
-        backups.CheckedChanged += (_, _) => { _s.DropPodSaveBackups = backups.Checked; _s.Save(); };
-        menu.Items.Add(backups);
-        menu.Items.Add("Open the save backups", null, (_, _) => OpenFolder(SaveBackupFolder));
+        if (DpRimWorld)
+        {
+            var backups = new ToolStripMenuItem("Back up the newest save before a risky start") { Checked = _s.DropPodSaveBackups, CheckOnClick = true };
+            backups.CheckedChanged += (_, _) => { _s.DropPodSaveBackups = backups.Checked; _s.Save(); };
+            menu.Items.Add(backups);
+            menu.Items.Add("Open the save backups", null, (_, _) => OpenFolder(SaveBackupFolder));
+        }
         Theme.StyleMenu(menu);
         menu.Show(_dpTools, new Point(0, _dpTools.Height));
     }
@@ -449,6 +459,139 @@ public sealed partial class MainForm
         ShowDropPodGame($"Moved {recycled} to the Recycle Bin." + (notes.Count > 0 ? " " + string.Join(" ", notes) : ""));
     }
 
+    /// <summary>
+    /// Tools > Turn downloaded copies into subscriptions: Workshop mods SteamCMD put in the Mods folder are subscribed
+    /// through Steam, and each copy goes to the Recycle Bin once Steam has its own. The mod list doesn't change, since
+    /// both copies have the same id.
+    /// </summary>
+    async Task ConvertDownloadedCopiesAsync()
+    {
+        if (_dpScan is not { } scan) return;
+        var copies = Subscriptions.DownloadedCopies(scan);
+        if (copies.Count == 0) { ShowDropPodGame("No Mods folder copies of Workshop mods to hand to Steam: every Workshop mod here is already subscribed."); return; }
+        if (!SteamRestart.ReadState().Running) { ShowDropPodGame("Start Steam and sign in with the account that owns RimWorld first; subscribing goes through the Steam client."); return; }
+        if (GameRunning() != null) { ShowDropPodGame("Close RimWorld first; its mods can't be moved while it runs."); return; }
+        if (MessageBox.Show(this,
+                $"{copies.Count} mod{(copies.Count == 1 ? "" : "s")} in the Mods folder came from the Workshop and won't update by themselves:\n\n{string.Join("\n", copies.Take(12).Select(c => c.DisplayName))}{(copies.Count > 12 ? "\n..." : "")}\n\n" +
+                "Subscribe to them through Steam, and move each Mods folder copy to the Recycle Bin once Steam has downloaded it? Your mod list stays the same.",
+                Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        if (!OfferSaveDropPod("The mod list has changes that are not saved to the game. Save them first?\n\nYes saves, No keeps them unsaved.")) return;
+        var keep = _dpActive.ToList();
+        _dpBusy = true;
+        UpdateDropPodButtons();
+        ShowDropPodGame($"Subscribing to {copies.Count} Workshop mod{(copies.Count == 1 ? "" : "s")} through the Steam client and waiting for the downloads...");
+        ExtrasResult r;
+        try
+        {
+            r = await WorkshopExtras.ApplyOnSteamAsync(new ExtrasRequest
+            {
+                AppId = _dpGame.AppId, Subscribe = copies.Select(c => c.WorkshopId!).Distinct().ToArray(), WaitSeconds = Subscriptions.WaitSeconds(copies.Count),
+            }, CancellationToken.None);
+        }
+        finally { _dpBusy = false; }
+        if (!r.Ok) { ShowDropPodGame("Subscribing: " + r.Error); return; }
+        var notes = new List<string>();
+        var moved = 0;
+        foreach (var c in Subscriptions.Replaced(copies, r.Installed))
+        {
+            try
+            {
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(c.Folder, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                moved++;
+            }
+            catch (Exception e) { notes.Add($"{c.FolderName}: {e.Message}"); }
+        }
+        await RescanWithActive(() => keep);
+        var waiting = r.Subscribed.Count - r.Installed.Count;
+        ShowDropPodGame($"Subscribed to {r.Subscribed.Count} and moved {moved} Mods folder cop{(moved == 1 ? "y" : "ies")} to the Recycle Bin." +
+                        (waiting > 0 ? $" Steam is still downloading {waiting}; their Mods folder copies stay until you run this again." : "") +
+                        (notes.Count > 0 ? " " + string.Join(" ", notes) : ""));
+    }
+
+    TextureOptimizer Textures => new(Path.Combine(AppSettings.Folder, "droppod", "textures"));
+
+    /// <summary>
+    /// Tools > Optimize textures: the active mods with PNG textures, biggest first; the ticked ones get a DDS beside
+    /// each PNG, which RimWorld loads instead (faster, far less video memory). Mods done before can be undone here.
+    /// </summary>
+    async Task OptimizeTexturesAsync()
+    {
+        if (_dpScan is not { } scan) return;
+        var byId = scan.ById();
+        var active = _dpActive.Where(byId.ContainsKey).Select(k => byId[k]).ToList();
+        var tex = Textures;
+        ShowDropPodGame("Looking for PNG textures in the active mods...");
+        var (todo, done) = await Task.Run(() => (tex.Candidates(active), active.Where(m => tex.Made(m).Count > 0).ToList()));
+        ShowDropPodGame(null);
+        var version = scan.Install.Version is { } v ? GameVersion.Short(v) : "";
+        using var w = new ListWindow("Optimize textures",
+            "RimWorld 1.5 and later load a DDS texture instead of the PNG of the same name: it loads faster and takes far less video memory, " +
+            "which matters most with big texture mods. Tick the mods to convert; each PNG gets a DDS beside it and the PNGs are not changed. " +
+            "Textures whose sides aren't multiples of 4 stay PNG. Mods already done are listed at the end; tick them and press Undo to remove the DDS files again." +
+            (version.Length > 0 && Version.TryParse(version, out var gv) && gv < new Version(1, 5) ? $" Your RimWorld is {version}, which doesn't read DDS files; this only helps from 1.5 on." : ""),
+            new[] { ("Mod", 300), ("PNG files", 90), ("Size", 100), ("", 140) }, checkBoxes: true);
+        foreach (var (m, files, bytes) in todo) w.AddRow(m, Tone.Normal, m.DisplayName, files.ToString("N0"), Hangar.Size(bytes), "to convert");
+        foreach (var m in done.Where(d => todo.All(t => t.Mod != d))) w.AddRow(new UndoTextures(m), Tone.Muted, m.DisplayName, tex.Made(m).Count.ToString("N0"), "", "already converted");
+        if (todo.Count + done.Count == 0) w.Intro = "None of the active mods has PNG textures left to convert.";
+        string action = "";
+        w.AddButton("&Convert the ticked ones", () => { action = "convert"; w.Close(); }, needsRow: true, primary: true);
+        w.AddButton("&Undo the ticked ones", () => { action = "undo"; w.Close(); }, needsRow: true);
+        w.AddClose();
+        w.ShowDialog(this);
+        var picked = w.Ticked;
+        if (action.Length == 0 || picked.Count == 0) return;
+        if (GameRunning() != null) { ShowDropPodGame("Close RimWorld first; it holds its textures open while it runs."); return; }
+        if (action == "undo")
+        {
+            var mods = picked.Select(p => p is UndoTextures u ? u.Mod : (ModManifest)p).ToList();
+            var removed = await Task.Run(() => mods.Sum(tex.Undo));
+            ShowDropPodGame($"Removed {removed:N0} DDS file{(removed == 1 ? "" : "s")} Modwright had made; those mods use their PNGs again.");
+            return;
+        }
+        _dpBusy = true;
+        UpdateDropPodButtons();
+        var results = new List<(ModManifest Mod, TextureResult R)>();
+        try
+        {
+            foreach (var m in picked.OfType<ModManifest>())
+            {
+                var name = m.DisplayName;
+                var r = await Task.Run(() => tex.Optimize(m, DecodePng, CancellationToken.None, (i, n) =>
+                {
+                    if (i % 25 != 0) return;
+                    try { BeginInvoke(() => ShowDropPodGame($"Converting {name}'s textures: {i:N0} of {n:N0}...")); } catch (InvalidOperationException) { }
+                }));
+                results.Add((m, r));
+            }
+        }
+        finally { _dpBusy = false; UpdateDropPodButtons(); }
+        var converted = results.Sum(x => x.R.Converted);
+        var skipped = results.Sum(x => x.R.Skipped);
+        var errors = results.SelectMany(x => x.R.Errors.Select(e => $"{x.Mod.DisplayName}: {e}")).ToList();
+        ShowDropPodGame($"Converted {converted:N0} texture{(converted == 1 ? "" : "s")} in {results.Count} mod{(results.Count == 1 ? "" : "s")} " +
+                        $"({Hangar.Size(results.Sum(x => x.R.PngBytes))} of PNG, {Hangar.Size(results.Sum(x => x.R.DdsBytes))} of DDS; the graphics card now holds the compressed DDS instead of the unpacked PNG)." +
+                        (skipped > 0 ? $" {skipped:N0} stay PNG (sides not multiples of 4)." : "") +
+                        (errors.Count > 0 ? $" {errors.Count} couldn't be read: {string.Join("; ", errors.Take(3))}" : ""));
+    }
+
+    sealed record UndoTextures(ModManifest Mod);
+
+    /// <summary>A PNG as RGBA pixels, top row first.</summary>
+    static (byte[] Rgba, int Width, int Height) DecodePng(string path)
+    {
+        using var bmp = new Bitmap(path);
+        var (w, h) = (bmp.Width, bmp.Height);
+        var data = bmp.LockBits(new Rectangle(0, 0, w, h), System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        try
+        {
+            var px = new byte[w * h * 4];
+            for (var y = 0; y < h; y++) System.Runtime.InteropServices.Marshal.Copy(data.Scan0 + y * data.Stride, px, y * w * 4, w * 4);
+            for (var i = 0; i < px.Length; i += 4) (px[i], px[i + 2]) = (px[i + 2], px[i]); // BGRA to RGBA
+            return (px, w, h);
+        }
+        finally { bmp.UnlockBits(data); }
+    }
+
     // ------------------------------------------------------------ mod settings with modlists
 
     void ExportWithSettings()
@@ -634,6 +777,7 @@ public sealed partial class MainForm
     void UpdateJumpList()
     {
         if (!HasDropPod) { JumpList.Set(Array.Empty<(string, string, string)>()); return; }
+        if (!DpRimWorld) return; // --play starts RimWorld; the list stays as it was
         var items = new List<(string Title, string Args, string Tip)> { ("Play RimWorld", "--play", "Start RimWorld normally") };
         foreach (var i in DropPodInstances.All(_dpGame.AppId).Take(8))
             items.Add(($"Play {i.Name}", "--play \"" + i.Name.Replace("\"", "") + "\"", $"Start RimWorld with the instance {i.Name}"));

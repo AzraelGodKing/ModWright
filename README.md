@@ -138,7 +138,7 @@ When packaging with git, files in the mod folder that git does not have (ignored
 compared against the package: a `.dll` left out that way stops the upload, since players would get the mod without its
 code, and anything else left out is a warning. The RimWorld layout picks up builds in `Assemblies` and in version
 folders such as `1.6/Assemblies` even when `*.dll` is ignored.
-Right-click a mod and choose **Package > Preview package...** to see every file and its size before uploading.
+Right-click a mod and choose **Package > Preview package...** to see every file and its size before uploading. It says which folders hold most of the size (click **Size** to sort by it) and lists what players rarely need (source art, debug files, a Source folder); **Leave these out of every package** saves those patterns as `LeaveOut` in `.steamhelper.json`, for git packaging too.
 
 Each upload remembers which files it sent (`%LocalAppData%\SteamCmdHelper\manifests`), so the next one of the same item
 says in the log what was added, changed and removed since then, and **Preview package...** marks each file. A package
@@ -562,7 +562,7 @@ your password), the next job that needs it says so and offers to log in again. A
 Tick **Allow creating new items**. They are created private, with the title, description and preview image
 from your layout. The new id is saved to the id file; commit it.
 
-## The Drop Pod (RimWorld players)
+## The Drop Pod (RimWorld and Sun Haven players)
 
 **Only want one side?** The first start asks whether you want the mod manager (The Drop Pod), the mod uploader (The
 Launch Pad), or both, and shows only what you pick. Change it any time under **Options > Appearance > Show**; nothing
@@ -574,7 +574,8 @@ Nothing in the game folder is changed until you press **Save to game**, which wr
 old one as a timestamped backup next to it. It refuses while RimWorld is running, because the game writes its own
 list when it closes.
 
-- **Mods:** tick a mod to make it active; Up and Down (Alt+Up/Down) move it. **Sort** orders the active mods by
+- **Mods:** tick a mod to make it active; Up and Down (Alt+Up/Down) move it, or drag one or several mods to a new
+  place (dragging an inactive mod into the list activates it there). **Sort** orders the active mods by
   their dependencies and loadAfter/loadBefore lists (version-specific ones included), base game and DLC first; where
   no rule decides it keeps your order, or goes A to Z. Mods whose rules loop are named, not dropped.
 - **Modlists:** **Save as...** keeps the active mods as a named list and **Switch to it** makes one active.
@@ -585,8 +586,11 @@ list when it closes.
   signed in with an account that owns RimWorld.
 - **Problems:** missing or inactive dependencies, mods loading before what they need, broken load rules,
   incompatible pairs, mods for another game version, mods installed twice and unreadable About.xml files.
-  **Activate needed mods** ticks installed dependencies; **Download missing** fetches linked Workshop items with
-  SteamCMD and your saved login into the Mods folder; **Check for updates** asks Steam which Workshop mods are newer.
+  **Activate needed mods** ticks installed dependencies; **Download missing** subscribes to linked Workshop items
+  through the Steam client when it is running (Steam then keeps them up to date), else fetches them with SteamCMD and
+  your saved login into the Mods folder; **Check for updates** asks Steam which Workshop mods are newer, and GitHub
+  about Mods folder mods whose About.xml links a GitHub repository (those can be updated in place, the old copy zipped
+  into the mod-backups folder first).
 - **Instances:** **New...** makes a separate setup with its own options, mod list, saves and log (through
   RimWorld's `-savedatafolder` switch), optionally on another RimWorld install. Pick it in the Instance list to edit
   its mods; **Play** starts it. **More** exports an instance to a zip (with or without saves), imports one, opens its
@@ -599,7 +603,9 @@ list when it closes.
   from the mod's DLLs, never run), its Harmony patch on a method there, a file in its folder, or its package ID.
 - **Insight:** hints about the active mods: methods two mods both rewrite with Harmony transpilers, prefixes that
   can stop other mods' changes, mods that patch per-tick methods, mods heavy on textures or definitions, and your
-  rules file's notes.
+  rules file's notes. It also loads every active mod's Defs and Patches the way the game does and shows **XML
+  clashes**: a mod replacing another mod's def, a patch overwriting or removing what another mod's patch changed (the
+  one lower in the list wins), patches that find nothing (red errors in the log) and XML files that aren't valid.
 - **Details beside the list:** the picked mod's preview, author, version, needs and needed-by, modlists, your note
   and description, with buttons for its folder, Workshop page and change notes. Right-click a mod for **Why is this
   mod here?** (the rules that put it there) and **Note and colour...**.
@@ -608,13 +614,49 @@ list when it closes.
 - **Tools:** **Find the broken mod for me** (halves the suspects each round until one is left, then puts your list
   back), **Load a Steam collection as a modlist**, **Compare with a friend's list** (from a share code, with Make mine
   match), **Load times** (each start timed from the log), **Clean up unused mods and settings** (to the Recycle Bin,
-  Workshop mods unsubscribed), and **Back up the newest save before a risky start**.
+  Workshop mods unsubscribed), **Turn downloaded copies into subscriptions** (SteamCMD copies in the Mods folder handed
+  to Steam, which keeps them up to date), **Optimize textures** (a DDS beside each PNG of the mods you tick, which RimWorld 1.5+
+  loads faster and keeps far smaller in video memory; Undo removes them), and **Back up the newest save before a risky start**.
 - **More:** export the active mods **with their mod settings** as a .zip (import takes it too), set **launch
   options** for the normal game or an instance, and **freeze** an instance: its Workshop mods are copied in so Steam
   updates can't change them, and linked into the Mods folder only while it plays.
 - After **Check for updates**, the change notes of mods with updates are shown, with risky lines marked. The log
   window's **Report to the author** opens a ready bug report on the mod's GitHub issues or Workshop comments.
   Right-click Modwright on the taskbar to start RimWorld or an instance without opening the window.
+
+### Sun Haven in The Drop Pod
+
+Pick **Sun Haven** in the game list at the top of the tab (the choice is remembered). Sun Haven mods are BepInEx
+plugins, so The Drop Pod works the way r2modman lays them out:
+
+- **Mods** are the folders and loose DLLs in `BepInEx\plugins` (name and version from Thunderstore's `manifest.json`,
+  else from the plugin's own BepInPlugin attribute, read without running it). Untick a mod and **Save to game** moves it
+  to `BepInEx\plugins-disabled`; tick it again to move it back. BepInEx loads plugins in no order you set, so Sort,
+  Up, Down and dragging are off.
+- **Problems** lists the dependencies a manifest names that are missing or disabled. **Download missing** fetches them
+  from [Thunderstore](https://thunderstore.io/c/sun-haven/) (with whatever they need in turn) into
+  `BepInEx\plugins\Author-Name`; their config files go to `BepInEx\config` but never over yours.
+- **Check for updates** asks Thunderstore about every plugin that came from it and updates the ticked ones, zipping the
+  old copy into the mod-backups folder first.
+- Modlists, share codes, Compare with a friend's list, Find the broken mod, notes, history, **Play**, **Test** and
+  **Read the log** (BepInEx's `LogOutput.log`) all work as for RimWorld. Instances, saves, Insight and the Workshop and
+  texture tools are RimWorld-only and hidden. BepInEx itself is never installed or changed; if it is missing, the tab
+  says so.
+
+### The Drop Pod on the command line
+
+```
+SteamCmdHelper droppod lists                  the saved modlists (* marks the one in use)
+SteamCmdHelper droppod instances              the instances
+SteamCmdHelper droppod active [--json]        the active mods in load order
+SteamCmdHelper droppod problems [--json]      problems with the active mods (exit code 1 on errors)
+SteamCmdHelper droppod switch <modlist>       make a modlist the game's active mods
+SteamCmdHelper droppod play [<modlist>]       start the game, after switching to the modlist
+```
+
+Add `--instance <name>` to any of them to use an instance, and `--game SunHaven` (or `--game RimWorld`) to pick the
+game when The Drop Pod is set to the other one. A desktop shortcut to
+`SteamCmdHelper.exe droppod play "Heavy run" --instance Medieval` starts that setup in one click.
 
 ### For mod authors: RimWorld tools in The Launch Pad
 
@@ -627,6 +669,10 @@ Right-click one of your mods > **RimWorld** (RimWorld layouts only):
 - **Play it live:** links the mod's folder into RimWorld's Mods folder (a directory junction), so each build is in
   the game at once. Only links Modwright made are ever removed; the folder itself is never touched.
 - **Edit About.xml:** the common fields with the Drop Pod's checks live, and rules picked from your installed mods.
+- **Patch check before upload:** with RimWorld found, the upload confirmation runs the mod's XML with only the game,
+  the DLC and its dependencies, and names patches that find nothing and defs it takes over from a dependency. Without
+  the game it still flags a def defined twice, a texPath into the mod's own Textures with no texture, and English
+  Keyed texts nothing in the mod mentions.
 - **Read a player's log:** paste a log or a pastebin/gist/hastebin link and see only the problems in your own mods.
 
 ### Your own load-order rules
@@ -766,6 +812,9 @@ or the person installing or operating it. What it does connect to, and why:
   release when you choose to update. Nothing about you or your mods is sent. Turn it off under **Options > About**
   (**Check for a newer version at start-up**). Making a GitHub release for an upload (**Options > Uploading > After uploading**) runs your
   own `gh` tool, only when you turn it on for a mods folder.
+- **GitHub, for Drop Pod updates:** **Check for updates** in The Drop Pod also reads the public latest release of each
+  GitHub repository a Mods folder mod links in its About.xml, and downloads a release only when you tick that mod to
+  update. Nothing about you or your mods is sent.
 - **Steam** ([Valve privacy policy](https://store.steampowered.com/privacy_agreement/)): uploads go through Valve's
   SteamCMD, which you sign in to yourself. The app reads public Workshop details and changelog pages for the Workshop ids
   in your mods folder, looks up a game's name from its app ID when you enter one, and downloads SteamCMD from Valve when
@@ -778,6 +827,8 @@ or the person installing or operating it. What it does connect to, and why:
   an upload it posts the mod's name, Workshop link and change note there.
 - **Thunderstore** ([privacy policy](https://thunderstore.io/privacy-policy/)): only when you publish to it; it receives
   the mod's package and your team's token, and the app reads the package's public page to see which version is there.
+  For Sun Haven in The Drop Pod, **Download missing** and **Check for updates** read the public package details of the
+  plugins involved and download the packages you get or update. Nothing about you is sent.
 
 ## Accessibility
 
@@ -793,6 +844,17 @@ dotnet test tests/SteamCmdHelper.Tests
 ```
 
 The tests compile the non-UI source files directly, so they run on Windows, Linux or macOS.
+
+On Windows there are also click-through tests that start the real app and use it through UI Automation (FlaUI): a
+portable copy in a temp folder, with a fake RimWorld and Sun Haven, so nothing of yours is touched. Build the app first
+(or set `MODWRIGHT_EXE` to an exe), then:
+
+```
+dotnet build SteamCmdHelper.csproj -c Release
+dotnet test tests/SteamCmdHelper.UiTests -c Release
+```
+
+CI runs them against the published exe on every push and pull request.
 
 ## Releasing (maintainer)
 

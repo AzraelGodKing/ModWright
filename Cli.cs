@@ -98,6 +98,9 @@ public static class Cli
                                                              upload and what is only a warning (RimWorld: the
                                                              About.xml check too). --strict: warnings from
                                                              About.xml block, as Options > Uploading can set
+          SteamCmdHelper droppod <command>                   The Drop Pod (RimWorld players): lists, instances,
+                                                             active, problems, switch <modlist>, play; see
+                                                             "SteamCmdHelper droppod help"
           SteamCmdHelper help                                show this text
 
         Options:
