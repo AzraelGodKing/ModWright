@@ -887,11 +887,19 @@ public sealed partial class MainForm
             var mods = active.Select(k => byId[k]).ToList();
             var patches = HarmonyPatches.ForMods(mods, ct);
             var weights = mods.Where(m => m.Source != ModSource.Official).Select(m => { ct.ThrowIfCancellationRequested(); return Insight.Weigh(m); }).ToList();
-            return Insight.Conflicts(patches, active, Name).Concat(Insight.TickPatches(patches, active, Name))
+            var xml = _dpGame is DropPod.RimWorld.RimWorldModule
+                ? Insight.Xml(DropPod.RimWorld.XmlPatchSim.Run(XmlMods(mods), scan.Install.Version, ct), Name, mods.Where(m => m.Source == ModSource.Official).Select(m => m.Key).ToList())
+                : new();
+            return xml.Where(i => i.Level == ProblemLevel.Warning).Concat(Insight.Conflicts(patches, active, Name)).Concat(Insight.TickPatches(patches, active, Name))
+                .Concat(xml.Where(i => i.Level != ProblemLevel.Warning))
                 .Concat(Insight.Heavy(weights, active, Name)).Concat(Insight.Notes(rules, active, Name)).ToList();
         }, Name);
         f.ShowDialog(this);
     }
+
+    /// <summary>Mods (in load order) as the XML simulation takes them.</summary>
+    static List<DropPod.RimWorld.XmlMod> XmlMods(IEnumerable<ModManifest> mods) =>
+        mods.Select(m => new DropPod.RimWorld.XmlMod(m.Key, m.DisplayName, m.Id, m.Folder, m.Source == ModSource.Official)).ToList();
 
     /// <summary>Shows the game's log analysed (modeless, so the game and the Drop Pod stay usable); with <paramref name="watch"/> it follows the log as it grows.</summary>
     void OpenDropPodLog(string path, bool watch)

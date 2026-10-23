@@ -322,6 +322,10 @@ public sealed partial class MainForm
             var found = await Task.Run(() => picked.Select(m => (m, last: rec.Get(m.Dir))).Where(x => x.last != null)
                 .Select(x => (x.m, w: CleanTest.Warning(x.last, CleanTest.FolderHash(x.m.Dir)))).ToList());
             lines.AddRange(found.Where(x => x.w != null).Select(x => $"{x.m.Name} {x.w}."));
+            // Patches are checked against the game's own XML, so only when RimWorld is found (quietly skipped otherwise).
+            if (_dpScan == null && _dpUsual == null) await ScanDropPodAsync();
+            if (_dpScan is { } scan)
+                lines.AddRange(await Task.Run(() => picked.SelectMany(m => PatchMisses(m, scan)).ToList()));
         }
         if (!test && RepoIsGit)
             foreach (var m in picked.Where(m => m.OnSteam))
@@ -330,6 +334,29 @@ public sealed partial class MainForm
                 if (ModScanner.NextVersion(last, s.Part) is { } wanted && !BumpSuggestion.AtLeast(m.Version, wanted))
                     lines.Add($"{m.Name}'s commits since v{last} suggest a {s.Part.ToString().ToLowerInvariant()} release (v{wanted} or later; \"{s.Reason}\"), but it goes up as v{m.Version}.");
             }
+        return lines;
+    }
+
+    /// <summary>
+    /// The mod's XML run with only the game, the DLC and what it needs (as in a clean-colony test): patches that find
+    /// nothing (players see red errors) and defs it takes over from a dependency.
+    /// </summary>
+    IEnumerable<string> PatchMisses(ModInfo m, LibraryScan scan)
+    {
+        if (_dpGame.ReadMod(m.Dir, ModSource.Local) is not { } mod) return Enumerable.Empty<string>();
+        var byId = scan.ById();
+        var (active, _) = CleanTest.Plan(mod, scan, _dpGame);
+        var mods = active.Select(k => k == mod.Key ? mod : byId.GetValueOrDefault(k)).OfType<ModManifest>().ToList();
+        var lines = new List<string>();
+        foreach (var f in XmlPatchSim.Run(XmlMods(mods), scan.Install.Version).Where(f => f.Mods.Contains(mod.Key)))
+        {
+            var n = f.Targets.Count;
+            if (f.Kind == XmlFindingKind.PatchFails)
+                lines.Add($"{m.Name}: {n} patch{(n == 1 ? "" : "es")} in {f.Detail} find{(n == 1 ? "s" : "")} nothing in RimWorld {GameVersion.Short(scan.Install.Version ?? "")} with the DLC and the mod's dependencies, " +
+                          $"so players get a red error (mark optional ones with MayRequire or <success>Always</success>): {PackageCheck.Examples(f.Targets)}.");
+            else if (f.Kind == XmlFindingKind.DefOverride && f.Mods[1] == mod.Key && !RimWorldIds.IsOfficial(f.Mods[0]))
+                lines.Add($"{m.Name} replaces {n} def{(n == 1 ? "" : "s")} its dependency {byId.GetValueOrDefault(f.Mods[0])?.DisplayName ?? f.Mods[0]} defines: {PackageCheck.Examples(f.Targets)}.");
+        }
         return lines;
     }
 
