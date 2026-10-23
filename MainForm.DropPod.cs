@@ -93,6 +93,7 @@ public sealed partial class MainForm
         {
             if (e.Alt && e.KeyCode is Keys.Up or Keys.Down) { MoveDropPodMod(e.KeyCode == Keys.Up ? -1 : 1); e.Handled = e.SuppressKeyPress = true; }
         };
+        SetUpDropPodDragging();
         _dpSort = SmallBtn("Sort ▾", (_, _) => ShowSortMenu());
         var up = SmallBtn("Up", (_, _) => MoveDropPodMod(-1));
         var down = SmallBtn("Down", (_, _) => MoveDropPodMod(1));
@@ -100,7 +101,7 @@ public sealed partial class MainForm
         _dpSave = SmallBtn("Save to game", (_, _) => { SaveDropPodToGame(); }).Role(ThemeRole.Primary);
         Tip(_dpSort, "Order the active mods by their dependencies and load rules (and your rules file), or A to Z where no rule decides");
         Tip(up, "Load the selected mod earlier (Alt+Up)");
-        Tip(down, "Load the selected mod later (Alt+Down)");
+        Tip(down, "Load the selected mod later (Alt+Down). You can also drag mods to a new place in the list");
         Tip(_dpUndo, "Go back to the game's current mod list (Ctrl+Z steps back one change at a time)");
         Tip(_dpSave, "Write the ticked mods, in this order, to the game's ModsConfig.xml (the old one is kept as a backup)");
         page.Controls.Add(Card("Mods", new Control[] { _dpCount, _dpSort, up, down, _dpUndo, _dpSave, _dpFilter }, BuildDropPodListArea()), 0, 1);
@@ -117,8 +118,8 @@ public sealed partial class MainForm
         Tip(insight, "Hints about the active mods: Harmony patches that may clash, patches on per-tick methods, mods heavy to load, and your rules file's notes");
         Tip(readLog, "Read the game's last log: errors and warnings grouped, with the mod most likely at fault");
         Tip(_dpActivateDeps, "Tick the installed mods the active ones need, each placed before the first mod that needs it");
-        Tip(_dpDownload, "Download the missing dependencies that link a Workshop item, with SteamCMD and your saved login, into RimWorld's Mods folder");
-        Tip(_dpUpdates, "Ask Steam which installed Workshop mods have a newer version");
+        Tip(_dpDownload, "Get the missing dependencies that link a Workshop item: subscribed through Steam when it is running (Steam keeps them up to date), else downloaded with SteamCMD into RimWorld's Mods folder");
+        Tip(_dpUpdates, "Ask Steam which installed Workshop mods have a newer version, and GitHub about Mods folder mods that link a GitHub repository");
         page.Controls.Add(Card("Problems", new Control[] { _dpProblemCount, _dpActivateDeps, _dpDownload, _dpUpdates, readLog, insight }, _dpProblems), 0, 2);
         ((Control)page.Controls[2]).Dock = DockStyle.Fill;
         UpdateDropPodButtons();
@@ -359,15 +360,33 @@ public sealed partial class MainForm
     }
 
     /// <summary>
-    /// Downloads Workshop items with SteamCMD into the Mods folder, rescans, and sets the active mods to what
+    /// Gets Workshop items: through the Steam client as subscriptions when Steam is running (so Steam keeps them up to
+    /// date), else with SteamCMD into the Mods folder. Then rescans and sets the active mods to what
     /// <paramref name="activeAfter"/> gives on the new scan (unsaved, so the player can look first).
     /// </summary>
     async Task DownloadWorkshopAsync(IReadOnlyList<string> ids, Func<List<string>> activeAfter)
     {
         if (_dpScan == null || ids.Count == 0) return;
+        var note = "";
+        if (SteamRestart.ReadState().Running)
+        {
+            _dpBusy = true;
+            UpdateDropPodButtons();
+            ShowDropPodGame($"Subscribing to {ids.Count} Workshop item{(ids.Count == 1 ? "" : "s")} through the Steam client and waiting for Steam to download them...");
+            ExtrasResult r;
+            try { r = await WorkshopExtras.ApplyOnSteamAsync(new ExtrasRequest { AppId = _dpGame.AppId, Subscribe = ids.ToArray(), WaitSeconds = Subscriptions.WaitSeconds(ids.Count) }, CancellationToken.None); }
+            finally { _dpBusy = false; }
+            if (r.Ok && r.Subscribed.Count > 0)
+            {
+                await RescanWithActive(activeAfter);
+                ShowDropPodGame(Subscriptions.Describe(ids.Count, r.Subscribed.Count, r.Installed.Count));
+                return;
+            }
+            note = $"Subscribing through Steam didn't work ({(r.Ok ? "Steam subscribed to nothing" : r.Error)}), so SteamCMD is used instead. ";
+        }
         if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd) || _s.Account.Length == 0)
         {
-            ShowDropPodGame("Downloading needs SteamCMD and a saved Steam login of an account that owns RimWorld: set both up under Options > Account.");
+            ShowDropPodGame(note + "Start Steam to subscribe to them, or set up SteamCMD and a saved Steam login of an account that owns RimWorld under Options > Account to download them.");
             return;
         }
         var mods = SafeFiles.Child(_dpScan.Install.GameFolder, "Mods", directory: true) ?? Path.Combine(_dpScan.Install.GameFolder, "Mods");
@@ -390,13 +409,21 @@ public sealed partial class MainForm
             }
         }
         finally { _dpBusy = false; }
+        if (!await RescanWithActive(activeAfter)) return;
+        ShowDropPodGame(note + $"Downloaded {done.Count} of {ids.Count} into the Mods folder and ticked them." + (failed.Count > 0 ? " Failed: " + string.Join("; ", failed) : "") +
+                        " Press Save to game to use the list. These copies don't update by themselves; Tools > Turn downloaded copies into subscriptions hands them to Steam.");
+    }
+
+    /// <summary>Reads the mods again and makes the active list what <paramref name="activeAfter"/> gives on the new scan. False when RimWorld is gone.</summary>
+    async Task<bool> RescanWithActive(Func<List<string>> activeAfter)
+    {
         _dpDirty = false; // the rescan below rereads the game's list; put the edits back after it
         await ScanDropPodAsync();
-        if (_dpScan == null) return;
+        if (_dpScan == null) return false;
         _dpActive = activeAfter();
         _dpDirty = true;
         FillDropPodList();
-        ShowDropPodGame($"Downloaded {done.Count} of {ids.Count} into the Mods folder and ticked them." + (failed.Count > 0 ? " Failed: " + string.Join("; ", failed) : "") + " Press Save to game to use the list.");
+        return true;
     }
 
     async Task CheckDropPodUpdatesAsync()
@@ -422,9 +449,54 @@ public sealed partial class MainForm
             };
             if (gone.Count > 0) lines.Add($"{gone.Count} are no longer public on Steam (removed or made private): {string.Join(", ", gone.Take(8))}.");
             if (outdated.Count > 0) await ShowUpdateNotesAsync(outdated);
+            var fromGitHub = GitHubModUpdates.Candidates(_dpScan.Mods);
+            List<GitHubModUpdate> gh = new();
+            if (fromGitHub.Count > 0)
+            {
+                ShowDropPodGame($"Asking GitHub about {fromGitHub.Count} Mods folder mod{(fromGitHub.Count == 1 ? "" : "s")} that link a GitHub repository...");
+                gh = await GitHubModUpdates.CheckAsync(fromGitHub, GitHubHttp, CancellationToken.None);
+                lines.Add(gh.Count == 0 ? $"The {fromGitHub.Count} mod{(fromGitHub.Count == 1 ? "" : "s")} from GitHub {(fromGitHub.Count == 1 ? "is" : "are")} up to date."
+                    : $"{gh.Count} mod{(gh.Count == 1 ? " has" : "s have")} a newer release on GitHub.");
+            }
             ShowDropPodGame(string.Join("\n", lines));
+            if (gh.Count > 0) await OfferGitHubUpdatesAsync(gh);
         }
         finally { _dpBusy = false; UpdateDropPodButtons(); }
+    }
+
+    static readonly HttpClient GitHubHttp = UpdateCheck.CreateClient(TimeSpan.FromMinutes(5));
+
+    /// <summary>Lists mods with a newer GitHub release; the ticked ones are downloaded and put in place, each old copy zipped first.</summary>
+    async Task OfferGitHubUpdatesAsync(List<GitHubModUpdate> updates)
+    {
+        var backups = Path.Combine(AppSettings.Folder, "droppod", "mod-backups");
+        using var w = new ListWindow("Updates on GitHub",
+            "These Mods folder mods have a newer release on GitHub. Tick the ones to update: each is downloaded from its release and put in place, " +
+            "and the old copy is zipped into Modwright's mod-backups folder first.",
+            new[] { ("Mod", 260), ("Installed", 90), ("On GitHub", 90), ("Release", 380) }, checkBoxes: true);
+        foreach (var u in updates)
+            w.AddRow(u, Tone.Normal, u.Mod.DisplayName, u.Mod.ModVersion.Length > 0 ? u.Mod.ModVersion : "?", u.Release.Version, u.Release.Page).Checked = true;
+        w.DoubleClicked = tag => { if (tag is GitHubModUpdate u && u.Release.Page.Length > 0) OpenUrl(u.Release.Page); };
+        var go = false;
+        w.AddButton("&Update the ticked ones", () => { go = true; w.Close(); }, needsRow: true, primary: true);
+        w.AddButton("Open the &backups", () => OpenFolder(backups));
+        w.AddClose();
+        w.ShowDialog(this);
+        if (!go || w.Ticked.Count == 0) return;
+        if (GameRunning() != null) { ShowDropPodGame("Close RimWorld first; its mods can't be replaced while it runs."); return; }
+        var done = 0;
+        var failed = new List<string>();
+        foreach (var u in w.Ticked.OfType<GitHubModUpdate>())
+        {
+            ShowDropPodGame($"Updating {u.Mod.DisplayName} to {u.Release.Version} from GitHub...");
+            try { await GitHubModUpdates.InstallAsync(u, GitHubHttp, d => _dpGame.ReadMod(d, ModSource.Local), backups, CancellationToken.None); done++; }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or HttpRequestException or InvalidDataException or TaskCanceledException) { failed.Add($"{u.Mod.DisplayName} ({e.Message})"); }
+        }
+        var keep = _dpActive.ToList();
+        var wasDirty = _dpDirty;
+        await RescanWithActive(() => keep);
+        _dpDirty = wasDirty;
+        ShowDropPodGame($"Updated {done} mod{(done == 1 ? "" : "s")} from GitHub." + (failed.Count > 0 ? " Failed: " + string.Join("; ", failed) : ""));
     }
 
     void DropPodTicked(ListViewItem it)
@@ -466,6 +538,75 @@ public sealed partial class MainForm
         }
         finally { _dpList.EndUpdate(); _dpFilling = false; }
         NumberDropPodRows();
+    }
+
+    // ------------------------------------------------------------ drag to reorder
+
+    readonly Panel _dpDropLine = new() { Height = 2, Visible = false, Enabled = false };
+    (string? Target, bool After) _dpDropAt;
+
+    /// <summary>Drag one or more selected mods to a new place in the load order; a line shows where they land. Dragging an inactive mod into the list activates it there.</summary>
+    void SetUpDropPodDragging()
+    {
+        _dpList.AllowDrop = true;
+        _dpList.Controls.Add(_dpDropLine);
+        _dpList.ItemDrag += (_, e) =>
+        {
+            if (_dpBusy || _dpBisect != null || _dpList.SelectedItems.Count == 0) return;
+            var keys = _dpList.SelectedItems.Cast<ListViewItem>().Select(i => i.Name).ToList();
+            _dpList.DoDragDrop(new DataObject("ModwrightDropPodMods", keys), DragDropEffects.Move);
+            _dpDropLine.Visible = false;
+        };
+        _dpList.DragOver += (_, e) =>
+        {
+            if (e.Data?.GetData("ModwrightDropPodMods") is not List<string>) { e.Effect = DragDropEffects.None; return; }
+            e.Effect = DragDropEffects.Move;
+            var pt = _dpList.PointToClient(new Point(e.X, e.Y));
+            // Scroll when the mouse is near the top or bottom edge.
+            if (_dpList.TopItem is { } top)
+            {
+                if (pt.Y < top.Bounds.Height && top.Index > 0) _dpList.Items[top.Index - 1].EnsureVisible();
+                else if (pt.Y > _dpList.ClientSize.Height - top.Bounds.Height && _dpList.GetItemAt(4, _dpList.ClientSize.Height - 2) is { } last && last.Index + 1 < _dpList.Items.Count)
+                    _dpList.Items[last.Index + 1].EnsureVisible();
+            }
+            var row = _dpList.GetItemAt(4, pt.Y);
+            if (row == null || !row.Checked)
+            {
+                // Past the active mods: they go to the end of the load order, shown under the last active row.
+                var lastActive = _dpList.Items.Cast<ListViewItem>().LastOrDefault(i => i.Checked);
+                _dpDropAt = (null, true);
+                ShowDropLine(lastActive, below: true);
+                return;
+            }
+            var after = pt.Y > row.Bounds.Top + row.Bounds.Height / 2;
+            _dpDropAt = (row.Name, after);
+            ShowDropLine(row, after);
+        };
+        _dpList.DragLeave += (_, _) => _dpDropLine.Visible = false;
+        _dpList.DragDrop += (_, e) =>
+        {
+            _dpDropLine.Visible = false;
+            if (e.Data?.GetData("ModwrightDropPodMods") is not List<string> keys || keys.Count == 0) return;
+            var moved = LoadOrderEdit.Move(_dpActive, keys, _dpDropAt.Target, _dpDropAt.After);
+            if (moved.SequenceEqual(_dpActive)) return;
+            DropPodEdit();
+            _dpActive = moved;
+            _dpDirty = true;
+            FillDropPodList();
+            _dpList.SelectedItems.Clear();
+            foreach (var k in keys)
+                if (_dpList.Items[k] is { } it) it.Selected = true;
+            if (_dpList.Items[keys[0]] is { } first) { first.Focused = true; first.EnsureVisible(); }
+        };
+    }
+
+    void ShowDropLine(ListViewItem? row, bool below)
+    {
+        if (row == null) { _dpDropLine.Visible = false; return; }
+        _dpDropLine.BackColor = Theme.FocusColor;
+        _dpDropLine.SetBounds(0, (below ? row.Bounds.Bottom : row.Bounds.Top) - 1, _dpList.ClientSize.Width, 2);
+        _dpDropLine.Visible = true;
+        _dpDropLine.BringToFront();
     }
 
     void ShowSortMenu()

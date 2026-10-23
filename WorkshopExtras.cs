@@ -25,6 +25,10 @@ public sealed class ExtrasRequest
     public string[]? CountComments { get; set; }
     /// <summary>Items to unsubscribe the signed-in account from (the Drop Pod's clean-up); null leaves subscriptions alone. Needs no ownership.</summary>
     public string[]? Unsubscribe { get; set; }
+    /// <summary>Items to subscribe the signed-in account to, so the Steam client downloads and updates them; null subscribes to nothing.</summary>
+    public string[]? Subscribe { get; set; }
+    /// <summary>How long to wait for subscribed items to finish downloading, in seconds (0: don't wait).</summary>
+    public int WaitSeconds { get; set; }
 }
 
 /// <summary>The gallery images (full paths, with a hash of each) and YouTube video ids an item should show.</summary>
@@ -65,6 +69,10 @@ public sealed class ExtrasResult
     public string[]? RequiredNow { get; set; }
     /// <summary>Comment counts by item id, for <see cref="ExtrasRequest.CountComments"/>.</summary>
     public Dictionary<string, long>? Comments { get; set; }
+    /// <summary>The items <see cref="ExtrasRequest.Subscribe"/> subscribed to.</summary>
+    public List<string> Subscribed { get; set; } = new();
+    /// <summary>The subscribed items Steam finished downloading within the wait.</summary>
+    public List<string> Installed { get; set; } = new();
     /// <summary>True when the gallery and the languages were sent, so their hashes can be remembered.</summary>
     public bool PageSent { get; set; }
 
@@ -336,7 +344,7 @@ public static class WorkshopExtras
         try
         {
             await File.WriteAllTextAsync(file, JsonSerializer.Serialize(req), ct);
-            var (output, error) = await SteamClientChild.RunAsync(new[] { ChildArg, file }, TimeSpan.FromMinutes(5), ct);
+            var (output, error) = await SteamClientChild.RunAsync(new[] { ChildArg, file }, TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(req.WaitSeconds), ct);
             return error != null ? ExtrasResult.Fail(error) : ParseChild(output!);
         }
         finally { try { File.Delete(file); } catch { } }

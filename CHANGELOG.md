@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.14.0
+
+The Drop Pod for players with big mod lists: mods Steam keeps up to date, drag and drop, quicker rescans, updates
+from GitHub and a command line.
+
+- **Missing mods are subscribed through Steam.** Download missing, Use this save's mods and loading a Steam collection
+  now subscribe to the Workshop items through the Steam client when it is running, so Steam downloads them and keeps
+  them up to date. Without Steam running, SteamCMD downloads them into the Mods folder as before.
+- **Turn downloaded copies into subscriptions** (Tools): Workshop mods SteamCMD put in the Mods folder, which never
+  update by themselves, are subscribed through Steam, and each copy goes to the Recycle Bin once Steam has its own.
+  The mod list doesn't change.
+- **Drag mods to reorder them.** Drag one or several selected mods to a new place in the load order; a line shows
+  where they land, the list scrolls at its edges, and Ctrl+Z undoes it. Dragging an inactive mod into the list
+  activates it there.
+- **Rescans are much quicker with big libraries.** Mods whose About folder hasn't changed aren't read again: with
+  1,500 mods a rescan takes a tenth of the first read.
+- **Updates for mods from GitHub.** Check for updates also asks GitHub about Mods folder mods whose About.xml links a
+  GitHub repository. Newer releases are listed, and the ticked ones are downloaded and put in place, with the old copy
+  zipped into Modwright's mod-backups folder first. Git working copies and linked folders are never touched.
+- **The Drop Pod on the command line:** `SteamCmdHelper droppod lists | instances | active | problems | switch
+  <modlist> | play [<modlist>]`, each with `--instance <name>`, and `--json` for scripts. Handy for desktop shortcuts
+  or Steam launch entries per setup; `problems` exits with 1 when there are errors.
+
 ## 1.13.0
 
 XML clashes: what goes wrong between mods when they change the same game data, for players and for mod authors.
