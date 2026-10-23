@@ -32,6 +32,36 @@ public static class PackageCheck
     static readonly string[] JunkNames = { "Thumbs.db", ".DS_Store", "desktop.ini" };
     static readonly string[] Archives = { ".zip", ".rar", ".7z", ".tar", ".gz" };
 
+    /// <summary>
+    /// Files players rarely need, as the patterns that would leave them out: source art and debug or leftover files by
+    /// extension ("*.psd"), tool and build folders and a Source folder by name. Each pattern once, with how many files
+    /// and bytes it covers, most bytes first.
+    /// </summary>
+    public static List<(string Pattern, int Files, long Bytes)> RarelyNeeded(IReadOnlyList<PackageFile> files)
+    {
+        var hits = new Dictionary<string, (int Files, long Bytes)>(StringComparer.OrdinalIgnoreCase);
+        void Hit(string pattern, PackageFile f)
+        {
+            var h = hits.GetValueOrDefault(pattern);
+            hits[pattern] = (h.Files + 1, h.Bytes + f.Bytes);
+        }
+        foreach (var f in files)
+        {
+            var parts = f.Path.Split('/');
+            var folder = parts.SkipLast(1).FirstOrDefault(d => JunkFolders.Contains(d, StringComparer.OrdinalIgnoreCase) || d.Equals("Source", StringComparison.OrdinalIgnoreCase));
+            var ext = Path.GetExtension(f.Path).ToLowerInvariant();
+            if (folder != null) Hit(folder, f);
+            else if (SourceArt.Contains(ext) || JunkFiles.Contains(ext)) Hit("*" + ext, f);
+            else if (JunkNames.Contains(parts[^1], StringComparer.OrdinalIgnoreCase)) Hit(parts[^1], f);
+        }
+        return hits.Select(h => (h.Key, h.Value.Files, h.Value.Bytes)).OrderByDescending(h => h.Bytes).ToList();
+    }
+
+    /// <summary>Where the bytes are: each top folder (or "(top level)") with its size, biggest first.</summary>
+    public static List<(string Folder, long Bytes)> ByTopFolder(IReadOnlyList<PackageFile> files) =>
+        files.GroupBy(f => f.Path.Contains('/') ? f.Path[..f.Path.IndexOf('/')] + "/" : "(top level)", StringComparer.OrdinalIgnoreCase)
+            .Select(g => (g.Key, g.Sum(f => f.Bytes))).OrderByDescending(x => x.Item2).ToList();
+
     /// <param name="hash">Also work out each file's SHA-256, to compare the package with the last upload.</param>
     public static PackageReport Inspect(string stage, bool hash = false)
     {

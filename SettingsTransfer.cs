@@ -18,8 +18,37 @@ public static class SettingsTransfer
 
     const string Settings = "settings.json";
 
+    /// <summary>The Drop Pod's own records that travel and get backed up: modlists, notes, history and the like (never instances, which hold saves).</summary>
+    public const string DropPod = "droppod";
+
+    /// <summary>The Drop Pod files that go along: JSON files in droppod itself and in its modlists and history folders.</summary>
+    static IEnumerable<string> DropPodFiles(string folder)
+    {
+        var root = Path.Combine(folder, DropPod);
+        if (!Directory.Exists(root)) yield break;
+        foreach (var f in Directory.EnumerateFiles(root, "*.json")) yield return f;
+        foreach (var sub in new[] { "modlists", "history" })
+        {
+            var dir = Path.Combine(root, sub);
+            if (Directory.Exists(dir))
+                foreach (var f in Directory.EnumerateFiles(dir, "*.json", SearchOption.AllDirectories)) yield return f;
+        }
+    }
+
+    /// <summary>True for a zip entry Import may write: an export's files, the manifests and the Drop Pod records, never outside the data folder.</summary>
+    static bool Wanted(string name)
+    {
+        if (name.Contains("..") || name.StartsWith('/') || name.Contains(':')) return false;
+        if (name != Settings && Files.Contains(name)) return true;
+        if (name.StartsWith(Manifests + "/", StringComparison.Ordinal) && name.Count(c => c == '/') == 1 && name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) return true;
+        if (!name.StartsWith(DropPod + "/", StringComparison.Ordinal) || !name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) return false;
+        var parts = name.Split('/');
+        return parts.Length == 2 || parts[1] is "modlists" or "history";
+    }
+
     /// <summary>Writes the zip; returns how many files went into it.</summary>
-    public static int Export(string zipPath, string? folder = null)
+    /// <param name="dropPod">Also the Drop Pod's modlists, notes and load-order history.</param>
+    public static int Export(string zipPath, string? folder = null, bool dropPod = false)
     {
         folder ??= AppSettings.Folder;
         if (File.Exists(zipPath)) File.Delete(zipPath);
@@ -37,6 +66,12 @@ public static class SettingsTransfer
             foreach (var path in Directory.EnumerateFiles(manifests, "*.json"))
             {
                 zip.CreateEntryFromFile(path, Manifests + "/" + Path.GetFileName(path));
+                n++;
+            }
+        if (dropPod)
+            foreach (var path in DropPodFiles(folder))
+            {
+                zip.CreateEntryFromFile(path, Path.GetRelativePath(folder, path).Replace('\\', '/'));
                 n++;
             }
         return n;
@@ -75,15 +110,18 @@ public static class SettingsTransfer
             var path = Path.Combine(folder, name);
             if (File.Exists(path)) File.Copy(path, Path.Combine(backup, name), true);
         }
+        foreach (var path in DropPodFiles(folder).ToList())
+        {
+            var target = Path.Combine(backup, Path.GetRelativePath(folder, path));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(path, target, true);
+        }
 
         using (var zip = ZipFile.OpenRead(zipPath))
             foreach (var entry in zip.Entries)
             {
                 var name = entry.FullName.Replace('\\', '/');
-                var wanted = name != Settings && Files.Contains(name)
-                    || name.StartsWith(Manifests + "/", StringComparison.Ordinal) && name.Count(c => c == '/') == 1
-                       && name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && !name.Contains("..");
-                if (!wanted) continue;
+                if (!Wanted(name)) continue;
                 var target = Path.Combine(folder, ProjectConfig.Norm(name));
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 entry.ExtractToFile(target, true);

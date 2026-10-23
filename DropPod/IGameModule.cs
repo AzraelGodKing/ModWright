@@ -63,4 +63,10 @@ public interface IGameModule
 
     /// <summary>Where a mod goes when no rule decides: lower is earlier (RimWorld: the base game, then each DLC).</summary>
     int SortTier(ModManifest mod);
+
+    /// <summary>False when the game loads its mods in no order the player sets (BepInEx games): sorting and moving mods are then off.</summary>
+    bool HasLoadOrder => true;
+
+    /// <summary>The entries of a mod folder that may be mods: its sub-folders, and for some games single files too.</summary>
+    IEnumerable<string> ModEntries(string modFolder) => Directory.GetDirectories(modFolder);
 }

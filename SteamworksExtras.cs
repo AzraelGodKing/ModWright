@@ -56,6 +56,26 @@ static class SteamworksExtras
             foreach (var u in drop)
                 if (ulong.TryParse(u, out var uid) && await new Steamworks.Ugc.Item(new PublishedFileId { Value = uid }).Unsubscribe())
                     result.Done.Add("unsubscribed from " + u);
+        if (req.Subscribe is { Length: > 0 } toSubscribe)
+        {
+            foreach (var a in toSubscribe)
+                if (ulong.TryParse(a, out var aid))
+                {
+                    var item = new Steamworks.Ugc.Item(new PublishedFileId { Value = aid });
+                    if (!await item.Subscribe()) continue;
+                    result.Subscribed.Add(a);
+                    item.Download(highPriority: true);
+                }
+            // The Steam client downloads in the background; wait a while so the Drop Pod can tick them straight away.
+            var until = DateTime.UtcNow.AddSeconds(req.WaitSeconds);
+            while (true)
+            {
+                result.Installed = result.Subscribed.Where(i => new Steamworks.Ugc.Item(new PublishedFileId { Value = ulong.Parse(i) }).IsInstalled).ToList();
+                if (result.Installed.Count == result.Subscribed.Count || DateTime.UtcNow >= until) break;
+                await Task.Delay(1000);
+            }
+            result.Done.Add($"subscribed to {result.Subscribed.Count}, {result.Installed.Count} downloaded");
+        }
         if (req.Required == null && req.Gallery == null && req.Languages == null) return result;
 
         var id = new PublishedFileId { Value = itemId };

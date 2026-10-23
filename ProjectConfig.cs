@@ -152,6 +152,13 @@ public sealed class ProjectConfig
     /// <summary>Names or *.ext patterns left out of the package in copy mode.</summary>
     public string[] Exclude { get; set; } = { ".git", ".vs", "obj", "bin", "*.pdb" };
 
+    /// <summary>
+    /// Names or *.ext patterns this mods folder leaves out of every package, on top of the layout's own: set from the
+    /// package view's "Leave these out". Unlike Exclude it applies to git packaging too, and built-in layouts keep it.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? LeaveOut { get; set; }
+
     // Layout files written by version 1.1.0 used these names; they are still read, never written.
     [JsonPropertyName("NameXPath"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? LegacyName { get => null; set { if (!string.IsNullOrEmpty(value)) NameKey = value; } }
@@ -288,9 +295,10 @@ public sealed class ProjectConfig
             if (PresetNames.Contains(name))
             {
                 // Built-in layouts are locked: whatever else the file says about the layout is ignored.
-                var appId = c.AppId; var game = c.GameName;
+                var appId = c.AppId; var game = c.GameName; var leaveOut = c.LeaveOut;
                 c.ApplyPreset(name);
                 if (GetPreset(name).AppId.Length == 0) { c.AppId = appId; c.GameName = game; }
+                c.LeaveOut = leaveOut;
             }
             else
             {
@@ -341,8 +349,9 @@ public sealed class ProjectConfig
         var name = PresetName();
         if (PresetNames.Contains(name))
         {
-            var lean = new Dictionary<string, string> { ["Preset"] = name };
+            var lean = new Dictionary<string, object> { ["Preset"] = name };
             if (GetPreset(name).AppId.Length == 0) { lean["AppId"] = AppId; lean["GameName"] = GameName; }
+            if (LeaveOut is { Length: > 0 } leave) lean["LeaveOut"] = leave;
             File.WriteAllText(path, JsonSerializer.Serialize(lean, Opts));
         }
         else
