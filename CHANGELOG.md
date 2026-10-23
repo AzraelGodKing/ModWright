@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.12.0
+
+- **A new theme: Hunter.** Options > Appearance > Theme now also offers Hunter: black with silver for ticks, selected
+  rows and button text. Red stays a small touch, on the one main button of each window and the "wright" in the app
+  name, so it never takes over.
+
 ## 1.11.0
 
 A polish pass on what is already there: smoother and quicker, with nothing new to learn.
