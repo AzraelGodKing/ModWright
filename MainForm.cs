@@ -211,6 +211,7 @@ public sealed partial class MainForm : Form
             if (!NoStartupPrompts) ShowWhatsNewAfterUpdate();
             if (!NoStartupPrompts && HasUploader) _ = StartupCommentsAsync();
             if (!NoStartupPrompts) _ = Task.Run(() => { SelfUpdate.CleanUp(SelfUpdate.AppDir); SelfUpdate.CleanStaging(UpdateCheck.CurrentVersion); }); // what the last update left
+            if (!NoStartupPrompts) _ = Task.Run(() => { try { SettingsBackups.MakeIfDue(AppSettings.Folder, SettingsBackups.DefaultDir); } catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException) { } });
             if (!HasUploader) { } // SteamCMD is only needed by the mod manager to download missing mods, and it asks then
             else if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { if (!NoStartupPrompts) await OfferInstallAsync(); }
             else _ = StartupSteamAsync(SteamLogin.LooksCached(_s.EffectiveSteamCmd, _s.Account));
@@ -1205,7 +1206,9 @@ public sealed partial class MainForm : Form
                 Row(openData, forget),
                 Row(Btn("E&xport settings...", (_, _) => ExportSettings()), Btn("&Import settings...", (_, _) => ImportSettings()),
                     Btn("Export upload &history...", (_, _) => ExportHistory(UploadHistory.Load(), "upload-history.csv"))),
-                Hint("Export saves your settings, profiles, per-folder options (including Discord webhook links, so keep the file private) and upload history in one " +
+                Row(Btn("&Restore a backup...", (_, _) => RestoreSettingsBackup())),
+                Hint($"A backup of the settings, upload history and the Drop Pod's modlists and notes is made once a day when Modwright starts (the newest {SettingsBackups.Keep} are kept)."),
+                Hint("Export saves your settings, profiles, per-folder options (including Discord webhook links, so keep the file private), upload history and the Drop Pod's modlists and notes in one " +
                      "zip, to bring to another PC with Import. SteamCMD and its saved Steam login stay behind: log in once on the new PC.")),
             Card("Help", null,
                 Row(Lbl("Everything works from the keyboard.").Role(ThemeRole.Muted), SmallBtn("Keyboard shortcuts (F1)", (_, _) => ShowShortcuts())),
@@ -2269,7 +2272,7 @@ public sealed partial class MainForm : Form
         try
         {
             SaveWindow(); // so the file holds what the window shows now
-            var n = SettingsTransfer.Export(dlg.FileName);
+            var n = SettingsTransfer.Export(dlg.FileName, dropPod: true);
             Append($"Exported settings and upload history ({n} files) to {dlg.FileName}. It includes any Discord webhook links, so keep it private.", LogKind.Ok);
         }
         catch (Exception e) { MessageBox.Show(this, "Could not export the settings: " + e.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error); }
@@ -2284,10 +2287,34 @@ public sealed partial class MainForm : Form
         if (_busy) return;
         using var dlg = new OpenFileDialog { Title = "Import settings", Filter = "Settings export (*.zip)|*.zip" };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
-        var (imported, error) = SettingsTransfer.Read(dlg.FileName);
+        ApplySettingsFile(dlg.FileName, "Replace this PC's settings and upload history with the ones in this file? The current ones are kept in a backup folder first.", "Imported");
+    }
+
+    /// <summary>Options > About > Your data > Restore a backup: picks one of the daily backups and puts it back.</summary>
+    void RestoreSettingsBackup()
+    {
+        if (_busy) return;
+        var list = SettingsBackups.List(SettingsBackups.DefaultDir);
+        if (list.Count == 0) { MessageBox.Show(this, "There are no backups yet. One is made each day Modwright starts.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+        using var w = new ListWindow("Restore a backup", "Pick the day to go back to. Your current settings are kept in a backup folder first, so this can be undone too.",
+            new[] { ("Made", 220), ("Size", 100) });
+        foreach (var b in list) w.AddRow(b, Tone.Normal, b.Made.ToString("dddd d MMMM yyyy, HH:mm"), PackageCheck.Size(b.Bytes));
+        SettingsBackup? picked = null;
+        w.DoubleClicked = tag => { picked = tag as SettingsBackup; w.Close(); };
+        w.AddButton("&Restore", () => { picked = w.Selected as SettingsBackup; w.Close(); }, needsRow: true, primary: true);
+        w.AddButton("&Open the folder", () => OpenFolder(SettingsBackups.DefaultDir));
+        w.AddClose();
+        w.ShowDialog(this);
+        if (picked != null)
+            ApplySettingsFile(picked.Path, $"Go back to the settings, upload history and Drop Pod modlists from {picked.Made:d MMMM, HH:mm}? The current ones are kept in a backup folder first.", "Restored");
+    }
+
+    /// <summary>Reads a settings zip (an export or a daily backup), asks, asks where moved mods folders are, then takes its values.</summary>
+    void ApplySettingsFile(string file, string question, string verb)
+    {
+        var (imported, error) = SettingsTransfer.Read(file);
         if (imported == null) { MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
-        if (MessageBox.Show(this, "Replace this PC's settings and upload history with the ones in this file? The current ones are kept in a backup folder first.",
-                Text, MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+        if (MessageBox.Show(this, question, Text, MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
 
         foreach (var folder in imported.Folders(recent: false).Where(f => !Directory.Exists(f)))
         {
@@ -2301,16 +2328,16 @@ public sealed partial class MainForm : Form
         SettingsTransfer.FitToThisPc(imported);
         try
         {
-            var backup = SettingsTransfer.Import(dlg.FileName, imported);
+            var backup = SettingsTransfer.Import(file, imported);
             _s.CopyFrom(imported);
-            Append($"Imported settings and upload history from {dlg.FileName}. The previous ones are in {backup}.", LogKind.Ok);
+            Append($"{verb} settings and upload history from {file}. The previous ones are in {backup}.", LogKind.Ok);
         }
         catch (Exception e) { MessageBox.Show(this, "Could not import the settings: " + e.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
         FillRecent();
         ShowProfiles();
         ShowAnnounce();
         _ = RefreshAllAsync();
-        MessageBox.Show(this, "Settings imported. Restart Modwright so every option shows its imported value.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+        MessageBox.Show(this, $"Settings {verb.ToLowerInvariant()}. Restart Modwright so every option shows its new value.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     /// <summary>The empty mod list says why it is empty and offers the button that fixes it.</summary>
@@ -4531,7 +4558,18 @@ public sealed partial class MainForm : Form
         catch (Exception e) { res = new PublishResult(false, e.Message); }
         finally { SetBusy(false); }
         if (report == null) { MessageBox.Show(this, $"Could not build the package for {m.Name}:\n\n{res.Message}", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
-        using var f = new PackagePreviewForm(m, report);
+        using var f = new PackagePreviewForm(m, report, patterns =>
+        {
+            var have = _cfg.LeaveOut ?? Array.Empty<string>();
+            _cfg.LeaveOut = have.Concat(patterns).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            try
+            {
+                _cfg.Save(_s.RepoPath);
+                return $"Every package from this mods folder now leaves out {string.Join(", ", patterns)} (saved in {ProjectConfig.FileName}" +
+                       (RepoIsGit ? "; commit it so a fresh clone and CI do the same)." : ").");
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { _cfg.LeaveOut = have; return "Could not save the list: " + e.Message; }
+        });
         f.ShowDialog(this);
     }
 
