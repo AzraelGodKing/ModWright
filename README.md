@@ -791,6 +791,9 @@ or the person installing or operating it. What it does connect to, and why:
   release when you choose to update. Nothing about you or your mods is sent. Turn it off under **Options > About**
   (**Check for a newer version at start-up**). Making a GitHub release for an upload (**Options > Uploading > After uploading**) runs your
   own `gh` tool, only when you turn it on for a mods folder.
+- **GitHub, for Drop Pod updates:** **Check for updates** in The Drop Pod also reads the public latest release of each
+  GitHub repository a Mods folder mod links in its About.xml, and downloads a release only when you tick that mod to
+  update. Nothing about you or your mods is sent.
 - **Steam** ([Valve privacy policy](https://store.steampowered.com/privacy_agreement/)): uploads go through Valve's
   SteamCMD, which you sign in to yourself. The app reads public Workshop details and changelog pages for the Workshop ids
   in your mods folder, looks up a game's name from its app ID when you enter one, and downloads SteamCMD from Valve when
