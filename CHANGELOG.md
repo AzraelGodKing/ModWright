@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.13.0
+
+XML clashes: what goes wrong between mods when they change the same game data, for players and for mod authors.
+
+- **The Drop Pod's Insight finds XML clashes.** It loads every active mod's Defs and Patches the way RimWorld does
+  (respecting loadFolders.xml, MayRequire, FindMod and Conditional patches) and says where two mods change the same
+  thing: a mod that replaces another mod's def outright, a patch that overwrites or removes what another mod's patch
+  changed, and which one wins because it loads later.
+- **Patches that will fail are named before you start the game.** Insight lists each mod's patches that find nothing
+  to change (the red "patch operation failed" errors in the log), and XML files that aren't valid.
+- **Mods that rewrite many of the game's own defs** are pointed out, since other mods' changes to those may not stick.
+- **The Launch Pad checks your patches before upload.** With RimWorld found, the upload confirmation runs your mod with
+  only the game, the DLC and its dependencies, and warns about patches that find nothing (players would get red errors)
+  and defs it takes over from a dependency.
+- **More RimWorld checks before upload, no game needed:** a def defined twice in the same mod, a texPath into the mod's
+  own Textures folders with no texture there (a pink square in game), and English Keyed texts nothing in the mod's
+  code or XML mentions.
+
 ## 1.11.0
 
 A polish pass on what is already there: smoother and quicker, with nothing new to learn.
