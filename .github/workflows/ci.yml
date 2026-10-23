@@ -72,6 +72,23 @@ jobs:
           name: SteamCmdHelper-win-x64
           path: publish/SteamCmdHelper.exe
 
+      # Click-through tests: the published exe, portable in a temp folder with a fake RimWorld and Sun Haven, driven
+      # through UI Automation (FlaUI).
+      - name: Click-through tests
+        timeout-minutes: 10
+        env:
+          MODWRIGHT_EXE: ${{ github.workspace }}/publish/SteamCmdHelper.exe
+        run: dotnet test tests/SteamCmdHelper.UiTests -c Release --logger "console;verbosity=detailed" --logger "trx;LogFileName=ui.trx" --results-directory UiTestResults
+
+      - name: Upload click-through results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-results
+          path: UiTestResults
+          if-no-files-found: ignore
+
       # Screenshots of both themes for reviewing UI changes. Best effort: never fails the build.
       - name: Screenshots
         continue-on-error: true
