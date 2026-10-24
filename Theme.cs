@@ -26,6 +26,14 @@ public sealed record Palette(
     /// <summary>The darker end of the gradient on Accent and Primary buttons.</summary>
     public Color AccentDeep { get; init; } = Color.FromArgb(18, 58, 168);
     public Color PrimaryDeep { get; init; } = Color.FromArgb(52, 92, 14);
+
+    Color? _primaryText, _brand;
+
+    /// <summary>Text on Primary buttons. Same as <see cref="AccentText"/> unless a theme's Primary needs its own.</summary>
+    public Color PrimaryText { get => _primaryText ?? AccentText; init => _primaryText = value; }
+
+    /// <summary>The coloured half of the app name. Same as <see cref="Info"/> unless a theme sets its own.</summary>
+    public Color Brand { get => _brand ?? Info; init => _brand = value; }
 }
 
 /// <summary>
@@ -37,7 +45,7 @@ public static class Theme
     public const string DarkName = Display.Dark, LightName = Display.Light, KatsName = Display.Kats, KonekoName = Display.Koneko,
         SerinaName = Display.Serina, WolfieName = Display.Wolfie, VickraName = Display.Vickra, KitomiName = Display.Kitomi,
         SzendooName = Display.Szendoo, TriphlxName = Display.Triphlx, TohmaName = Display.Tohma,
-        SkywolfName = Display.Skywolf, SystemName = Display.System, HighContrastName = "HighContrast";
+        SkywolfName = Display.Skywolf, HunterName = Display.Hunter, SystemName = Display.System, HighContrastName = "HighContrast";
 
     // The look follows Steam's own desktop client: deep slate-blue surfaces, a near-black brand bar, Steam blue for
     // links, ticks and selection, light-blue secondary buttons and a green button for the main job. Neither theme uses
@@ -268,6 +276,28 @@ public static class Theme
     };
 
     /// <summary>
+    /// Hunter: black surfaces with silver for ticks, selection and the other buttons' text, dark text on the silver, and
+    /// red kept to small touches: the one main button of each window and the coloured half of the app name.
+    /// </summary>
+    public static readonly Palette HunterPalette = new(
+        HunterName, true,
+        Back: Color.FromArgb(8, 8, 9), Surface: Color.FromArgb(17, 17, 19), Header: Color.FromArgb(0, 0, 0),
+        Input: Color.FromArgb(12, 12, 14), Border: Color.FromArgb(58, 60, 66),
+        Text: Color.FromArgb(226, 228, 232), Muted: Color.FromArgb(150, 153, 160), Title: Color.White,
+        Button: Color.FromArgb(30, 31, 35), ButtonText: Color.FromArgb(196, 200, 208),
+        ButtonHover: Color.FromArgb(42, 44, 49), ButtonDown: Color.FromArgb(36, 37, 42),
+        Accent: Color.FromArgb(192, 196, 204), AccentHover: Color.FromArgb(214, 218, 226), AccentText: Color.FromArgb(12, 12, 14),
+        Primary: Color.FromArgb(178, 24, 36), PrimaryHover: Color.FromArgb(204, 36, 48),
+        Track: Color.FromArgb(30, 31, 35), ListHeader: Color.FromArgb(12, 12, 14),
+        Ok: Color.FromArgb(90, 210, 130), Warn: Color.FromArgb(240, 200, 80), Error: Color.FromArgb(255, 110, 110), Info: Color.FromArgb(206, 212, 224))
+    {
+        AccentDeep = Color.FromArgb(120, 124, 134),
+        PrimaryDeep = Color.FromArgb(110, 10, 20),
+        PrimaryText = Color.White,
+        Brand = Color.FromArgb(214, 40, 52),
+    };
+
+    /// <summary>
     /// Windows High Contrast: every colour comes from the user's contrast theme, so the app reads exactly like the rest
     /// of Windows. Status colours fall back to the text colour; the words (badges, notes) carry the meaning.
     /// </summary>
@@ -302,7 +332,7 @@ public static class Theme
 
     public static Palette Current { get; private set; } = DarkPalette;
 
-    /// <summary>What the user picked: "Dark", "Light", "Kats", "Koneko", "Serina", "Wolfie", "Vickra", "Kitomi", "Szendoo", "Triphlx", "Tohma", "Skywolf" or "System". <see cref="Current"/> is what that resolves to now.</summary>
+    /// <summary>What the user picked: "Dark", "Light", "Kats", "Koneko", "Serina", "Wolfie", "Vickra", "Kitomi", "Szendoo", "Triphlx", "Tohma", "Skywolf", "Hunter" or "System". <see cref="Current"/> is what that resolves to now.</summary>
     public static string Choice { get; private set; } = DarkName;
 
     /// <summary>True while Windows High Contrast is on; it overrides the chosen theme.</summary>
@@ -324,7 +354,7 @@ public static class Theme
                 VickraName => VickraPalette, KitomiName => KitomiPalette,
                 SzendooName => SzendooPalette,
                 TriphlxName => TriphlxPalette, TohmaName => TohmaPalette,
-                SkywolfName => SkywolfPalette, _ => DarkPalette,
+                SkywolfName => SkywolfPalette, HunterName => HunterPalette, _ => DarkPalette,
             };
         return Current != before;
     }
@@ -536,7 +566,7 @@ public static class Theme
             case Label l:
                 l.BackColor = back;
                 if (role != ThemeRole.Keep)
-                    l.ForeColor = role switch { ThemeRole.Muted => p.Muted, ThemeRole.Title => p.Title, ThemeRole.Brand => p.Info, _ => p.Text };
+                    l.ForeColor = role switch { ThemeRole.Muted => p.Muted, ThemeRole.Title => p.Title, ThemeRole.Brand => p.Brand, _ => p.Text };
                 break;
             case CheckBox or RadioButton:
                 c.BackColor = back; c.ForeColor = p.Text;
@@ -635,7 +665,7 @@ public static class Theme
         var p = PaletteFor(c);
         var accent = c is Button and not NavButton && RoleOf(c) is ThemeRole.Accent or ThemeRole.Primary;
         var w = Math.Max(2, c.LogicalToDeviceUnits(2));
-        using var pen = new Pen(accent ? p.AccentText : p.Accent, w) { Alignment = System.Drawing.Drawing2D.PenAlignment.Inset };
+        using var pen = new Pen(accent ? (RoleOf(c) == ThemeRole.Primary ? p.PrimaryText : p.AccentText) : p.Accent, w) { Alignment = System.Drawing.Drawing2D.PenAlignment.Inset };
         var inset = accent ? w : 0;
         e.Graphics.DrawRectangle(pen, inset, inset, c.Width - 1 - inset * 2, c.Height - 1 - inset * 2);
     }
@@ -650,11 +680,13 @@ public static class Theme
         b.FlatStyle = FlatStyle.Flat;
         b.UseVisualStyleBackColor = false;
         b.FlatAppearance.BorderSize = 1;
-        b.FlatAppearance.BorderColor = accent ? p.Accent : p.Border;
-        b.FlatAppearance.MouseOverBackColor = accent ? p.AccentHover : p.ButtonHover;
-        b.FlatAppearance.MouseDownBackColor = accent ? p.Accent : p.ButtonDown;
-        b.BackColor = accent ? p.Accent : p.Button;
-        b.ForeColor = accent ? p.AccentText : p.ButtonText;
+        var primary = accent && RoleOf(b) == ThemeRole.Primary;
+        var fill = primary ? p.Primary : p.Accent;
+        b.FlatAppearance.BorderColor = accent ? fill : p.Border;
+        b.FlatAppearance.MouseOverBackColor = accent ? (primary ? p.PrimaryHover : p.AccentHover) : p.ButtonHover;
+        b.FlatAppearance.MouseDownBackColor = accent ? fill : p.ButtonDown;
+        b.BackColor = accent ? fill : p.Button;
+        b.ForeColor = primary ? p.PrimaryText : accent ? p.AccentText : p.ButtonText;
         b.Invalidate();
     }
 
@@ -699,7 +731,7 @@ public static class Theme
             var bottom = Blend(baseColor, deep, down ? 0.55 : 0.45);
             using var bg = new System.Drawing.Drawing2D.LinearGradientBrush(r, top, bottom, 90f);
             g.FillPath(bg, path);
-            text = p.AccentText;
+            text = role == ThemeRole.Primary ? p.PrimaryText : p.AccentText;
         }
         else
         {

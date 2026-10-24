@@ -36,6 +36,6 @@ sealed class BrandName : Label
         var height = Math.Max(a.Height, b.Height);
         // Both parts share a baseline: the fonts are the same size, so lining up their bottoms is enough.
         TextRenderer.DrawText(e.Graphics, First, Theme.TitleFont, new Point(Padding.Left, Padding.Top + height - a.Height), ForeColor, Flags);
-        TextRenderer.DrawText(e.Graphics, Second, Theme.BrandFont, new Point(Padding.Left + a.Width, Padding.Top + height - b.Height), Theme.Banner.Info, Flags);
+        TextRenderer.DrawText(e.Graphics, Second, Theme.BrandFont, new Point(Padding.Left + a.Width, Padding.Top + height - b.Height), Theme.Banner.Brand, Flags);
     }
 }
