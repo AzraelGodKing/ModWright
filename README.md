@@ -181,7 +181,7 @@ the window was closed. The newest 50 are kept, in `%LOCALAPPDATA%\SteamCmdHelper
 
 The app uses a dark theme by default. The **Theme** drop-down under **Options > Appearance** offers **Light**, **Kats**
 (gunmetal grey with orange), **Koneko** (purple and black), **Serina** (purple and mint green), **Wolfie** (blue and
-green), **Vickra** (sapphire blue on emerald green), **Kitomi** (red and cyan on black with white text), **Szendoo** (dim grey with hot pink), **Triphlx** (electric blue on black), **Tohma** (crimson on royal blue), **Skywolf** (deep dark purple on black), or **Match Windows** to follow Windows' light or dark app mode (it switches when Windows
+green), **Vickra** (sapphire blue on emerald green), **Kitomi** (red and cyan on black with white text), **Szendoo** (dim grey with hot pink), **Triphlx** (electric blue on black), **Tohma** (crimson on royal blue), **Skywolf** (deep dark purple on black), **Hunter** (silver on black with touches of red), or **Match Windows** to follow Windows' light or dark app mode (it switches when Windows
 does). When Windows High Contrast is on, the app uses its
 contrast colours instead. **Text size** (100% to 175%) makes all text, and the layout with it, larger on top of Windows'
 own display scaling; it is used from the next start. The choices are saved for your Windows user.
@@ -617,6 +617,7 @@ list when it closes.
   Workshop mods unsubscribed), **Turn downloaded copies into subscriptions** (SteamCMD copies in the Mods folder handed
   to Steam, which keeps them up to date), **Optimize textures** (a DDS beside each PNG of the mods you tick, which RimWorld 1.5+
   loads faster and keeps far smaller in video memory; Undo removes them), and **Back up the newest save before a risky start**.
+  to Steam, which keeps them up to date), and **Back up the newest save before a risky start**.
 - **More:** export the active mods **with their mod settings** as a .zip (import takes it too), set **launch
   options** for the normal game or an instance, and **freeze** an instance: its Workshop mods are copied in so Steam
   updates can't change them, and linked into the Mods folder only while it plays.
