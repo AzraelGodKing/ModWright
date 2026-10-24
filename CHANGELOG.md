@@ -40,6 +40,11 @@ XML clashes: what goes wrong between mods when they change the same game data, f
 - **More RimWorld checks before upload, no game needed:** a def defined twice in the same mod, a texPath into the mod's
   own Textures folders with no texture there (a pink square in game), and English Keyed texts nothing in the mod's
   code or XML mentions.
+## 1.12.0
+
+- **A new theme: Hunter.** Options > Appearance > Theme now also offers Hunter: black with silver for ticks, selected
+  rows and button text. Red stays a small touch, on the one main button of each window and the "wright" in the app
+  name, so it never takes over.
 
 ## 1.11.0
 

@@ -10,7 +10,7 @@ public enum LogFilter { All, WarningsAndErrors, ErrorsOnly }
 public static class Display
 {
     public const string Dark = "Dark", Light = "Light", Kats = "Kats", Koneko = "Koneko", Serina = "Serina", Wolfie = "Wolfie", Vickra = "Vickra", Kitomi = "Kitomi", Szendoo = "Szendoo",
-        Triphlx = "Triphlx", Tohma = "Tohma", Skywolf = "Skywolf", System = "System";
+        Triphlx = "Triphlx", Tohma = "Tohma", Skywolf = "Skywolf", Hunter = "Hunter", System = "System";
 
     /// <summary>The themes in Options > Appearance, in the drop-down's order: saved name and the name shown.</summary>
     public static readonly (string Name, string Label)[] Themes =
@@ -20,7 +20,7 @@ public static class Display
         (Vickra, "Vickra (sapphire and emerald)"), (Kitomi, "Kitomi (red, black and cyan)"),
         (Szendoo, "Szendoo (grey and pink)"),
         (Triphlx, "Triphlx (black and blue)"), (Tohma, "Tohma (blue and red)"),
-        (Skywolf, "Skywolf (deep purple and black)"),
+        (Skywolf, "Skywolf (deep purple and black)"), (Hunter, "Hunter (black and silver)"),
         (System, "Match Windows"),
     };
 
