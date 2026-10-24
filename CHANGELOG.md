@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.0
+
+- **A new theme: PlusBacon.** Options > Appearance > Theme now also offers PlusBacon: teal (#069494) on black, with
+  the teal on buttons, ticks and selected rows and a lighter teal for links and the "wright" in the app name.
+
 ## 1.16.1
 
 Under the hood; nothing you use changes.
