@@ -21,6 +21,7 @@ public class DisplayTests
     [InlineData("triphlx", "Triphlx")]
     [InlineData("TOHMA", "Tohma")]
     [InlineData("skywolf", "Skywolf")]
+    [InlineData("HUNTER", "Hunter")]
     [InlineData("HighContrast", "Dark")]
     public void Theme_choice_is_normalized_with_dark_as_default(string? saved, string expected) =>
         Assert.Equal(expected, Display.NormalizeTheme(saved));
