@@ -138,7 +138,7 @@ When packaging with git, files in the mod folder that git does not have (ignored
 compared against the package: a `.dll` left out that way stops the upload, since players would get the mod without its
 code, and anything else left out is a warning. The RimWorld layout picks up builds in `Assemblies` and in version
 folders such as `1.6/Assemblies` even when `*.dll` is ignored.
-Right-click a mod and choose **Package > Preview package...** to see every file and its size before uploading.
+Right-click a mod and choose **Package > Preview package...** to see every file and its size before uploading. It says which folders hold most of the size (click **Size** to sort by it) and lists what players rarely need (source art, debug files, a Source folder); **Leave these out of every package** saves those patterns as `LeaveOut` in `.steamhelper.json`, for git packaging too.
 
 Each upload remembers which files it sent (`%LocalAppData%\SteamCmdHelper\manifests`), so the next one of the same item
 says in the log what was added, changed and removed since then, and **Preview package...** marks each file. A package
@@ -615,6 +615,8 @@ list when it closes.
   back), **Load a Steam collection as a modlist**, **Compare with a friend's list** (from a share code, with Make mine
   match), **Load times** (each start timed from the log), **Clean up unused mods and settings** (to the Recycle Bin,
   Workshop mods unsubscribed), **Turn downloaded copies into subscriptions** (SteamCMD copies in the Mods folder handed
+  to Steam, which keeps them up to date), **Optimize textures** (a DDS beside each PNG of the mods you tick, which RimWorld 1.5+
+  loads faster and keeps far smaller in video memory; Undo removes them), and **Back up the newest save before a risky start**.
   to Steam, which keeps them up to date), and **Back up the newest save before a risky start**.
 - **More:** export the active mods **with their mod settings** as a .zip (import takes it too), set **launch
   options** for the normal game or an instance, and **freeze** an instance: its Workshop mods are copied in so Steam

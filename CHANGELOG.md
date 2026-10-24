@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.15.0
+
+Lighter textures, leaner packages and a safety net for your settings.
+
+- **Optimize textures** (The Drop Pod > Tools): pick active mods and each PNG texture gets a DDS beside it, which
+  RimWorld 1.5 and later load instead: quicker to load and far smaller in video memory, which matters most with big
+  texture mods. The PNGs are never changed, DDS files a mod ships itself are left alone, textures a mod updates are
+  converted again, and Undo removes the DDS files Modwright made. The encoder is built in; nothing is downloaded.
+- **See where a package's size goes.** The package view (right-click a mod > Package > Preview package) says which folders
+  hold most of it, sorts the files by size when you click Size, and lists what players rarely need (source art such as
+  .psd and .blend, debug files, a Source folder, tool folders).
+- **Leave those out of every package** in one click. The patterns are saved in the mods folder's `.steamhelper.json`
+  (built-in layouts keep them too) and apply to git packaging as well as folder copies.
+- **Daily settings backups.** Once a day when Modwright starts, the settings, upload history and the Drop Pod's
+  modlists, notes and load-order history are copied (the newest 14 are kept). **Options > About > Your data > Restore a
+  backup** puts one back, keeping the current ones first.
+- **Export settings takes the Drop Pod along:** modlists, notes and load-order history now travel to another PC too.
+
 ## 1.14.0
 
 The Drop Pod for players with big mod lists: mods Steam keeps up to date, drag and drop, quicker rescans, updates
