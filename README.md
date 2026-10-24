@@ -599,7 +599,9 @@ list when it closes.
   from the mod's DLLs, never run), its Harmony patch on a method there, a file in its folder, or its package ID.
 - **Insight:** hints about the active mods: methods two mods both rewrite with Harmony transpilers, prefixes that
   can stop other mods' changes, mods that patch per-tick methods, mods heavy on textures or definitions, and your
-  rules file's notes.
+  rules file's notes. It also loads every active mod's Defs and Patches the way the game does and shows **XML
+  clashes**: a mod replacing another mod's def, a patch overwriting or removing what another mod's patch changed (the
+  one lower in the list wins), patches that find nothing (red errors in the log) and XML files that aren't valid.
 - **Details beside the list:** the picked mod's preview, author, version, needs and needed-by, modlists, your note
   and description, with buttons for its folder, Workshop page and change notes. Right-click a mod for **Why is this
   mod here?** (the rules that put it there) and **Note and colour...**.
@@ -627,6 +629,10 @@ Right-click one of your mods > **RimWorld** (RimWorld layouts only):
 - **Play it live:** links the mod's folder into RimWorld's Mods folder (a directory junction), so each build is in
   the game at once. Only links Modwright made are ever removed; the folder itself is never touched.
 - **Edit About.xml:** the common fields with the Drop Pod's checks live, and rules picked from your installed mods.
+- **Patch check before upload:** with RimWorld found, the upload confirmation runs the mod's XML with only the game,
+  the DLC and its dependencies, and names patches that find nothing and defs it takes over from a dependency. Without
+  the game it still flags a def defined twice, a texPath into the mod's own Textures with no texture, and English
+  Keyed texts nothing in the mod mentions.
 - **Read a player's log:** paste a log or a pastebin/gist/hastebin link and see only the problems in your own mods.
 
 ### Your own load-order rules

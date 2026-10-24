@@ -58,6 +58,7 @@ public static class RimWorldLint
             problems.Add($"{Path.GetRelativePath(modDir, file).Replace('\\', '/')} is not valid XML ({error}): every player would get red errors");
         warnings.AddRange(TranslationGaps(modDir));
         warnings.AddRange(HarmonyWarnings(modDir, meta));
+        warnings.AddRange(RimWorldXmlLint.Check(modDir, supported));
         return (problems, warnings);
     }
 
