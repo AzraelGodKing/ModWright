@@ -845,6 +845,17 @@ dotnet test tests/SteamCmdHelper.Tests
 
 The tests compile the non-UI source files directly, so they run on Windows, Linux or macOS.
 
+On Windows there are also click-through tests that start the real app and use it through UI Automation (FlaUI): a
+portable copy in a temp folder, with a fake RimWorld and Sun Haven, so nothing of yours is touched. Build the app first
+(or set `MODWRIGHT_EXE` to an exe), then:
+
+```
+dotnet build SteamCmdHelper.csproj -c Release
+dotnet test tests/SteamCmdHelper.UiTests -c Release
+```
+
+CI runs them against the published exe on every push and pull request.
+
 ## Releasing (maintainer)
 
 Run **Actions > Promote test and release > Run workflow** when `test` is ready to ship. It rebases `test` onto `main`,

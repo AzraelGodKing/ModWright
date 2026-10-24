@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.16.1
+
+Under the hood; nothing you use changes.
+
+- **Click-through tests:** CI now starts the real app (portable, with a fake RimWorld and Sun Haven) and clicks
+  through The Drop Pod the way a player would: activating a needed mod, saving to the game, switching to Sun Haven.
+- The main window's code is split into smaller files by area, so changes are easier to review.
+
 ## 1.16.0
 
 The Drop Pod learns a second game: Sun Haven.
