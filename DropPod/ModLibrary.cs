@@ -37,11 +37,13 @@ public static class ModLibrary
         var notes = new ConcurrentBag<string>();
         var found = new ConcurrentBag<ModManifest>();
         var folders = new List<ModFolder>();
+        var listed = new List<ModFolder>();
         foreach (var mf in game.ModFolders(install))
         {
             try
             {
                 if (!Directory.Exists(mf.Path)) continue;
+                listed.Add(mf);
                 folders.AddRange(Directory.GetDirectories(mf.Path).Select(d => new ModFolder(d, mf.Source)));
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { notes.Add($"Could not list {mf.Path}: {e.Message}"); }
@@ -50,10 +52,14 @@ public static class ModLibrary
         {
             try
             {
-                if (game.ReadMod(f.Path, f.Source) is { } m) found.Add(m);
+                if (ReadCached(game, f) is { } m) found.Add(m);
             }
             catch (Exception e) { notes.Add($"Could not read {f.Path}: {e.Message}"); }
         });
+        // Forget folders that are gone, so the cache doesn't grow with every mod ever seen.
+        var seen = folders.Select(f => CacheKey(game, f)).ToHashSet();
+        var roots = listed.Select(r => CacheKey(game, r) + Path.DirectorySeparatorChar).ToList();
+        foreach (var k in Cache.Keys.Where(k => !seen.Contains(k) && roots.Any(r => k.StartsWith(r, StringComparison.Ordinal))).ToList()) Cache.TryRemove(k, out _);
         IReadOnlyList<string>? active = null;
         try { active = game.ReadActiveMods(install); }
         catch (Exception e) { notes.Add("Could not read the active mod list: " + e.Message); }
@@ -64,6 +70,40 @@ public static class ModLibrary
             Active = active,
             Notes = notes.OrderBy(n => n, StringComparer.Ordinal).ToList(),
         };
+    }
+
+    /// <summary>
+    /// Mods read before, by folder, with a stamp of their About folder (each file's name, size and time). A rescan reads
+    /// only the mods whose About folder changed, which matters with a thousand or more Workshop mods.
+    /// </summary>
+    static readonly ConcurrentDictionary<string, (string Stamp, ModManifest Mod)> Cache = new(StringComparer.Ordinal);
+
+    static string CacheKey(IGameModule game, ModFolder f) => $"{game.AppId}|{f.Source}|{f.Path}";
+
+    /// <summary>The mod in the folder, from the cache when its About folder hasn't changed. Folders without an About folder are always read.</summary>
+    public static ModManifest? ReadCached(IGameModule game, ModFolder f)
+    {
+        var stamp = Stamp(f.Path);
+        var key = CacheKey(game, f);
+        if (stamp != null && Cache.TryGetValue(key, out var hit) && hit.Stamp == stamp) return hit.Mod;
+        var m = game.ReadMod(f.Path, f.Source);
+        if (stamp != null && m != null) Cache[key] = (stamp, m);
+        else Cache.TryRemove(key, out _);
+        return m;
+    }
+
+    /// <summary>The About folder's files with their sizes and times, or null when there's no About folder.</summary>
+    public static string? Stamp(string modFolder)
+    {
+        if (SafeFiles.Child(modFolder, "About", directory: true) is not { } about) return null;
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var file in new DirectoryInfo(about).EnumerateFiles().OrderBy(x => x.Name, StringComparer.Ordinal))
+                sb.Append(file.Name).Append('|').Append(file.Length).Append('|').Append(file.LastWriteTimeUtc.Ticks).Append(';');
+            return sb.ToString();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
     }
 }
 
