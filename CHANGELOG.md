@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.16.0
+
+The Drop Pod learns a second game: Sun Haven.
+
+- **Pick the game** at the top of The Drop Pod: RimWorld or Sun Haven. The choice is remembered.
+- **Sun Haven mods** are the BepInEx plugins in `BepInEx\plugins`, folders and loose DLLs alike, with names and
+  versions from Thunderstore's manifest.json or the plugin itself. Unticking a mod and pressing Save to game moves it
+  to `BepInEx\plugins-disabled` (where mod managers keep switched-off plugins); ticking moves it back.
+- **Missing dependencies from Thunderstore:** Download missing gets them (and what they need) into
+  `BepInEx\plugins\Author-Name`, laid out like r2modman does, without touching your config files.
+- **Updates from Thunderstore:** Check for updates lists plugins with a newer version; the ticked ones are updated
+  with the old copy zipped first.
+- Modlists, share codes, Compare with a friend, Find the broken mod, notes, history, Play, Test and Read the log work
+  for Sun Haven too. RimWorld-only tools (instances, saves, Insight, Workshop and texture tools) are hidden for it.
+- The command line takes `--game SunHaven`.
+
 ## 1.15.0
 
 Lighter textures, leaner packages and a safety net for your settings.

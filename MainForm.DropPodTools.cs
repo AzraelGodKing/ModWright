@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using SteamCmdHelper.DropPod;
+using SteamCmdHelper.DropPod.SunHaven;
 
 namespace SteamCmdHelper;
 
@@ -233,19 +234,26 @@ public sealed partial class MainForm
         var menu = new ContextMenuStrip();
         var scanned = _dpScan != null;
         menu.Items.Add("Find the broken mod for me...", null, (_, _) => StartBisect()).Enabled = scanned && !_dpBusy && _dpBisect == null;
-        menu.Items.Add("Load a Steam collection as a modlist...", null, async (_, _) => await LoadCollectionAsync()).Enabled = scanned && !_dpBusy;
+        if (DpRimWorld) menu.Items.Add("Load a Steam collection as a modlist...", null, async (_, _) => await LoadCollectionAsync()).Enabled = scanned && !_dpBusy;
         menu.Items.Add("Compare with a friend's list...", null, (_, _) => CompareWithFriend()).Enabled = scanned;
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Load order history...", null, (_, _) => ShowDropPodHistory()).Enabled = scanned;
-        menu.Items.Add("Load times...", null, (_, _) => ShowLoadTimes());
-        menu.Items.Add("Clean up unused mods and settings...", null, async (_, _) => await ShowCleanupAsync()).Enabled = scanned && !_dpBusy;
-        menu.Items.Add("Turn downloaded copies into subscriptions...", null, async (_, _) => await ConvertDownloadedCopiesAsync()).Enabled = scanned && !_dpBusy;
-        menu.Items.Add("Optimize textures...", null, async (_, _) => await OptimizeTexturesAsync()).Enabled = scanned && !_dpBusy;
+        if (DpRimWorld)
+        {
+            menu.Items.Add("Load times...", null, (_, _) => ShowLoadTimes());
+            menu.Items.Add("Clean up unused mods and settings...", null, async (_, _) => await ShowCleanupAsync()).Enabled = scanned && !_dpBusy;
+            menu.Items.Add("Turn downloaded copies into subscriptions...", null, async (_, _) => await ConvertDownloadedCopiesAsync()).Enabled = scanned && !_dpBusy;
+            menu.Items.Add("Optimize textures...", null, async (_, _) => await OptimizeTexturesAsync()).Enabled = scanned && !_dpBusy;
+        }
+        else menu.Items.Add("Open the BepInEx folder", null, (_, _) => { if (_dpScan != null) OpenFolder(SunHavenModule.BepInExFolder(_dpScan.Install)); }).Enabled = scanned;
         menu.Items.Add(new ToolStripSeparator());
-        var backups = new ToolStripMenuItem("Back up the newest save before a risky start") { Checked = _s.DropPodSaveBackups, CheckOnClick = true };
-        backups.CheckedChanged += (_, _) => { _s.DropPodSaveBackups = backups.Checked; _s.Save(); };
-        menu.Items.Add(backups);
-        menu.Items.Add("Open the save backups", null, (_, _) => OpenFolder(SaveBackupFolder));
+        if (DpRimWorld)
+        {
+            var backups = new ToolStripMenuItem("Back up the newest save before a risky start") { Checked = _s.DropPodSaveBackups, CheckOnClick = true };
+            backups.CheckedChanged += (_, _) => { _s.DropPodSaveBackups = backups.Checked; _s.Save(); };
+            menu.Items.Add(backups);
+            menu.Items.Add("Open the save backups", null, (_, _) => OpenFolder(SaveBackupFolder));
+        }
         Theme.StyleMenu(menu);
         menu.Show(_dpTools, new Point(0, _dpTools.Height));
     }
@@ -769,6 +777,7 @@ public sealed partial class MainForm
     void UpdateJumpList()
     {
         if (!HasDropPod) { JumpList.Set(Array.Empty<(string, string, string)>()); return; }
+        if (!DpRimWorld) return; // --play starts RimWorld; the list stays as it was
         var items = new List<(string Title, string Args, string Tip)> { ("Play RimWorld", "--play", "Start RimWorld normally") };
         foreach (var i in DropPodInstances.All(_dpGame.AppId).Take(8))
             items.Add(($"Play {i.Name}", "--play \"" + i.Name.Replace("\"", "") + "\"", $"Start RimWorld with the instance {i.Name}"));
