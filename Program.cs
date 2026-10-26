@@ -10,7 +10,7 @@ static class Program
         Directory.CreateDirectory(dir);
         var file = ProjectConfig.PathFor(dir);
         void Show(string label, ProjectConfig c) =>
-            sb.AppendLine($"{label}: preset={c.Preset} app={c.AppId} marker='{c.ModMarker}' changelog='{c.Changelog}' error={c.Error ?? "none"}");
+            sb.AppendLine($"{label}: app={c.AppId} marker='{c.ModMarker}' changelog='{c.Changelog}' error={c.Error ?? "none"}");
 
         // 1. saving writes only the layout's name
         ProjectConfig.RimWorld().Save(dir);

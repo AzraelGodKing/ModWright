@@ -15,7 +15,7 @@ public sealed class TestInstallForm : Form
 
     /// <param name="branches">The game's branches, when Steam told us; the box still takes any name.</param>
     /// <param name="mod">The selected mod, offered to put into the install with what it needs; null for none.</param>
-    /// <param name="modsFolder">Where the game loads mods from (empty: the layout does not say, so no mods are added).</param>
+    /// <param name="modsFolder">Where the game loads mods from.</param>
     public TestInstallForm(string game, string appId, IReadOnlyList<GameBranch>? branches, string folder, ModInfo? mod, string modsFolder)
     {
         Text = "Try in a game beta";
@@ -34,7 +34,7 @@ public sealed class TestInstallForm : Form
         _branch.SelectedIndex = open >= 0 ? open : 0;
         _folder.Text = folder;
         _addMod.Text = mod != null ? $"Put {mod.Name} and the Workshop items it needs into the game's {modsFolder} folder" : "";
-        _addMod.Checked = _addMod.Visible = mod != null && modsFolder.Length > 0;
+        _addMod.Checked = _addMod.Visible = mod != null;
 
         var browse = new Button { Text = "&Browse...", AutoSize = true };
         browse.Click += (_, _) =>

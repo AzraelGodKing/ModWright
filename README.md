@@ -23,7 +23,7 @@ Studios. Steam and SteamCMD are trademarks of Valve Corporation; RimWorld is a t
 
 - Windows
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) to build (running needs the .NET 8 runtime, which the SDK includes)
-- `git` on PATH if your repo uses the default packaging (`UseGitArchive`)
+- `git` on PATH when your mods folder is a git repo (mods are then packaged with `git archive`)
 - SteamCMD: required for uploading. If it is missing at start-up the app offers to download it for you
   (also **Options > SteamCMD > Install SteamCMD**)
 - A Steam account that owns RimWorld

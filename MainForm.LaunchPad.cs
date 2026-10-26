@@ -33,10 +33,9 @@ public sealed partial class MainForm
         return () =>
         {
             var m = SelectedMod();
-            rw.Available = RimWorldLint.Applies(_cfg);
             clean.Enabled = !_cleanTesting;
             live.Text = Localizer.T(m != null && LaunchPadLinks.For(m.Dir) != null ? "Stop playing it &live" : "&Play it live in RimWorld");
-            readme.Available = m != null && ReadmeOf(m) != null && !string.IsNullOrWhiteSpace(_cfg.SteamDescriptionFile);
+            readme.Available = m != null && ReadmeOf(m) != null;
         };
     }
 
@@ -256,8 +255,8 @@ public sealed partial class MainForm
     /// <summary>Package > Make a preview image: a title card drawn over a picture or a colour, saved as the mod's preview under Steam's 1 MB.</summary>
     void MakePreviewImage(ModInfo m)
     {
-        var target = m.PreviewPath.Length > 0 ? m.PreviewPath : _cfg.Preview.Length > 0 ? Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Preview)) : Path.Combine(m.Dir, "About", "Preview.png");
-        using var f = new PreviewMakerForm(m.Name, RimWorldLint.Applies(_cfg) ? new Size(640, 360) : new Size(512, 512));
+        var target = m.PreviewPath.Length > 0 ? m.PreviewPath : Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Preview));
+        using var f = new PreviewMakerForm(m.Name, new Size(640, 360));
         if (f.ShowDialog(this) != DialogResult.OK || f.Result is not { } img) return;
         try
         {
@@ -315,18 +314,15 @@ public sealed partial class MainForm
     async Task<List<string>> LaunchPadChecksAsync(List<ModInfo> picked, bool test)
     {
         var lines = new List<string>();
-        if (RimWorldLint.Applies(_cfg))
-        {
-            var rec = CleanTests;
-            // Hashing reads the whole mod, so only for mods that were tested.
-            var found = await Task.Run(() => picked.Select(m => (m, last: rec.Get(m.Dir))).Where(x => x.last != null)
-                .Select(x => (x.m, w: CleanTest.Warning(x.last, CleanTest.FolderHash(x.m.Dir)))).ToList());
-            lines.AddRange(found.Where(x => x.w != null).Select(x => $"{x.m.Name} {x.w}."));
-            // Patches are checked against the game's own XML, so only when RimWorld is found (quietly skipped otherwise).
-            if (_dpScan == null && _dpUsual == null) await ScanDropPodAsync();
-            if (_dpScan is { } scan)
-                lines.AddRange(await Task.Run(() => picked.SelectMany(m => PatchMisses(m, scan)).ToList()));
-        }
+        var rec = CleanTests;
+        // Hashing reads the whole mod, so only for mods that were tested.
+        var found = await Task.Run(() => picked.Select(m => (m, last: rec.Get(m.Dir))).Where(x => x.last != null)
+            .Select(x => (x.m, w: CleanTest.Warning(x.last, CleanTest.FolderHash(x.m.Dir)))).ToList());
+        lines.AddRange(found.Where(x => x.w != null).Select(x => $"{x.m.Name} {x.w}."));
+        // Patches are checked against the game's own XML, so only when RimWorld is found (quietly skipped otherwise).
+        if (_dpScan == null && _dpUsual == null) await ScanDropPodAsync();
+        if (_dpScan is { } scan)
+            lines.AddRange(await Task.Run(() => picked.SelectMany(m => PatchMisses(m, scan)).ToList()));
         if (!test && RepoIsGit)
             foreach (var m in picked.Where(m => m.OnSteam))
             {
@@ -383,7 +379,7 @@ public sealed partial class MainForm
             {
                 if (cache.TryGetValue(m.Dir, out var hit)) return hit;
                 (string?, List<string>) r;
-                if (RimWorldLint.Applies(cfg) && _dpGame.ReadMod(m.Dir, ModSource.Local) is { } man)
+                if (_dpGame.ReadMod(m.Dir, ModSource.Local) is { } man)
                     r = (man.Id.Length > 0 ? man.Id : null, man.Dependencies.Everything.Select(d => d.Id).Where(i => i.Length > 0).ToList());
                 else r = (m.WorkshopId, Dependencies.Find(m, cfg));
                 return cache[m.Dir] = r;

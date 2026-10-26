@@ -2,7 +2,7 @@ using Xunit;
 
 namespace SteamCmdHelper.Tests;
 
-/// <summary>Raising a mod's version: the next patch, minor or major number, and writing it into JSON and key=value files.</summary>
+/// <summary>Raising a mod's version: the next patch, minor or major number, and the "version" command.</summary>
 public sealed class VersionBumpTests : IDisposable
 {
     readonly TempRepo _repo = new();
@@ -27,45 +27,6 @@ public sealed class VersionBumpTests : IDisposable
     [InlineData("1.2-beta")]
     [InlineData("dev")]
     public void Not_a_version_has_no_next(string from) => Assert.Null(ModScanner.NextVersion(from, ModScanner.Bump.Patch));
-
-    [Theory]
-    [InlineData("version=\"1.0\"\n", "version=\"1.1\"\n")]
-    [InlineData("name: Foo\nversion: 1.0\n", "name: Foo\nversion: 1.1\n")]
-    [InlineData("  version = \"1.0\",\r\n", "  version = \"1.1\",\r\n")]
-    [InlineData("supported_version=\"3.*\"\nversion=\"1.0\"\n", "supported_version=\"3.*\"\nversion=\"1.1\"\n")]
-    public void Key_value_keeps_its_style(string text, string expected) =>
-        Assert.Equal(expected, ModScanner.ReplaceKeyValue(text, "version", "1.1"));
-
-    [Fact]
-    public void Key_value_without_the_key_is_not_added() => Assert.Null(ModScanner.ReplaceKeyValue("name=\"x\"\n", "version", "1.1"));
-
-    static ModInfo Mod(string dir) => new() { Dir = dir, Folder = Path.GetFileName(dir) };
-
-    [Fact]
-    public void Json_marker_version_is_written_at_its_path()
-    {
-        var file = _repo.Write("Mod/mod.json", "{ \"info\": { \"title\": \"Ünïcode\", \"version\": \"0.9.0\" }, \"other\": 1 }");
-        var cfg = new ProjectConfig { ModMarker = "mod.json", VersionKey = "info.version" };
-
-        Assert.Null(ModScanner.SetVersion(Mod(Path.Combine(_repo.Root, "Mod")), cfg, "1.0.0"));
-
-        Assert.Equal("1.0.0", ModScanner.ReadMeta(file, "info.version"));
-        Assert.Equal("Ünïcode", ModScanner.ReadMeta(file, "info.title"));
-        Assert.Equal("1", ModScanner.ReadMeta(file, "other"));
-    }
-
-    [Theory]
-    [InlineData("{ // a comment\n \"version\": \"1.0\" }")] // would lose the comment
-    [InlineData("{ \"version\": 1.0 }")]                    // a number, not a string
-    [InlineData("{ \"name\": \"x\" }")]                     // no version at all
-    public void Json_the_app_cannot_safely_write_is_left_alone(string json)
-    {
-        var file = _repo.Write("Mod/mod.json", json);
-        var cfg = new ProjectConfig { ModMarker = "mod.json", VersionKey = "version" };
-
-        Assert.NotNull(ModScanner.SetVersion(Mod(Path.Combine(_repo.Root, "Mod")), cfg, "2.0"));
-        Assert.Equal(json, File.ReadAllText(file));
-    }
 
     // ------------------------------------------------------------ the "version" command
 

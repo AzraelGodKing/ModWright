@@ -148,7 +148,7 @@ public sealed class PackageSizeTests
             cfg.Save(repo);
             var again = ProjectConfig.Load(repo);
             Assert.Equal(new[] { "*.psd" }, again.LeaveOut);
-            Assert.Equal("RimWorld", again.Preset);
+            Assert.Contains("\"Preset\": \"RimWorld\"", File.ReadAllText(ProjectConfig.PathFor(repo)));
         }
         finally { try { Directory.Delete(repo, true); } catch { } }
     }

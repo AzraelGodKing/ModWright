@@ -13,18 +13,18 @@ public class ModScannerTests : IDisposable
     public void Folder_stamp_changes_only_when_the_mods_change()
     {
         var dir = _repo.AddMod("Alpha", workshopId: "1111111");
-        var first = ModScanner.FolderStamp(_repo.Root, _cfg);
+        var first = ModScanner.FolderStamp(_repo.Root);
         Assert.NotEqual("", first);
-        Assert.Equal(first, ModScanner.FolderStamp(_repo.Root, _cfg));
+        Assert.Equal(first, ModScanner.FolderStamp(_repo.Root));
 
         var about = Path.Combine(dir, "About", "About.xml");
         File.SetLastWriteTimeUtc(about, File.GetLastWriteTimeUtc(about).AddMinutes(1)); // edited elsewhere
-        var edited = ModScanner.FolderStamp(_repo.Root, _cfg);
+        var edited = ModScanner.FolderStamp(_repo.Root);
         Assert.NotEqual(first, edited);
 
         _repo.AddMod("Beta");
-        Assert.NotEqual(edited, ModScanner.FolderStamp(_repo.Root, _cfg));
-        Assert.Equal("", ModScanner.FolderStamp(Path.Combine(_repo.Root, "missing"), _cfg));
+        Assert.NotEqual(edited, ModScanner.FolderStamp(_repo.Root));
+        Assert.Equal("", ModScanner.FolderStamp(Path.Combine(_repo.Root, "missing")));
     }
 
     ModInfo ScanOne()
@@ -145,65 +145,7 @@ public class ModScannerTests : IDisposable
     {
         var f = _repo.Write("c.txt", "1.4.0 - Newest\r\n- One\r\n1.3.0 - Older\r\n");
 
-        var (version, notes) = ModScanner.ReadChangelog(f, _cfg, "1.4.0");
-
-        Assert.Null(version);
-        Assert.Equal("1.4.0 - Newest\n- One", notes);
-    }
-
-    // ------------------------------------------------------------ other layouts: changelog problems are only warnings
-
-    void UseFirstLineVersionChangelog()
-    {
-        _cfg.ChangelogByVersion = false;
-        _cfg.ChangelogFirstLineIsVersion = true;
-    }
-
-    [Fact]
-    public void Changelog_version_mismatch_is_a_warning()
-    {
-        UseFirstLineVersionChangelog();
-        _repo.AddMod("Alpha", version: "1.2.3", changelog: "1.2.4\n- A note.");
-
-        var m = ScanOne();
-        Assert.True(m.Ready);
-        Assert.Contains("changelog 1.2.4 vs 1.2.3 in About/About.xml", m.Warnings);
-    }
-
-    [Theory]
-    [InlineData("v1.2.3")]
-    [InlineData("Version 1.2.3")]
-    [InlineData("")]
-    public void Changelog_first_line_not_a_version_is_a_warning(string firstLine)
-    {
-        UseFirstLineVersionChangelog();
-        _repo.AddMod("Alpha", changelog: firstLine + "\n- A note.");
-
-        var m = ScanOne();
-        Assert.True(m.Ready);
-        Assert.Contains("changelog line 1 is not a version", m.Warnings);
-    }
-
-    [Fact]
-    public void Version_comes_from_changelog_when_marker_has_none()
-    {
-        UseFirstLineVersionChangelog();
-        _repo.AddMod("Alpha", version: null, changelog: "1.2\n- Rewrote everything from scratch.");
-
-        var m = ScanOne();
-        Assert.Empty(m.Problems);
-        Assert.Equal("1.2", m.Version);
-    }
-
-    [Fact]
-    public void Missing_changelog_is_a_warning()
-    {
-        UseFirstLineVersionChangelog();
-        _repo.AddMod("Alpha", changelog: null);
-
-        var m = ScanOne();
-        Assert.True(m.Ready);
-        Assert.Contains("no About/changelog.txt", m.Warnings);
+        Assert.Equal("1.4.0 - Newest\n- One", ModScanner.ReadChangelog(f, "1.4.0"));
     }
 
     // ------------------------------------------------------------ Workshop id and preview
@@ -294,78 +236,6 @@ public class ModScannerTests : IDisposable
 
         _repo.AddMod("Alpha", built: false);
         Assert.Equal("Ready (not built (nothing matches Assemblies/*.dll or */Assemblies/*.dll))", ScanOne().StatusText);
-    }
-
-    [Fact]
-    public void Custom_layout_is_respected()
-    {
-        _cfg.ModMarker = "mod.json";
-        _cfg.ManifestFile = "";
-        _cfg.Changelog = "CHANGES.txt";
-        _cfg.ChangelogByVersion = false;
-        _cfg.ChangelogFirstLineIsVersion = true;
-        _cfg.WorkshopIdFile = "id.txt";
-        _cfg.BuiltFiles = Array.Empty<string>();
-        _repo.Write("Gamma/mod.json", "{}");
-        _repo.Write("Gamma/CHANGES.txt", "0.1.0\n- First public release.");
-        _repo.Write("Gamma/id.txt", "777");
-
-        var m = ScanOne();
-        Assert.Empty(m.Problems);
-        Assert.Equal("Gamma", m.Name);
-        Assert.Equal("0.1.0", m.Version);
-        Assert.Equal("777", m.WorkshopId);
-    }
-
-    // ------------------------------------------------------------ ReadChangelog (first-line-is-version format)
-
-    [Fact]
-    public void ReadChangelog_splits_version_from_notes()
-    {
-        UseFirstLineVersionChangelog();
-        var f = _repo.Write("c.txt", "  1.4.0  \n\n- One\n- Two\n");
-
-        var (version, notes) = ModScanner.ReadChangelog(f, _cfg);
-
-        Assert.Equal("1.4.0", version);
-        Assert.Equal("- One\n- Two", notes);
-    }
-
-    [Fact]
-    public void ReadChangelog_handles_crlf()
-    {
-        UseFirstLineVersionChangelog();
-        var f = _repo.Write("c.txt", "1.4.0\r\n- One\r\n- Two\r\n");
-
-        var (version, notes) = ModScanner.ReadChangelog(f, _cfg);
-
-        Assert.Equal("1.4.0", version);
-        Assert.Equal("- One\n- Two", notes);
-    }
-
-    [Fact]
-    public void ReadChangelog_whole_file_is_notes_when_first_line_is_not_version()
-    {
-        _cfg.ChangelogByVersion = false;
-        _cfg.ChangelogFirstLineIsVersion = false;
-        var f = _repo.Write("c.txt", "1.4.0\n- One\n");
-
-        var (version, notes) = ModScanner.ReadChangelog(f, _cfg);
-
-        Assert.Null(version);
-        Assert.Equal("1.4.0\n- One", notes);
-    }
-
-    [Fact]
-    public void ReadChangelog_empty_file_gives_empty_version()
-    {
-        UseFirstLineVersionChangelog();
-        var f = _repo.Write("c.txt", "");
-
-        var (version, notes) = ModScanner.ReadChangelog(f, _cfg);
-
-        Assert.Equal("", version);
-        Assert.Equal("", notes);
     }
 
     // ------------------------------------------------------------ helpers

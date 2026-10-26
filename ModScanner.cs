@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using System.Xml.XPath;
@@ -15,8 +14,8 @@ public sealed class ModInfo
     public string Name = "";
     public string Version = "";
     public string? WorkshopId;
-    /// <summary>Preview image: true = present and within Steam's 1 MB limit, false = missing or too big, null = the layout has none.</summary>
-    public bool? PreviewOk;
+    /// <summary>Preview image: true = present and within Steam's 1 MB limit, false = missing or too big.</summary>
+    public bool PreviewOk;
     public string PreviewNote = "";
     /// <summary>Full path of the preview image when it exists, for the thumbnail in the list.</summary>
     public string PreviewPath = "";
@@ -70,65 +69,16 @@ public static class ModScanner
 
     public static bool IsGitRepo(string repo) => !string.IsNullOrWhiteSpace(Git(repo, "rev-parse --is-inside-work-tree"));
 
-    /// <summary>
-    /// Reads one value from a metadata file. .xml = XPath, .json = dotted path, anything else = a key name
-    /// (matches name=Foo / name = "Foo" / name: Foo) or a regex whose first group is the value.
-    /// </summary>
+    /// <summary>Reads one value from an XML file by XPath (such as "ModMetaData/name"), or null when it is missing or empty.</summary>
     public static string? ReadMeta(string file, string key)
     {
         if (string.IsNullOrWhiteSpace(key) || !File.Exists(file)) return null;
-        string? v = null;
-        var ext = Path.GetExtension(file).ToLowerInvariant();
-        if (ext == ".xml")
-        {
-            var el = XDocument.Load(file).XPathSelectElement("/" + key.TrimStart('/'));
-            v = el?.Value;
-        }
-        else if (ext == ".json")
-        {
-            using var doc = JsonDocument.Parse(File.ReadAllText(file), new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
-            var cur = doc.RootElement;
-            foreach (var part in key.Split('.'))
-            {
-                if (cur.ValueKind != JsonValueKind.Object || !cur.TryGetProperty(part, out cur)) return null;
-            }
-            v = cur.ValueKind == JsonValueKind.String ? cur.GetString() : cur.ToString();
-        }
-        else
-        {
-            var text = File.ReadAllText(file);
-            var pattern = key.Contains('(') ? key : @"^\s*" + Regex.Escape(key) + "\\s*[=:]\\s*\"?(.*?)\"?\\s*,?\\s*$";
-            var m = Regex.Match(text, pattern, RegexOptions.Multiline | RegexOptions.IgnoreCase);
-            v = m.Success && m.Groups.Count > 1 ? m.Groups[1].Value : null;
-        }
-        v = v?.Trim();
+        var v = XDocument.Load(file).XPathSelectElement("/" + key.TrimStart('/'))?.Value.Trim();
         return string.IsNullOrEmpty(v) ? null : v;
     }
 
-    /// <summary>
-    /// Sets <paramref name="key"/> to <paramref name="value"/> in a key=value text file such as a Paradox descriptor.mod,
-    /// replacing the line that holds the key or adding one at the end. Returns the new text.
-    /// </summary>
-    public static string WriteKey(string text, string key, string value)
-    {
-        var line = $"{key}=\"{value}\"";
-        var re = new Regex(@"^([ \t]*)" + Regex.Escape(key) + @"[ \t]*[=:][^\r\n]*", RegexOptions.Multiline | RegexOptions.IgnoreCase);
-        if (re.IsMatch(text)) return re.Replace(text, m => m.Groups[1].Value + line, 1);
-        var nl = text.Contains("\r\n") ? "\r\n" : "\n";
-        return text.Length == 0 || text.EndsWith('\n') ? text + line + nl : text + nl + line + nl;
-    }
-
-    /// <summary>
-    /// The changelog split into (version line or null, release notes). With <see cref="ProjectConfig.ChangelogByVersion"/>
-    /// the notes are the entry for <paramref name="version"/> (see <see cref="ChangenoteFor"/>).
-    /// </summary>
-    public static (string? version, string notes) ReadChangelog(string file, ProjectConfig cfg, string? version = null)
-    {
-        var lines = File.ReadAllLines(file);
-        if (cfg.ChangelogByVersion) return (null, ChangenoteFor(lines, version ?? ""));
-        if (!cfg.ChangelogFirstLineIsVersion) return (null, string.Join("\n", lines).Trim());
-        return (lines.FirstOrDefault()?.Trim() ?? "", string.Join("\n", lines.Skip(1)).Trim());
-    }
+    /// <summary>The changelog's entry for <paramref name="version"/> (see <see cref="ChangenoteFor"/>).</summary>
+    public static string ReadChangelog(string file, string version) => ChangenoteFor(File.ReadAllLines(file), version);
 
     static readonly Regex VersionLine = new(@"^\d+(?:\.\d+){1,3}");
 
@@ -153,12 +103,12 @@ public static class ModScanner
         return string.Join("\n", picked).Trim();
     }
 
-    /// <summary>True when the layout wants a changelog entry per version and <paramref name="m"/>'s version has none yet.</summary>
+    /// <summary>True when <paramref name="m"/>'s version has no changelog entry yet.</summary>
     public static bool NeedsChangelogEntry(ModInfo m, ProjectConfig cfg)
     {
-        if (!cfg.ChangelogByVersion || m.Version.Length == 0) return false;
+        if (m.Version.Length == 0) return false;
         var path = Path.Combine(m.Dir, ProjectConfig.Norm(cfg.Changelog));
-        try { return !File.Exists(path) || ReadChangelog(path, cfg, m.Version).notes.Length == 0; }
+        try { return !File.Exists(path) || ReadChangelog(path, m.Version).Length == 0; }
         catch (IOException) { return false; }
     }
 
@@ -225,16 +175,15 @@ public static class ModScanner
     public static Version? NewestChangelogVersion(IEnumerable<string> lines) =>
         lines.Where(l => !l.StartsWith('#')).Select(ParseVersion).Where(v => v != null).Max();
 
+    /// <summary>1.2 and 1.2.0 are the same version: missing parts count as 0.</summary>
+    static Version Full(Version v) => new(v.Major, v.Minor, Math.Max(0, v.Build), Math.Max(0, v.Revision));
+
     /// <summary>
     /// A warning when the manifest and the marker file both give a version and they differ (the manifest's is the one
     /// uploaded, so the other is usually a forgotten edit); null when they agree or only one has a version.
     /// </summary>
-    /// <summary>1.2 and 1.2.0 are the same version: missing parts count as 0.</summary>
-    static Version Full(Version v) => new(v.Major, v.Minor, Math.Max(0, v.Build), Math.Max(0, v.Revision));
-
     static string? VersionMismatch(string dir, string markerFile, ProjectConfig cfg)
     {
-        if (string.IsNullOrWhiteSpace(cfg.ManifestFile) || string.IsNullOrWhiteSpace(cfg.VersionKey)) return null;
         string? fromManifest, fromMarker;
         try
         {
@@ -251,19 +200,15 @@ public static class ModScanner
     /// <summary>The version of the mod in <paramref name="dir"/> (a mod folder or a staged package), or null when it has none.</summary>
     public static string? VersionIn(string dir, ProjectConfig cfg)
     {
-        if (string.IsNullOrWhiteSpace(cfg.ModMarker)) return null;
         try { return ReadVersion(dir, Path.Combine(dir, ProjectConfig.Norm(cfg.ModMarker)), cfg) is { Length: > 0 } v ? v : null; }
         catch { return null; }
     }
 
-    /// <summary>The version: the manifest's &lt;version&gt; when the layout has one and it is set, else the marker's.</summary>
+    /// <summary>The version: the manifest's &lt;version&gt; when it has one, else the marker's.</summary>
     static string ReadVersion(string dir, string markerFile, ProjectConfig cfg)
     {
-        if (!string.IsNullOrWhiteSpace(cfg.ManifestFile))
-        {
-            var manifest = Path.Combine(dir, ProjectConfig.Norm(cfg.ManifestFile));
-            try { if (ReadMeta(manifest, "Manifest/version") is { } v) return v; } catch { }
-        }
+        var manifest = Path.Combine(dir, ProjectConfig.Norm(cfg.ManifestFile));
+        try { if (ReadMeta(manifest, "Manifest/version") is { } v) return v; } catch { }
         return ReadMeta(markerFile, cfg.VersionKey) ?? "";
     }
 
@@ -290,70 +235,15 @@ public static class ModScanner
 
     /// <summary>
     /// Writes a new version into the files it is read from: the manifest's &lt;version&gt; (when it has one) and the
-    /// <see cref="ProjectConfig.VersionKey"/> of the marker file: an XML element, a JSON property (a dotted path), or a
-    /// key=value line such as a Paradox descriptor.mod's <c>version="1.2.3"</c>. Returns null on success, or why it cannot.
+    /// <see cref="ProjectConfig.VersionKey"/> element of the marker file. Returns null on success, or why it cannot.
     /// </summary>
     public static string? SetVersion(ModInfo m, ProjectConfig cfg, string version)
     {
         version = version.Trim();
         if (!Regex.IsMatch(version, @"^\d+(\.\d+){1,3}$")) return "Use a version number like 1.2.3.";
-        var written = 0;
-        if (!string.IsNullOrWhiteSpace(cfg.ManifestFile)
-            && TrySetXml(Path.Combine(m.Dir, ProjectConfig.Norm(cfg.ManifestFile)), "Manifest/version", version, create: false))
-            written++;
-        if (!string.IsNullOrWhiteSpace(cfg.ModMarker) && !string.IsNullOrWhiteSpace(cfg.VersionKey))
-        {
-            var marker = Path.Combine(m.Dir, ProjectConfig.Norm(cfg.ModMarker));
-            var ok = Path.GetExtension(marker).ToLowerInvariant() switch
-            {
-                ".xml" => TrySetXml(marker, cfg.VersionKey, version, create: true),
-                ".json" => TrySetJson(marker, cfg.VersionKey, version),
-                _ => TrySetKey(marker, cfg.VersionKey, version),
-            };
-            if (ok) written++;
-        }
-        return written > 0 ? null : "This layout does not read the version from a file the app can edit. Change it in the mod's own files.";
-    }
-
-    /// <summary>
-    /// Replaces the value of an existing <paramref name="key"/> line, keeping its spacing, separator and quotes
-    /// (<c>version = "1.2"</c> stays in that style). Null when no line holds the key.
-    /// </summary>
-    public static string? ReplaceKeyValue(string text, string key, string value)
-    {
-        var re = new Regex(@"^([ \t]*" + Regex.Escape(key) + @"[ \t]*[=:][ \t]*)(""?)[^""\r\n]*?(""?)([ \t]*,?[ \t]*\r?)$", RegexOptions.Multiline | RegexOptions.IgnoreCase);
-        if (!re.IsMatch(text)) return null;
-        return re.Replace(text, m => m.Groups[1].Value + m.Groups[2].Value + value + m.Groups[3].Value + m.Groups[4].Value, 1);
-    }
-
-    // A key given as a regex (it has a group) cannot be written back, and a missing line is not added: a key=value file
-    // of unknown format is safer left to its author.
-    static bool TrySetKey(string file, string key, string value)
-    {
-        if (!File.Exists(file) || key.Contains('(')) return false;
-        var text = File.ReadAllText(file);
-        var updated = ReplaceKeyValue(text, key, value);
-        if (updated == null) return false;
-        File.WriteAllText(file, updated, new System.Text.UTF8Encoding(false));
-        return true;
-    }
-
-    // Only an existing string property is changed. A file with comments is left alone, since writing it back would
-    // drop them.
-    static bool TrySetJson(string file, string key, string value)
-    {
-        if (!File.Exists(file)) return false;
-        System.Text.Json.Nodes.JsonNode? root;
-        try { root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(file), documentOptions: new JsonDocumentOptions { AllowTrailingCommas = true }); }
-        catch (JsonException) { return false; }
-        var parts = key.Split('.');
-        var parent = root;
-        foreach (var part in parts[..^1]) parent = parent is System.Text.Json.Nodes.JsonObject o && o.TryGetPropertyValue(part, out var next) ? next : null;
-        if (parent is not System.Text.Json.Nodes.JsonObject obj || !obj.TryGetPropertyValue(parts[^1], out var cur)
-            || cur is not System.Text.Json.Nodes.JsonValue jv || !jv.TryGetValue<string>(out _)) return false;
-        obj[parts[^1]] = value;
-        File.WriteAllText(file, root!.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }) + "\n", new System.Text.UTF8Encoding(false));
-        return true;
+        var manifest = TrySetXml(Path.Combine(m.Dir, ProjectConfig.Norm(cfg.ManifestFile)), "Manifest/version", version, create: false);
+        var marker = TrySetXml(Path.Combine(m.Dir, ProjectConfig.Norm(cfg.ModMarker)), cfg.VersionKey, version, create: true);
+        return manifest || marker ? null : $"{cfg.ModMarker} has no <ModMetaData> to put the version in. Change it in the mod's own files.";
     }
 
     static bool TrySetXml(string file, string path, string value, bool create)
@@ -380,15 +270,11 @@ public static class ModScanner
     /// <summary>Steam refuses preview images larger than this.</summary>
     public const long MaxPreviewBytes = 1024 * 1024;
 
-    public static string ModsRoot(string repo, ProjectConfig cfg) =>
-        string.IsNullOrWhiteSpace(cfg.ModsFolder) ? repo : Path.Combine(repo, ProjectConfig.Norm(cfg.ModsFolder));
-
     /// <param name="strictAbout">RimWorld: About.xml warnings block the upload (Options > Uploading).</param>
     public static List<ModInfo> Scan(string repo, ProjectConfig cfg, bool strictAbout = false)
     {
         var list = new List<ModInfo>();
-        var root = ModsRoot(repo, cfg);
-        if (!Directory.Exists(root)) return list;
+        if (!Directory.Exists(repo)) return list;
 
         // Untracked files are not counted, so git is told not to look for them: in a folder full of build output that
         // search is most of the time a refresh takes.
@@ -398,41 +284,34 @@ public static class ModScanner
             .Select(l => l.Substring(3).Trim().Trim('"').Replace('\\', '/'))
             .ToList();
 
-        var hasMarker = !string.IsNullOrWhiteSpace(cfg.ModMarker);
-        var marker = hasMarker ? ProjectConfig.Norm(cfg.ModMarker) : "";
-        foreach (var dir in Directory.GetDirectories(root).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+        var marker = ProjectConfig.Norm(cfg.ModMarker);
+        foreach (var dir in Directory.GetDirectories(repo).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
         {
             var folder = Path.GetFileName(dir);
             if (folder.StartsWith('.')) continue;
-            var markerFile = hasMarker ? Path.Combine(dir, marker) : "";
-            if (hasMarker && !File.Exists(markerFile)) continue;
-            if (!hasMarker && IgnoredFolder(folder)) continue;
+            var markerFile = Path.Combine(dir, marker);
+            if (!File.Exists(markerFile)) continue;
 
             var rel = Path.GetRelativePath(repo, dir).Replace('\\', '/');
             var m = new ModInfo { Dir = dir, Folder = folder, RelPath = rel, Name = folder };
-            if (hasMarker)
+            try
             {
-                try
-                {
-                    m.Name = ReadMeta(markerFile, cfg.NameKey) ?? folder;
-                    m.Version = ReadVersion(dir, markerFile, cfg);
-                    if (VersionMismatch(dir, markerFile, cfg) is { } mismatch) m.Warnings.Add(mismatch);
-                    if (!string.IsNullOrWhiteSpace(cfg.VersionTagsKey) && WorkshopTags.SupportedVersions(markerFile, cfg.VersionTagsKey).Count == 0)
-                        m.Warnings.Add($"{cfg.ModMarker} lists no supported game versions, so the Workshop gets no version tags");
-                }
-                catch (Exception e) { m.Problems.Add(cfg.ModMarker + " unreadable (" + e.Message + ")"); }
+                m.Name = ReadMeta(markerFile, cfg.NameKey) ?? folder;
+                m.Version = ReadVersion(dir, markerFile, cfg);
+                if (VersionMismatch(dir, markerFile, cfg) is { } mismatch) m.Warnings.Add(mismatch);
+                if (WorkshopTags.SupportedVersions(markerFile, cfg.VersionTagsKey).Count == 0)
+                    m.Warnings.Add($"{cfg.ModMarker} lists no supported game versions, so the Workshop gets no version tags");
             }
+            catch (Exception e) { m.Problems.Add(cfg.ModMarker + " unreadable (" + e.Message + ")"); }
 
             var idFile = Path.Combine(dir, ProjectConfig.Norm(cfg.WorkshopIdFile));
             if (File.Exists(idFile))
             {
                 try
                 {
-                    var keyed = !string.IsNullOrWhiteSpace(cfg.WorkshopIdKey);
-                    var id = keyed ? ReadMeta(idFile, cfg.WorkshopIdKey) : File.ReadAllText(idFile).Trim();
-                    if (keyed && (id == null || Regex.IsMatch(id, @"^0+$"))) { } // not published yet
-                    else if (id != null && Regex.IsMatch(id, @"^\d+$")) m.WorkshopId = id;
-                    else m.Problems.Add((keyed ? cfg.WorkshopIdKey + " in " : "") + cfg.WorkshopIdFile + " is not a number");
+                    var id = File.ReadAllText(idFile).Trim();
+                    if (Regex.IsMatch(id, @"^\d+$")) m.WorkshopId = id;
+                    else m.Problems.Add(cfg.WorkshopIdFile + " is not a number");
                 }
                 catch (Exception e) { m.Problems.Add(cfg.WorkshopIdFile + " unreadable (" + e.Message + ")"); }
             }
@@ -441,62 +320,38 @@ public static class ModScanner
             try { if (File.Exists(testFile) && File.ReadAllText(testFile).Trim() is var t && Regex.IsMatch(t, @"^\d+$")) m.TestWorkshopId = t; } catch { }
 
             // Only what would make the upload fail or go wrong blocks it (Problems). Everything else is a warning.
+            // Add Changenote's rules: the current version must be known and have its own changelog entry.
             var clPath = Path.Combine(dir, ProjectConfig.Norm(cfg.Changelog));
-            if (cfg.ChangelogByVersion)
-            {
-                // Add Changenote's rules: the current version must be known and have its own changelog entry.
-                if (m.Version.Length == 0)
-                    m.Problems.Add("no version (" + (string.IsNullOrWhiteSpace(cfg.ManifestFile) ? "" : "<version> in " + cfg.ManifestFile + " or ") + "version in " + cfg.ModMarker + ")");
-                else if (!File.Exists(clPath))
-                    m.Problems.Add("no " + cfg.Changelog);
-                else if (ReadChangelog(clPath, cfg, m.Version).notes.Length == 0)
-                    m.Problems.Add($"{cfg.Changelog} has no entry for {m.Version}");
-                if (m.Version.Length > 0 && File.Exists(clPath) && NewestChangelogVersion(File.ReadAllLines(clPath)) is { } newest
-                    && ParseVersion(m.Version) is { } current && Full(newest) > Full(current))
-                    m.Warnings.Add($"{cfg.Changelog} has an entry for {newest}, newer than the version to upload ({m.Version}): raise the version (F2)?");
-            }
+            if (m.Version.Length == 0)
+                m.Problems.Add("no version (<version> in " + cfg.ManifestFile + " or version in " + cfg.ModMarker + ")");
             else if (!File.Exists(clPath))
-            {
-                if (cfg.ChangelogRequired) m.Warnings.Add("no " + cfg.Changelog);
-            }
-            else
-            {
-                var (clVersion, notes) = ReadChangelog(clPath, cfg);
-                if (clVersion != null)
-                {
-                    if (!Regex.IsMatch(clVersion, @"^\d+(\.\d+)*")) m.Warnings.Add("changelog line 1 is not a version");
-                    else if (m.Version.Length == 0) m.Version = clVersion;
-                    else if (clVersion != m.Version) m.Warnings.Add($"changelog {clVersion} vs {m.Version} in {cfg.ModMarker}");
-                }
-                if (cfg.ChangelogRequired && notes.Length == 0) m.Warnings.Add("changelog has no notes");
-            }
+                m.Problems.Add("no " + cfg.Changelog);
+            else if (ReadChangelog(clPath, m.Version).Length == 0)
+                m.Problems.Add($"{cfg.Changelog} has no entry for {m.Version}");
+            if (m.Version.Length > 0 && File.Exists(clPath) && NewestChangelogVersion(File.ReadAllLines(clPath)) is { } newest
+                && ParseVersion(m.Version) is { } current && Full(newest) > Full(current))
+                m.Warnings.Add($"{cfg.Changelog} has an entry for {newest}, newer than the version to upload ({m.Version}): raise the version (F2)?");
 
             // Steam refuses a new item without a preview image, and any preview over 1 MB. Existing items keep the
             // preview they have on Steam (it is only sent on create), so for them this is shown but does not block.
-            if (!string.IsNullOrWhiteSpace(cfg.Preview))
-            {
-                var preview = new FileInfo(Path.Combine(dir, ProjectConfig.Norm(cfg.Preview)));
-                m.PreviewOk = preview.Exists && preview.Length <= MaxPreviewBytes;
-                if (preview.Exists) m.PreviewPath = preview.FullName;
-                m.PreviewNote = !preview.Exists ? "no " + cfg.Preview
-                    : $"{cfg.Preview}: {preview.Length / 1024.0:0} KB of {MaxPreviewBytes / 1024} KB" + (m.PreviewOk == true ? "" : " (over Steam's limit)");
-                if (!m.OnSteam && !preview.Exists) m.Problems.Add("needs " + cfg.Preview + " to create on Steam");
-                else if (!m.OnSteam && preview.Length > MaxPreviewBytes) m.Problems.Add($"{cfg.Preview} is over 1 MB (Steam's limit)");
-                // The preview is only sent when the item is created, so an existing item's file is not worth a warning.
-                if (preview.Exists && !m.OnSteam) m.Warnings.AddRange(ImageHeader.PreviewWarnings(preview.FullName));
-            }
+            var preview = new FileInfo(Path.Combine(dir, ProjectConfig.Norm(cfg.Preview)));
+            m.PreviewOk = preview.Exists && preview.Length <= MaxPreviewBytes;
+            if (preview.Exists) m.PreviewPath = preview.FullName;
+            m.PreviewNote = !preview.Exists ? "no " + cfg.Preview
+                : $"{cfg.Preview}: {preview.Length / 1024.0:0} KB of {MaxPreviewBytes / 1024} KB" + (m.PreviewOk ? "" : " (over Steam's limit)");
+            if (!m.OnSteam && !preview.Exists) m.Problems.Add("needs " + cfg.Preview + " to create on Steam");
+            else if (!m.OnSteam && preview.Length > MaxPreviewBytes) m.Problems.Add($"{cfg.Preview} is over 1 MB (Steam's limit)");
+            // The preview is only sent when the item is created, so an existing item's file is not worth a warning.
+            if (preview.Exists && !m.OnSteam) m.Warnings.AddRange(ImageHeader.PreviewWarnings(preview.FullName));
 
-            // A layout may list several places a build can land (RimWorld: Assemblies or a version folder's Assemblies).
-            var built = cfg.BuiltFiles ?? Array.Empty<string>();
+            // A build can land in several places: Assemblies or a version folder's Assemblies.
+            var built = cfg.BuiltFiles;
             if (built.Length > 0 && built.All(glob => MatchGlob(dir, glob).Count == 0))
                 m.Warnings.Add($"not built (nothing matches {string.Join(" or ", built)})");
 
-            if (RimWorldLint.Applies(cfg))
-            {
-                var (problems, warnings) = RimWorldLint.Check(dir, strictAbout);
-                m.Problems.AddRange(problems);
-                m.Warnings.AddRange(warnings);
-            }
+            var (problems, warnings) = RimWorldLint.Check(dir, strictAbout);
+            m.Problems.AddRange(problems);
+            m.Warnings.AddRange(warnings);
 
             if (dirtyLines.Any(p => p.StartsWith(rel + "/", StringComparison.OrdinalIgnoreCase)))
             {
@@ -506,9 +361,8 @@ public static class ModScanner
 
             list.Add(m);
         }
-        if (RimWorldLint.Applies(cfg))
-            foreach (var (m, w) in RimWorldLint.DuplicatePackageIds(list.Select(m => (m, RimWorldLint.PackageIdOf(m.Dir)))))
-                m.Warnings.Add(w);
+        foreach (var (m, w) in RimWorldLint.DuplicatePackageIds(list.Select(m => (m, RimWorldLint.PackageIdOf(m.Dir)))))
+            m.Warnings.Add(w);
         return list;
     }
 
@@ -518,7 +372,7 @@ public static class ModScanner
     /// layout) and git's HEAD and index. It changes when a mod is edited, added or removed, or a commit is made, so the
     /// window can refresh by itself only when there is something new. Empty when the folder can't be read.
     /// </summary>
-    public static string FolderStamp(string repo, ProjectConfig cfg)
+    public static string FolderStamp(string repo)
     {
         try
         {
@@ -539,27 +393,19 @@ public static class ModScanner
                 var f = new FileInfo(Path.Combine(repo, git));
                 if (f.Exists) hash.Add(f.LastWriteTimeUtc.Ticks);
             }
-            var root = ModsRoot(repo, cfg);
-            if (Directory.Exists(root) && !string.Equals(Path.GetFullPath(root).TrimEnd('/', '\\'), Path.GetFullPath(repo).TrimEnd('/', '\\'), StringComparison.OrdinalIgnoreCase))
-                Files(root);
-            if (Directory.Exists(root))
-                foreach (var dir in Directory.GetDirectories(root).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
-                {
-                    var name = Path.GetFileName(dir);
-                    if (name.StartsWith('.') || (string.IsNullOrWhiteSpace(cfg.ModMarker) && IgnoredFolder(name))) continue;
-                    hash.Add(name, StringComparer.OrdinalIgnoreCase);
-                    Files(dir);
-                    foreach (var sub in Directory.GetDirectories(dir))
-                        if (!Path.GetFileName(sub).StartsWith('.')) Files(sub);
-                }
+            foreach (var dir in Directory.GetDirectories(repo).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+            {
+                var name = Path.GetFileName(dir);
+                if (name.StartsWith('.')) continue;
+                hash.Add(name, StringComparer.OrdinalIgnoreCase);
+                Files(dir);
+                foreach (var sub in Directory.GetDirectories(dir))
+                    if (!Path.GetFileName(sub).StartsWith('.')) Files(sub);
+            }
             return hash.ToHashCode().ToString("x8");
         }
         catch { return ""; }
     }
-
-    static bool IgnoredFolder(string name) =>
-        new[] { "bin", "obj", "node_modules", "_tools", "scripts", "docs", "site", "tools", "tests", "test" }
-            .Contains(name, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Files inside <paramref name="dir"/> matching a simple glob such as "Assemblies/*.dll". Any segment may hold * or ?,

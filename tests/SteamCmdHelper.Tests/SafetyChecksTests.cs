@@ -24,7 +24,7 @@ public sealed class SafetyChecksTests : IDisposable
         try { Directory.Delete(_root, true); } catch { }
     }
 
-    static ProjectConfig CopyConfig() => TestConfig.RimWorld(c => { c.UseGitArchive = false; c.BuiltFiles = Array.Empty<string>(); });
+    static ProjectConfig CopyConfig() => TestConfig.RimWorld(c => { c.BuiltFiles = Array.Empty<string>(); });
 
     ModInfo Mod() => new() { Dir = _modDir, Folder = "MyMod", Name = "My Mod", Version = "1.0.0", WorkshopId = "2001112223" };
 

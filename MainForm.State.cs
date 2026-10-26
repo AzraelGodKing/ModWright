@@ -64,7 +64,7 @@ public sealed partial class MainForm
         var mods = ModScanner.Scan(repo, cfg, strictAbout);
         foreach (var m in mods)
             if (WorkshopPage.Get(m.Dir) is { } page) m.Warnings.Add("Workshop page changes go out with the next upload: " + page.Summary());
-        return new FolderScan(repo, cfg, branch, mods, UploadedVersions.LoadRecord(), UploadHistory.Latest(UploadHistory.Load()), ModScanner.FolderStamp(repo, cfg), isGit);
+        return new FolderScan(repo, cfg, branch, mods, UploadedVersions.LoadRecord(), UploadHistory.Latest(UploadHistory.Load()), ModScanner.FolderStamp(repo), isGit);
     }
 
     /// <summary>Reads the mods folder again without holding up the window (see <see cref="RefreshAllAsync"/>).</summary>
@@ -98,7 +98,7 @@ public sealed partial class MainForm
         var (repo, cfg) = (_s.RepoPath, _cfg);
         _stampChecking = true;
         string now;
-        try { now = await Task.Run(() => ModScanner.FolderStamp(repo, cfg)); }
+        try { now = await Task.Run(() => ModScanner.FolderStamp(repo)); }
         finally { _stampChecking = false; }
         if (IsDisposed || _busy || _inUpload || repo != _s.RepoPath || now.Length == 0 || now == _folderStamp) return;
         Append("The mods folder changed, so the list was refreshed.", LogKind.Note);
@@ -158,7 +158,7 @@ public sealed partial class MainForm
             it.SubItems.Add(m.OnSteam ? "..." : "-");
             it.SubItems.Add(m.Version.Length > 0 ? m.Version : "?");
             it.SubItems.Add(m.WorkshopId ?? "0"); // 0 = not on Steam yet, so uploading creates it
-            it.SubItems.Add(m.PreviewOk == null ? "-" : m.PreviewOk == true ? "✔" : "✖");
+            it.SubItems.Add(m.PreviewOk ? "✔" : "✖");
             it.SubItems.Add("");
             it.ToolTipText = RowTip(m);
             it.Tag = m;
@@ -255,7 +255,7 @@ public sealed partial class MainForm
             var facts = new List<(string, string)> { ("Ticked", $"{_rows.Count(i => i.Checked)} of {_rows.Count}") };
             var known = _mods.Where(x => x.OnSteam && _live.TryGetValue(x.WorkshopId!, out var w) && w.Public).Select(x => _live[x.WorkshopId!]).ToList();
             if (known.Count > 0) facts.Add(("Subscribers", $"{known.Sum(w => w.Subscribers):N0} across {known.Count} item{(known.Count == 1 ? "" : "s")}"));
-            if (_cfg.GameName.Length > 0) facts.Add(("Game", _cfg.GameName));
+            facts.Add(("Game", _cfg.GameName));
             _details.ShowList(Path.GetFileName(_s.RepoPath.TrimEnd('\\', '/')), ModDetails.Summary(states), facts);
             return;
         }
@@ -268,10 +268,10 @@ public sealed partial class MainForm
         try { tags = WorkshopTags.For(m.Dir, _cfg); } catch { tags = Array.Empty<string>(); }
         var note = "";
         if (ChangelogOf(m) is { } changelog)
-            try { note = ModScanner.ReadChangelog(changelog, _cfg, m.Version).notes; } catch { }
+            try { note = ModScanner.ReadChangelog(changelog, m.Version); } catch { }
         var description = "";
-        var descFile = string.IsNullOrWhiteSpace(_cfg.SteamDescriptionFile) ? null : Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.SteamDescriptionFile));
-        if (descFile != null && File.Exists(descFile))
+        var descFile = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.SteamDescriptionFile));
+        if (File.Exists(descFile))
             try { description = ModDetails.PlainText(File.ReadAllText(descFile), 600); } catch { }
         var line = state switch
         {
@@ -343,7 +343,7 @@ public sealed partial class MainForm
         {
             StatusCol => ModRows.CompareState(StateOf(a), StateOf(b)),
             SteamCol => Nullable.Compare(a.SubItems[SteamCol].Tag as DateTimeOffset?, b.SubItems[SteamCol].Tag as DateTimeOffset?),
-            PreviewCol => Nullable.Compare(((ModInfo)a.Tag!).PreviewOk, ((ModInfo)b.Tag!).PreviewOk),
+            PreviewCol => ((ModInfo)a.Tag!).PreviewOk.CompareTo(((ModInfo)b.Tag!).PreviewOk),
             _ => ModRows.CompareNatural(a.SubItems[_sortCol].Text, b.SubItems[_sortCol].Text),
         };
         return c != 0 ? c : ModRows.CompareNatural(a.Text, b.Text);

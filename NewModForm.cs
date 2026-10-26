@@ -14,23 +14,22 @@ public sealed class NewModForm : Form
 
     public NewModOptions Result { get; private set; } = new();
 
-    public NewModForm(string modsRoot, ProjectConfig cfg, string author, string newestVersion)
+    public NewModForm(string modsRoot, string author, string newestVersion)
     {
-        var rimworld = RimWorldLint.Applies(cfg);
         Text = "New mod";
         Font = Theme.BodyFont;
         StartPosition = FormStartPosition.CenterParent;
         MinimizeBox = MaximizeBox = false;
         ShowInTaskbar = false;
-        ClientSize = new Size(600, rimworld ? 420 : 300);
+        ClientSize = new Size(600, 420);
         _author.Text = author;
         _versions.Text = newestVersion;
 
         var intro = new Label
         {
             AutoSize = true, MaximumSize = new Size(560, 0), Margin = new Padding(0, 0, 0, 8), UseMnemonic = false,
-            Text = $"Makes a new mod folder in {modsRoot} with the files the {cfg.GameName} layout needs" +
-                   (rimworld ? " (About.xml with a packageId, a preview image, a changelog entry and the description), ready to upload." : ", ready to fill in."),
+            Text = $"Makes a new mod folder in {modsRoot} with the files a RimWorld mod needs" +
+                   " (About.xml with a packageId, a preview image, a changelog entry and the description), ready to upload.",
         };
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(12) };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -39,14 +38,11 @@ public sealed class NewModForm : Form
         root.Controls.Add(intro); root.SetColumnSpan(intro, 2);
         root.Controls.Add(L("&Name")); root.Controls.Add(_name);
         root.Controls.Add(L("&Folder")); root.Controls.Add(_folder);
-        if (rimworld)
-        {
-            root.Controls.Add(L("&Author")); root.Controls.Add(_author);
-            root.Controls.Add(new Label()); root.Controls.Add(_package);
-            root.Controls.Add(L("Game &versions")); root.Controls.Add(_versions);
-        }
+        root.Controls.Add(L("&Author")); root.Controls.Add(_author);
+        root.Controls.Add(new Label()); root.Controls.Add(_package);
+        root.Controls.Add(L("Game &versions")); root.Controls.Add(_versions);
         root.Controls.Add(L("&Description")); root.Controls.Add(_description);
-        if (rimworld) { root.Controls.Add(new Label()); root.Controls.Add(_csharp); }
+        root.Controls.Add(new Label()); root.Controls.Add(_csharp);
 
         var create = new Button { Text = "Create", AutoSize = true, Padding = new Padding(10, 2, 10, 2) }.Role(ThemeRole.Accent);
         var cancel = new Button { Text = "Cancel", AutoSize = true, Padding = new Padding(8, 2, 8, 2), DialogResult = DialogResult.Cancel };
@@ -66,8 +62,8 @@ public sealed class NewModForm : Form
             var o = new NewModOptions
             {
                 Name = _name.Text.Trim(), Folder = _folder.Text.Trim(), Author = _author.Text.Trim(), Description = _description.Text.Trim(),
-                Versions = rimworld ? _versions.Text.Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries) : Array.Empty<string>(),
-                CSharp = rimworld && _csharp.Checked,
+                Versions = _versions.Text.Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries),
+                CSharp = _csharp.Checked,
             };
             if (NewMod.Validate(modsRoot, o) is { } bad) { MessageBox.Show(this, bad, Text, MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
             Result = o;

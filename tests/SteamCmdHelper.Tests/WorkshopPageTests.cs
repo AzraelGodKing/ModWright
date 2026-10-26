@@ -8,7 +8,7 @@ namespace SteamCmdHelper.Tests;
 public sealed class WorkshopPageTests : IDisposable
 {
     readonly TempRepo _repo = new();
-    readonly ProjectConfig _cfg = TestConfig.RimWorld(c => c.UseGitArchive = false);
+    readonly ProjectConfig _cfg = TestConfig.RimWorld();
     string Store => Path.Combine(_repo.Root, "_store", "pages.json");
 
     public void Dispose() => _repo.Dispose();

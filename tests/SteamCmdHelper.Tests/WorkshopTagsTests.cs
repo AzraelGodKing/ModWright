@@ -34,23 +34,6 @@ public sealed class WorkshopTagsTests : IDisposable
     }
 
     [Fact]
-    public void Layouts_without_tags_leave_them_alone()
-    {
-        var generic = new ProjectConfig();
-        Assert.False(WorkshopTags.LayoutHasTags(generic));
-        Assert.Empty(WorkshopTags.For(_repo.AddMod("Alpha"), generic));
-        Assert.True(WorkshopTags.LayoutHasTags(TestConfig.RimWorld()));
-    }
-
-    [Fact]
-    public void Json_markers_list_versions_as_an_array()
-    {
-        var file = Path.Combine(_work, "mod.json");
-        File.WriteAllText(file, """{ "info": { "versions": ["2.0.1", "2.1"] } }""");
-        Assert.Equal(new[] { "2.0", "2.1" }, WorkshopTags.SupportedVersions(file, "info.versions"));
-    }
-
-    [Fact]
     public void Merge_replaces_old_version_tags_and_keeps_the_rest()
     {
         var merged = WorkshopTags.Merge(new[] { "mod", "1.4", "1.5", "scenario" }, new[] { "Mod", "1.5", "1.6" });

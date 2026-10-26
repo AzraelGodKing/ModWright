@@ -46,7 +46,7 @@ public sealed partial class MainForm
         var test = _testItems.Checked && rollback == null;
         // Test items keep their own page, and a roll back sends the old version as it was.
         if (!test && rollback == null && _s.DescriptionSync != DescriptionSync.Never && Directory.Exists(_s.RepoPath)) await OfferDescriptionsAsync(picked);
-        var gitPackaging = _cfg.UseGitArchive && RepoIsGit;
+        var gitPackaging = RepoIsGit;
         var gitRef = rollback?.Ref ?? (_s.RefFor(_s.RepoPath) is { Length: > 0 } fromRef ? fromRef : null);
         if (gitRef != null && gitPackaging && !GitOps.RefExists(_s.RepoPath, gitRef))
         {
@@ -79,7 +79,7 @@ public sealed partial class MainForm
         }
         var heading = dry ? "Dry run for:"
             : test ? "Upload to TEST items (private copies on Steam; subscribers get nothing):"
-            : $"Publish to the Steam Workshop ({(_cfg.GameName.Length > 0 ? _cfg.GameName : "app " + _cfg.AppId)}):";
+            : $"Publish to the Steam Workshop ({_cfg.GameName}):";
         Dictionary<string, string> edited;
         bool commitFirst;
         var shaper = new Publisher(_s.RepoPath, _cfg, "", "")
@@ -293,7 +293,7 @@ public sealed partial class MainForm
                 var updated = Dependencies.UpdatedSince(m.Name, ids, since, live, DateTimeOffset.Now);
                 lines.AddRange(updated);
                 // The Launch Pad's clean-colony test is the quick way to see whether the update broke anything.
-                if (updated.Count > 0 && RimWorldLint.Applies(cfg))
+                if (updated.Count > 0)
                     lines.Add($"To see whether {m.Name} still works with that, right-click it > RimWorld > Test in a clean colony.");
             }
             return lines;
@@ -421,7 +421,6 @@ public sealed partial class MainForm
         }
 
         if (!_s.TagUploads) return tagged;
-        if (!_cfg.UseGitArchive) { Append("Not tagging: this layout copies the working folder, so no commit matches what was uploaded.", LogKind.Note); return tagged; }
         foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created))
         {
             var tag = GitOps.TagName(r.Mod.Folder, r.Version);

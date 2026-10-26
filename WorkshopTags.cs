@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using System.Xml.XPath;
@@ -27,13 +26,9 @@ public static class WorkshopTags
     /// <summary>True for tags that name a game version ("1.6"); those are replaced, every other tag is kept.</summary>
     public static bool IsVersionTag(string tag) => VersionTag.IsMatch(tag.Trim());
 
-    /// <summary>True when the layout gives mods any tags, so they are worth setting.</summary>
-    public static bool LayoutHasTags(ProjectConfig cfg) =>
-        (cfg.Tags ?? Array.Empty<string>()).Any(t => t.Trim().Length > 0) || !string.IsNullOrWhiteSpace(cfg.VersionTagsKey);
-
     /// <summary>
     /// The tags the mod in <paramref name="dir"/> (a mod folder or a staged package) should have on Steam: the layout's
-    /// fixed tags, then one per supported game version as "major.minor". Empty when the layout sets no tags.
+    /// fixed tags, then one per supported game version as "major.minor".
     /// </summary>
     public static string[] For(string dir, ProjectConfig cfg)
     {
@@ -43,28 +38,21 @@ public static class WorkshopTags
             t = t.Trim();
             if (t.Length > 0 && !tags.Contains(t, StringComparer.OrdinalIgnoreCase)) tags.Add(t);
         }
-        foreach (var t in cfg.Tags ?? Array.Empty<string>()) Add(t);
-        if (!string.IsNullOrWhiteSpace(cfg.VersionTagsKey) && !string.IsNullOrWhiteSpace(cfg.ModMarker))
-            foreach (var v in SupportedVersions(Path.Combine(dir, ProjectConfig.Norm(cfg.ModMarker)), cfg.VersionTagsKey)) Add(v);
+        foreach (var t in cfg.Tags) Add(t);
+        foreach (var v in SupportedVersions(Path.Combine(dir, ProjectConfig.Norm(cfg.ModMarker)), cfg.VersionTagsKey)) Add(v);
         return tags.ToArray();
     }
 
     /// <summary>
     /// The game versions listed at <paramref name="key"/> in <paramref name="file"/>, each cut to "major.minor"
-    /// ("1.6.4104" becomes "1.6") and listed once. .xml: an XPath to the elements; .json: a dotted path to an array.
+    /// ("1.6.4104" becomes "1.6") and listed once. <paramref name="key"/> is an XPath to the elements.
     /// </summary>
     public static List<string> SupportedVersions(string file, string key)
     {
         var found = new List<string>();
         if (!File.Exists(file)) return found;
         IEnumerable<string> raw;
-        try
-        {
-            var ext = Path.GetExtension(file).ToLowerInvariant();
-            if (ext == ".xml") raw = XDocument.Load(file).XPathSelectElements("/" + key.TrimStart('/')).Select(e => e.Value);
-            else if (ext == ".json") raw = JsonArray(File.ReadAllText(file), key);
-            else return found;
-        }
+        try { raw = XDocument.Load(file).XPathSelectElements("/" + key.TrimStart('/')).Select(e => e.Value).ToList(); }
         catch { return found; }
         foreach (var r in raw)
         {
@@ -74,17 +62,6 @@ public static class WorkshopTags
             if (!found.Contains(v)) found.Add(v);
         }
         return found;
-    }
-
-    static List<string> JsonArray(string text, string key)
-    {
-        using var doc = JsonDocument.Parse(text, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
-        var cur = doc.RootElement;
-        foreach (var part in key.Split('.'))
-            if (cur.ValueKind != JsonValueKind.Object || !cur.TryGetProperty(part, out cur)) return new();
-        return cur.ValueKind == JsonValueKind.Array
-            ? cur.EnumerateArray().Select(e => e.ValueKind == JsonValueKind.String ? e.GetString() ?? "" : e.ToString()).ToList()
-            : new();
     }
 
     /// <summary>

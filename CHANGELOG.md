@@ -14,6 +14,8 @@ Modwright is now a RimWorld tool, through and through. Everything that was only 
 - **Change notes are sent as written.** The option that turned Markdown in `.md` changelogs into Steam formatting is
   gone, since RimWorld mods keep their notes in `About/Changelog.txt`.
 - **Requests are bugs and features.** The request form no longer offers "Support another game".
+- Under the hood, the code only other games used is gone too: reading mod info from JSON and key=value files,
+  a mods folder inside the repo, other changelog styles and the switch to copy a git repo instead of using `git archive`.
 - Your settings carry over; values for the removed features are ignored.
 
 ## 1.17.0

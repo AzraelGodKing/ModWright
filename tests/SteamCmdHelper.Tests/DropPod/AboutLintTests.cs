@@ -80,7 +80,7 @@ public sealed class AboutLintTests : IDisposable
     {
         _repo.AddMod("Alpha");
         _repo.Write("Alpha/About/About.xml", "<ModMetaData><name>Alpha</name><modVersion>1.2.3</modVersion><packageId>Test.Alpha</packageId><supportedVersions><li>1.6</li></supportedVersions><description>x</description></ModMetaData>");
-        var cfg = TestConfig.RimWorld(c => c.UseGitArchive = false);
+        var cfg = TestConfig.RimWorld();
         var relaxed = ModScanner.Scan(_repo.Root, cfg).Single();
         Assert.True(relaxed.Ready);
         Assert.Contains(relaxed.Warnings, w => w.Contains("no <author>"));

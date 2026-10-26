@@ -24,7 +24,7 @@ public sealed class UploadWorkflowTests : IDisposable
 
     public void Dispose() { try { Directory.Delete(_root, true); } catch { } }
 
-    static ProjectConfig CopyConfig() => TestConfig.RimWorld(c => { c.UseGitArchive = false; c.BuiltFiles = Array.Empty<string>(); c.Exclude = Array.Empty<string>(); });
+    static ProjectConfig CopyConfig() => TestConfig.RimWorld(c => { c.BuiltFiles = Array.Empty<string>(); c.Exclude = Array.Empty<string>(); });
     ModInfo Mod() => new() { Dir = _modDir, Folder = "MyMod", RelPath = "MyMod", Name = "My Mod", Version = "1.0.0", WorkshopId = "2001112223" };
 
     [Fact]
