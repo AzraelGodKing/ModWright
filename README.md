@@ -1,16 +1,17 @@
 # Modwright
 
-Windows desktop app for Steam Workshop mods, with two sides in one program:
+Windows desktop app for RimWorld mods, with two sides in one program:
 
-- **The Launch Pad** (the Workshop uploader, for mod authors): upload mod updates without remembering any commands.
+- **The Launch Pad** (the Workshop uploader, for RimWorld mod authors): upload mod updates without remembering any commands.
   Open it, tick the mods, press **Upload**. It shows each mod's version and Workshop id, checks the changelog before
   sending anything, handles the Steam login, and shows progress bars and a live log.
 - **The Drop Pod** (for RimWorld players): see every installed mod, sort the load order, keep modlists, find
   missing dependencies and clashes, run separate instances, match a save's mods and read the game's log. See
   [The Drop Pod](#the-drop-pod-rimworld-players).
 
-The Launch Pad works for **any game with a Steam Workshop**: you give it the game's Steam app ID and tell it how your
-mods are laid out. The upload logic is built in; the only outside tool it needs is SteamCMD.
+Modwright is built for RimWorld only. The upload logic is built in; the only outside tool it needs is SteamCMD.
+Before 2.0.0 The Launch Pad also had layouts for other games (Generic, Custom, Paradox, Golf With Your Friends), The
+Drop Pod also managed Sun Haven, and mods could be published to Thunderstore; those are gone.
 
 Modwright was called SteamCMD Helper before 1.7.0. The program file (`SteamCmdHelper.exe`), its settings folder and
 the GitHub repository keep the old name, so updates and existing settings carry on as before.
@@ -25,7 +26,7 @@ Studios. Steam and SteamCMD are trademarks of Valve Corporation; RimWorld is a t
 - `git` on PATH if your repo uses the default packaging (`UseGitArchive`)
 - SteamCMD: required for uploading. If it is missing at start-up the app offers to download it for you
   (also **Options > SteamCMD > Install SteamCMD**)
-- A Steam account that owns the game
+- A Steam account that owns RimWorld
 
 ## Download
 
@@ -85,27 +86,23 @@ in the `screenshot-diffs` artifact). That step is informational and never fails 
 
 ## Using it
 
-Until everything below is in place, a **Get set up** box at the top of the Launch Pad tab lists the four steps
-(SteamCMD, Steam account, mods folder, app ID), each a link that does it, says how many are done and offers the next
-one as a button. It goes away once they are done. Once the mods folder, app ID and mods are all found, the **Project**
-card folds into one line (folder, game, layout, branch); **Change...** or a click on that line opens it again, which
+Until everything below is in place, a **Get set up** box at the top of the Launch Pad tab lists the three steps
+(SteamCMD, Steam account, mods folder), each a link that does it, says how many are done and offers the next
+one as a button. It goes away once they are done. Once the mods folder and its mods are found, the **Project**
+card folds into one line (folder, game, branch); **Change...** or a click on that line opens it again, which
 leaves the mod list more room.
 
-1. **Mods repo**: press **Browse...** (or Ctrl+O) and pick the folder that holds your mods (one sub-folder per mod), or
-   drop the folder onto the window. Folders you used before are in the drop-down, so switching repos is one click.
-   The path cannot be typed in, so it cannot be mistyped.
-2. **Steam app ID**: the number in the game's store URL (`store.steampowered.com/app/294100/...` = RimWorld).
-   The game name is looked up from Steam to confirm it. RimWorld-shaped repos are detected automatically.
-3. **Layout**: pick a built-in layout (**Generic**, **RimWorld**, **Paradox (descriptor.mod)**, **Golf With Your Friends**). Built-in layouts are part of the program and are **locked**: they cannot be edited, and the layout fixes the app ID. For anything else pick **Custom**, then **Edit layout file...** (below).
-   The choice is saved in `.steamhelper.json` in the repo root; for a built-in layout that file holds only its name (and your app ID for Generic).
-4. **Steam account** (on the **Options** tab, under **Account**): type your Steam login name. The status line says whether a saved login
+1. **Mods repo**: press **Browse...** (or Ctrl+O) and pick the folder that holds your RimWorld mods (one sub-folder
+   per mod, each with `About/About.xml`), or drop the folder onto the window. Folders you used before are in the
+   drop-down, so switching repos is one click. The path cannot be typed in, so it cannot be mistyped.
+2. **Steam account** (on the **Options** tab, under **Account**): type your Steam login name. The status line says whether a saved login
    exists; the same status shows next to the Upload button, and clicking it opens Options.
    **Install SteamCMD** downloads it to `%LocalAppData%\SteamCmdHelper\steamcmd` (or uses
    `<repo>\_tools\steamcmd` if that exists).
-5. **Log in** happens automatically on the first upload. A SteamCMD window opens; type your password and the
+3. **Log in** happens automatically on the first upload. A SteamCMD window opens; type your password and the
    Steam Guard code there. This app never sees your password. Afterwards the login is cached.
    Logging in through SteamCMD can knock the regular Steam client offline; use Steam > Go Online afterwards.
-6. Tick the mods (**Tick all** picks every mod that is ready) and press **Upload**. Several mods upload one after
+4. Tick the mods (**Tick all** picks every mod that is ready) and press **Upload**. Several mods upload one after
    another with a single login check; if Steam refuses the login part-way, the rest are not tried. When more than
    one mod was picked, or anything failed, a summary lists what happened to each mod (it is also in the log).
    **Tick changed** picks only the mods whose version Steam does not have yet (the window's `upload --changed`).
@@ -131,13 +128,13 @@ Every package is checked for files that are rarely meant for players: `.git` or 
 warnings in the log; only an empty package is refused, because it would remove every file from the item.
 Paths that break for some players are warned about too: paths long enough to pass Windows' 260-character limit once
 installed, names that differ only in capital letters (they overwrite each other on Windows and macOS), and names
-Windows refuses (`CON`, `NUL`, `aux.ogg`, `<>:"|?*`, a trailing dot or space). A package that is missing the layout's
-marker file (such as RimWorld's `About/About.xml`) or one of its `RequiredFiles` is refused, because the mod would break
-for everyone who updates; that usually means a `.gitattributes` export-ignore rule or the `Exclude` list dropped it.
+Windows refuses (`CON`, `NUL`, `aux.ogg`, `<>:"|?*`, a trailing dot or space). A package that is missing
+`About/About.xml` is refused, because the mod would break for everyone who updates; that usually means a
+`.gitattributes` export-ignore rule dropped it.
 When packaging with git, files in the mod folder that git does not have (ignored by `.gitignore` or not committed) are
 compared against the package: a `.dll` left out that way stops the upload, since players would get the mod without its
-code, and anything else left out is a warning. The RimWorld layout picks up builds in `Assemblies` and in version
-folders such as `1.6/Assemblies` even when `*.dll` is ignored.
+code, and anything else left out is a warning. Builds in `Assemblies` and in version
+folders such as `1.6/Assemblies` are picked up even when `*.dll` is ignored.
 Right-click a mod and choose **Package > Preview package...** to see every file and its size before uploading. It says which folders hold most of the size (click **Size** to sort by it) and lists what players rarely need (source art, debug files, a Source folder); **Leave these out of every package** saves those patterns as `LeaveOut` in `.steamhelper.json`, for git packaging too.
 
 Each upload remembers which files it sent (`%LocalAppData%\SteamCmdHelper\manifests`), so the next one of the same item
@@ -191,19 +188,19 @@ or go wrong:
 
 - a new item without its preview image, or a preview over 1 MB (Steam refuses both)
 - an id file that is not a number, or a metadata file that cannot be read
-- **RimWorld:** the same rules as the [Add Changenote](https://steamcommunity.com/sharedfiles/filedetails/?id=2161604688)
+- the same rules as the [Add Changenote](https://steamcommunity.com/sharedfiles/filedetails/?id=2161604688)
   mod. The version comes from `<version>` in `About/Manifest.xml`, or else `<modVersion>` in `About/About.xml`, and
   `About/Changelog.txt` must have an entry for that version: a line starting with the version number, plus the lines
   under it up to the next version line (lines starting with `#` are skipped). That entry becomes the Workshop change note.
 
-Everything else is only a warning: other layouts' changelog issues, missing build output, uncommitted tracked
+Everything else is only a warning: missing build output, uncommitted tracked
 changes (git packaging uses `HEAD`), a changelog that already has an entry newer than the version to upload, and a
 `Manifest.xml` whose version differs from `About.xml`'s (the manifest's is uploaded; F2 sets both). Hover over a row to see its problems and warnings; problems are also listed in the log.
 
 The list columns:
 
 - **Steam version**: the version already on Steam. Steam does not store one, so it is read from the newest change
-  note on the item's public changelog page (notes sent by this app for RimWorld, or by Add Changenote, start with the
+  note on the item's public changelog page (notes sent by this app, or by Add Changenote, start with the
   version). If that note has none, it shows what this PC last uploaded, unless Steam shows a later update (an upload
   from somewhere else), in which case it shows `?`. Private items show `?` until the first upload from this PC.
 - **Updated**: when the item was last updated, read live from Steam's public item details (one request for
@@ -211,11 +208,10 @@ The list columns:
   Hover a row for the title, visibility and subscriber count on Steam.
 - **To upload**: the mod's current version. Double-click it (or press F2) to change it: type the new number, or press
   **Patch**, **Minor** or **Major** for the next one (1.2.3 becomes 1.2.4, 1.3.0 or 2.0.0). The new number is written
-  to `<version>` in `About/Manifest.xml` (when it has one) and to the version in the marker file: an XML element such as
-  `About/About.xml`'s, a JSON property such as `mod.json`'s, or a `version=` line such as a Paradox `descriptor.mod`'s. For RimWorld the app then asks what changed and adds that as the new version's entry in
+  to `<version>` in `About/Manifest.xml` (when it has one) and to `<modVersion>` in `About/About.xml`. The app then asks what changed and adds that as the new version's entry in
   `About/Changelog.txt` (newest first, or at the end if the file lists the oldest version first), so the upload is
   not refused for a missing entry. If you skip it, double-click the row's **Status** to write it later.
-- **Workshop ID**: from the mod's own id file (`About/PublishedFileId.txt` for RimWorld); `0` means the upload creates a new item.
+- **Workshop ID**: from the mod's `About/PublishedFileId.txt`; `0` means the upload creates a new item.
 - **Preview**: a thumbnail of the preview image; a red frame means it is over Steam's 1 MB limit, ✖ that it is
   missing (hover for the size). Right-click a mod and choose **Package > Shrink preview image under 1 MB** to re-save an
   oversized preview just small enough (the original is kept in `%LocalAppData%\SteamCmdHelper\preview-backups`).
@@ -234,9 +230,9 @@ SteamCMD cannot change tags, so the editor only shows them; see **Workshop tags*
 
 ### Workshop tags
 
-Players filter the Workshop by tags, such as RimWorld's `Mod` and the game versions (`1.6`, `1.7`). SteamCMD's build
+Players filter the Workshop by tags, such as `Mod` and the game versions (`1.6`, `1.7`). SteamCMD's build
 file has no way to send tags, so after each upload the app sets them through the Steam client instead, the same way
-RimWorld's own uploader does. For RimWorld a mod gets `Mod` plus one tag per `<li>` under `supportedVersions` in
+RimWorld's own uploader does. A mod gets `Mod` plus one tag per `<li>` under `supportedVersions` in
 `About/About.xml` (`1.6.4104` counts as `1.6`). Version tags the mod no longer lists are taken off, and any other tag
 on the item is kept. To fix mods uploaded before this, right-click one and choose **On Steam > Update Workshop tags**: that sends
 only the tags, not the files.
@@ -244,15 +240,14 @@ only the tags, not the files.
 The Steam client has to be running and signed in as the account that owns the mod (and the game), because Steam only
 takes tag changes from the game's side. While the tags are sent, Steam briefly shows you as playing the game. If it
 fails, the upload still counts and the log says why. Turn it off with **Set Workshop tags after each upload** under
-**Options > Uploading**. A Custom layout can give its mods tags with `Tags` (always added, for example `["Mod"]`) and
-`VersionTagsKey` (an XPath in an .xml marker file, or a dotted path to an array in a .json one).
+**Options > Uploading**.
 
 **Preview image** in the same editor replaces the item's preview on Steam with its next upload: **Use the mod's preview**
-takes the layout's preview file (after you changed it), or **Choose...** any PNG, JPG or GIF up to 1 MB. Without it,
+takes `About/Preview.png` (after you changed it), or **Choose...** any PNG, JPG or GIF up to 1 MB. Without it,
 the preview on Steam is left alone; it is otherwise only sent when an item is created.
 
-When you upload a mod that is on Steam and has a description file (`steam_description.txt` for Generic,
-`About/steam_description.txt` for RimWorld), the app checks whether the file differs from the Workshop page and offers
+When you upload a mod that is on Steam and has a description file
+(`About/steam_description.txt`), the app checks whether the file differs from the Workshop page and offers
 to send it with the upload. Public and unlisted items are compared with their page on Steam; other items with what this
 PC last sent. **Options > Workshop page** can send it every time without asking, or never. The command line sends it
 only when that is set to **Always send it**.
@@ -262,12 +257,7 @@ version, and the change note sent) and **Open on Steam** (the item's page in you
 
 ### How change notes look on Steam
 
-Steam's change notes use BBCode, not Markdown. When the layout's changelog is a `.md` file (Generic's `CHANGELOG.md`),
-the note sent to Steam is converted: `#` headings become `[h1]` to `[h3]`, `-` and `1.` lists `[list]` and `[olist]`,
-`**bold**`, `*italic*`, `~~strike~~`, `[text](https://...)` links, `>` quotes, `---` rules and fenced code blocks their
-tags, and inline `` `code` `` keeps its text. Untick it under **Options > Workshop page**.
-
-The same card has a **template** for the current mods folder, wrapped around every note sent to Steam: `{note}` is the
+Steam's change notes use BBCode. **Options > Workshop page** has a **template** for the current mods folder, wrapped around every note sent to Steam: `{note}` is the
 changelog entry and `{name}`, `{version}`, `{date}` (yyyy-MM-dd) and `{game}` fill themselves in, for example
 
 ```
@@ -275,8 +265,8 @@ changelog entry and `{name}`, `{version}`, `{date}` (yyyy-MM-dd) and `{game}` fi
 {note}
 ```
 
-A template without `{note}` gets the entry after it. For RimWorld, start with `{version}`: the **Steam version** column
-reads the version from the start of the newest note. The template, the conversion and the credit line change only what
+A template without `{note}` gets the entry after it. Start with `{version}`: the **Steam version** column
+reads the version from the start of the newest note. The template and the credit line change only what
 Steam gets; the changelog file, the upload history and Discord announcements keep the entry as written.
 
 ### Profiles, announcements and dependencies
@@ -291,8 +281,8 @@ link; **Send test** checks the link. Mentions are switched off, so an `@everyone
 [gh](https://cli.github.com) tool (run `gh auth login` once; the commit must be pushed). New items are created private,
 so they are never announced. The webhook link is a secret, so it is kept in your settings, not in the repo.
 
-Mods that name other Workshop items in their metadata (RimWorld's `modDependencies`, or any
-`steamcommunity.com/sharedfiles/filedetails/?id=` link in the marker file) are checked against Steam when the list
+Mods that name other Workshop items in their `About.xml` (`modDependencies`, or any
+`steamcommunity.com/sharedfiles/filedetails/?id=` link) are checked against Steam when the list
 loads. A dependency that is private, removed or banned shows as a warning, since subscribers could not get it.
 
 The row tooltip shows each item's subscriber count and how it has changed this week and since the last upload from
@@ -340,7 +330,7 @@ SteamCmdHelper help                           # every option
 - A named mod that needs fixing, or does not exist, stops the command before anything is uploaded. `--all` skips
   such mods and says why. `--changed` also skips mods whose version Steam already has, found the same way as the
   window's **Steam version** column (the newest change note on Steam, else this PC's uploads); a mod whose version on
-  Steam is not known is uploaded. With nothing to upload it exits `0`, so it can run after every push. New items need `--allow-create`; experimental layouts need `--allow-experimental`.
+  Steam is not known is uploaded. With nothing to upload it exits `0`, so it can run after every push. New items need `--allow-create`.
 - After an upload, `--tag` tags each uploaded commit as `<folder>-v<version>` (git packaging only), `--commit-ids`
   commits the Workshop id files of newly created items, and `--announce` posts to the Discord webhook and makes the
   GitHub releases set up for the folder in the window (Options > Uploading > After uploading). These are the steps the window
@@ -397,7 +387,7 @@ marked as rolled back. Your working folder is not touched; raise the version for
   upload of the mod.
 - **Download from Steam...** (right-click a mod > On Steam; `download <mod|id> --to <folder>`) saves Steam's copy into an empty
   folder, for when the local copy is lost or broken. Unlike rolling back, it does not need git.
-- **The account must own the game.** The first time an account uploads for a game, the app reads its licenses with
+- **The account must own RimWorld.** The first time an account uploads, the app reads its licenses with
   `licenses_print` and warns when the game is not among them, since Steam refuses Workshop uploads from accounts that
   don't own it. A game borrowed through Family Sharing does not count. The command line prints the same warning.
 - **Game branches** (**Options > SteamCMD**; `game-builds`) lists the game's public build and betas with
@@ -407,7 +397,7 @@ marked as rolled back. Your working folder is not touched; raise the version for
 - **Try in a game beta...** (right-click a mod > On Steam, or **Options > SteamCMD**; `test-install`) installs a separate copy of
   the game on any branch with `app_update -beta`, into an empty folder (by default under `%LocalAppData%\SteamCmdHelper\test-installs`).
   With a mod selected, it then puts that mod, packaged as an upload would, and every Workshop item it lists as a
-  dependency into the game's mods folder (RimWorld: `Mods`). Start the game's program in that folder to try the mod
+  dependency into the game's `Mods` folder. Start the game's program in that folder to try the mod
   on the next game version; your normal Steam install is not touched. The first install downloads the whole game.
   A beta with a password takes it in the dialog (or `--beta-password`); it is on SteamCMD's command line while it runs.
 - **Upload from GitHub Actions** (**Options > Git & GitHub**; `ci-setup`) writes `.github/workflows/steam-workshop-upload.yml`
@@ -424,10 +414,10 @@ Three more parts of the Workshop page go through the Steam client after an uploa
 running as the mod's owner). Each can be turned off under **Options > Uploading**, and right-click > On Steam >
 **Update required items, gallery and languages** sends them without uploading.
 
-- **Required items.** The Workshop links in a mod's metadata (RimWorld's `modDependencies` with a `steamWorkshopUrl`)
+- **Required items.** The Workshop links in a mod's `About.xml` (`modDependencies` with a `steamWorkshopUrl`)
   become the page's "Required items", so subscribers are offered them. Items the app added are taken off when the mod
   stops listing them; items you added by hand on Steam stay.
-- **Gallery.** The layout's `GalleryFolder` (RimWorld: `Gallery` in the mod) holds PNG, JPG and GIF images plus an
+- **Gallery.** The mod's `Gallery` folder holds PNG, JPG and GIF images plus an
   optional `videos.txt` of YouTube links. The page's extra images and videos are made to match it. The folder is never
   packaged.
 - **Descriptions in other languages.** A file next to the description file such as `steam_description.german.txt` (or
@@ -453,7 +443,7 @@ line to, every ticked mod's description, and sets their visibility, all sent wit
 - **Stats and comments...** (right-click > On Steam) charts subscribers, favourites, views and lifetime subscribers per mod or for
   the whole folder from the daily counts, and shows how many comments are new. Comments are counted through the Steam
   client, on request or at start-up when **Options > Workshop page** says so.
-- **New mod** (Ctrl+N, or the empty list) makes a ready-to-upload folder for the layout. For RimWorld: About.xml with a
+- **New mod** (Ctrl+N, or the empty list) makes a ready-to-upload mod folder: About.xml with a
   packageId, the supported versions, a placeholder preview, the first changelog entry, the description file, and
   optionally a C# project with Harmony that builds into the newest version's `Assemblies` folder.
 - **What's new** opens after the app updates itself, with the changes since the version you had (also under
@@ -469,7 +459,7 @@ line to, every ticked mod's description, and sets their visibility, all sent wit
   the version looks too small for them.
 - **Release checklist:** your own steps per mods folder (Options > Uploading), ticked off in the upload confirmation.
   "Don't upload until every step is ticked" makes it a must; dry runs never need it.
-- **Mod families:** when picked mods need each other (RimWorld modDependencies, else Workshop links), the ones others
+- **Mod families:** when picked mods need each other (modDependencies, else Workshop links), the ones others
   need go up first, and if one fails, the mods that need it are not uploaded.
 - **Package > Make a preview image** draws a title card over a screenshot or a colour; **Workshop description from
   README** turns README.md into Steam BBCode in the description file, with a preview.
@@ -484,7 +474,7 @@ line to, every ticked mod's description, and sets their visibility, all sent wit
   line (`upload ... --repo ...`) as you, with the saved Steam login, so the window need not stay open; the PC must be
   on and you signed in, and if it was off it runs as soon as it can. The same window lists and cancels them. Its
   output goes to the past logs.
-- **Ticked mods, all at once** (right-click > Ticked mods, with two or more ticked): change their version, or (RimWorld) add a new
+- **Ticked mods, all at once** (right-click > Ticked mods, with two or more ticked): change their version, or add a new
   game version to `supportedVersions`, copying the newest version folder and adding it to `loadFolders.xml`.
 - A Windows notification says how a run went when the window is in the background (Options > Uploading).
 
@@ -501,24 +491,10 @@ line to, every ticked mod's description, and sets their visibility, all sent wit
 
 ### Check setup
 
-**Options > About > Check setup** (or `SteamCmdHelper doctor`) checks the mods folder, its layout and app ID, how many
+**Options > About > Check setup** (or `SteamCmdHelper doctor`) checks the mods folder and its layout file, how many
 mods need fixing, SteamCMD and the saved login, git and gh when they are used, the Discord link, the Steam client when
-tags or required items go through it, the Thunderstore token, free disk space and the data folder, and says what to
+tags or required items go through it, free disk space and the data folder, and says what to
 fix. The window really logs in with the saved login; on the command line add `--login` for that. Nothing is changed.
-
-### Thunderstore
-
-For BepInEx games (Sun Haven, Valheim, Lethal Company and others), a mod can go to [Thunderstore](https://thunderstore.io)
-as well as Steam. A mod takes part when its folder has Thunderstore's `manifest.json`, a 256 x 256 `icon.png` and a
-`README.md`. Under **Options > Uploading > Thunderstore**, set the team, the community (the part after `/c/` in the
-site's address, such as `sun-haven`), optional category slugs and a service account token (thunderstore.io > Teams >
-Service accounts). Then right-click > **Publish to Thunderstore**, or tick **After each Steam upload** to publish with
-every upload.
-
-The package is the same one that goes to Steam, with the version to upload written into the packaged manifest
-(`1.2` becomes `1.2.0`; the mod's own file is not changed). What Thunderstore would refuse (the name, version,
-description length, icon size or a dependency not written as `Author-Name-1.0.0`) is named before anything is sent,
-and a version Thunderstore already has is skipped. The token is kept in your settings encrypted for your Windows user.
 
 ### The app in other languages
 
@@ -532,7 +508,7 @@ first, so their text is in the file. Translations are welcome as pull requests t
 
 SteamCMD can log in two ways. **Anonymous** needs no account and can only read public information. Everything that
 touches your games or Workshop items needs the **saved login**: the account you type under **Options > Account**,
-logged in once in SteamCMD's own window. That account has to own the game.
+logged in once in SteamCMD's own window. That account has to own RimWorld.
 
 | What | Login | Why |
 | --- | --- | --- |
@@ -544,7 +520,6 @@ logged in once in SteamCMD's own window. That account has to own the game.
 | Steam version, Updated, subscribers, the game's name | None (Steam's web pages) | Read from public Workshop pages without SteamCMD |
 | Workshop tags, required items, gallery, other languages, comment counts | The Steam client | SteamCMD can't set these, so the running Steam client does it as the signed-in account |
 | Drop Pod: send the active mods to a Steam collection | The Steam client | SteamCMD can't make collections; the signed-in account must own the game (and the collection, to update it) |
-| Publish to Thunderstore | Thunderstore token | Thunderstore has its own accounts; Steam is not involved |
 | GitHub Actions upload | Saved, copied into a secret | The runner has no one to type a password, so it reuses the saved login |
 
 Because Steam lets an account sign in once at a time, SteamCMD's login takes the Steam client's place when both use
@@ -560,9 +535,9 @@ your password), the next job that needs it says so and offers to log in again. A
 ### Mods not on Steam yet
 
 Tick **Allow creating new items**. They are created private, with the title, description and preview image
-from your layout. The new id is saved to the id file; commit it.
+from the mod's `About` folder. The new id is saved to `About/PublishedFileId.txt`; commit it.
 
-## The Drop Pod (RimWorld and Sun Haven players)
+## The Drop Pod (RimWorld players)
 
 **Only want one side?** The first start asks whether you want the mod manager (The Drop Pod), the mod uploader (The
 Launch Pad), or both, and shows only what you pick. Change it any time under **Options > Appearance > Show**; nothing
@@ -624,25 +599,6 @@ list when it closes.
   window's **Report to the author** opens a ready bug report on the mod's GitHub issues or Workshop comments.
   Right-click Modwright on the taskbar to start RimWorld or an instance without opening the window.
 
-### Sun Haven in The Drop Pod
-
-Pick **Sun Haven** in the game list at the top of the tab (the choice is remembered). Sun Haven mods are BepInEx
-plugins, so The Drop Pod works the way r2modman lays them out:
-
-- **Mods** are the folders and loose DLLs in `BepInEx\plugins` (name and version from Thunderstore's `manifest.json`,
-  else from the plugin's own BepInPlugin attribute, read without running it). Untick a mod and **Save to game** moves it
-  to `BepInEx\plugins-disabled`; tick it again to move it back. BepInEx loads plugins in no order you set, so Sort,
-  Up, Down and dragging are off.
-- **Problems** lists the dependencies a manifest names that are missing or disabled. **Download missing** fetches them
-  from [Thunderstore](https://thunderstore.io/c/sun-haven/) (with whatever they need in turn) into
-  `BepInEx\plugins\Author-Name`; their config files go to `BepInEx\config` but never over yours.
-- **Check for updates** asks Thunderstore about every plugin that came from it and updates the ticked ones, zipping the
-  old copy into the mod-backups folder first.
-- Modlists, share codes, Compare with a friend's list, Find the broken mod, notes, history, **Play**, **Test** and
-  **Read the log** (BepInEx's `LogOutput.log`) all work as for RimWorld. Instances, saves, Insight and the Workshop and
-  texture tools are RimWorld-only and hidden. BepInEx itself is never installed or changed; if it is missing, the tab
-  says so.
-
 ### The Drop Pod on the command line
 
 ```
@@ -654,13 +610,12 @@ SteamCmdHelper droppod switch <modlist>       make a modlist the game's active m
 SteamCmdHelper droppod play [<modlist>]       start the game, after switching to the modlist
 ```
 
-Add `--instance <name>` to any of them to use an instance, and `--game SunHaven` (or `--game RimWorld`) to pick the
-game when The Drop Pod is set to the other one. A desktop shortcut to
+Add `--instance <name>` to any of them to use an instance. A desktop shortcut to
 `SteamCmdHelper.exe droppod play "Heavy run" --instance Medieval` starts that setup in one click.
 
 ### For mod authors: RimWorld tools in The Launch Pad
 
-Right-click one of your mods > **RimWorld** (RimWorld layouts only):
+Right-click one of your mods > **RimWorld**:
 
 - **Test in a clean colony:** starts the mod with only the game, the DLC and what it needs, in a "Launch Pad test"
   instance, straight into a test map (`-quicktest`). Close the game and its log is read for errors that point at the
@@ -692,78 +647,29 @@ rules file**. Keys are package IDs; every field is optional, and comments and tr
 
 Sort follows the rules, Problems reports `incompatibleWith` pairs, and notes show in Problems and Insight.
 
-## Custom layouts: `.steamhelper.json`
+## The layout file: `.steamhelper.json`
 
-Only a **Custom** layout is stored in full in the file and can be edited (the file says `"Preset": "Custom"`). Choosing Custom from a built-in layout copies that layout's fields as a starting point. A built-in layout named in the file is always read from the program, whatever else the file says.
+Every mods folder uses the RimWorld layout, which is built into the program: each mod folder has `About/About.xml`
+(name, `modVersion`, `supportedVersions`, `modDependencies`), an optional `About/Manifest.xml` whose `<version>` wins,
+`About/Changelog.txt` (one entry per version, Add Changenote style), `About/PublishedFileId.txt`, `About/Preview.png`,
+an optional `About/steam_description.txt` and an optional `Gallery` folder. Builds in `Assemblies` and `*/Assemblies`
+are packaged even when git ignores them.
 
-The **Generic** layout expects, inside each mod folder: `CHANGELOG.md` (the Workshop change note),
-`workshop_id.txt` (the item id, written for you on create), `preview.png` and `steam_description.txt`
-(only for creating). Everything is configurable:
+`.steamhelper.json` in the repo root records only the layout's name and the folder's **Leave these out** patterns
+(`LeaveOut`). Anything else in it is ignored. A file written by an earlier version for another layout (Generic, Custom,
+Paradox, Golf With Your Friends) is not used: the window and **Check setup** say so, and the RimWorld layout is used
+instead.
 
-| Field | Generic default | Meaning |
-|---|---|---|
-| `AppId` / `GameName` | empty | Steam app id; the name is a label |
-| `ModsFolder` | empty | Sub-folder of the repo that holds the mods (empty = repo root) |
-| `ModMarker` | empty | File that marks a folder as a mod (e.g. `About/About.xml`, `mod.json`). Empty = every folder |
-| `NameKey`, `VersionKey`, `DescriptionKey` | empty | How to read those from the marker file (see below). Empty name = folder name |
-| `Changelog` | `CHANGELOG.md` | Release notes file |
-| `ChangelogRequired` | true | When false, a missing changelog just sends an empty change note |
-| `ChangelogFirstLineIsVersion` | false | Line 1 is the version (warns when it differs from the marker's version) and the rest is the note |
-| `ChangelogByVersion` | false | Add Changenote style: one entry per version, and the entry for the current version is required and becomes the note (RimWorld: true) |
-| `ManifestFile` | empty | A Mod Manager style manifest whose `<version>` wins over `VersionKey` (RimWorld: `About/Manifest.xml`) |
-| `WorkshopIdFile` | `workshop_id.txt` | Stores the Workshop id |
-| `WorkshopIdKey` | empty | When set, the id is that key inside `WorkshopIdFile` (read like `NameKey`, e.g. `remote_file_id`), and a new id is written back to it |
-| `Preview`, `SteamDescriptionFile` | `preview.png`, `steam_description.txt` | Used when creating (empty `Preview` = none) |
-| `BuiltFiles` | `[]` | Build outputs copied from the working tree, e.g. `["Assemblies/*.dll", "*/Assemblies/*.dll"]` (any folder may use `*`; a warning when none match) |
-| `RequiredFiles` | `[]` | Files every package must contain, as paths or globs (e.g. `["Assemblies/*.dll"]`). The marker file always counts. A package without one is refused |
-| `UseGitArchive` | true | Package with `git archive HEAD` (honours `export-ignore`); false copies the folder using `Exclude` |
-| `Exclude` | `.git`, `bin`, `obj`, ... | Skipped when `UseGitArchive` is false |
-| `GalleryFolder` | empty | Folder in each mod whose images and `videos.txt` become the Workshop page's gallery; never packaged (RimWorld: `Gallery`) |
+## Requests: bugs and features
 
-How the keys are read depends on the marker file's type:
-
-- `.xml`: an XPath, e.g. `ModMetaData/name`
-- `.json`: a dotted path, e.g. `info.title`
-- anything else: a key name (`name` matches `name=Foo`, `name = "Foo"`, `name: Foo`), or a regex whose first group is the value
-
-Example for a game whose mods have a `mod.json` and live in `mods/`:
-
-```json
-{ "AppId": "123456", "GameName": "My Game", "ModsFolder": "mods", "ModMarker": "mod.json",
-  "NameKey": "info.title", "VersionKey": "info.version", "Preview": "" }
-```
-
-### Paradox games (experimental)
-
-The **Paradox (descriptor.mod)** layout is for Stellaris (app 281990), Hearts of Iron IV (394360), Europa Universalis IV
-(236850), Crusader Kings III (1158310), Crusader Kings II (203770) and Imperator: Rome (859580). Type the game's app ID,
-as with Generic. Each mod folder holds a `descriptor.mod`, whose `name` and `version` are shown, and a `thumbnail.png`
-preview. The Workshop id is the descriptor's `remote_file_id`; when a new item is created, its id is written back into
-that line. There is no changelog convention, so a `CHANGELOG.md` is used when present and is otherwise not required.
-Folders with a `descriptor.mod` are detected automatically. The games normally publish through their own launcher, so
-try a new private item first.
-
-### Golf With Your Friends (experimental)
-
-The **Golf With Your Friends** layout (app ID 431240) treats each sub-folder as one map: a `Map` file (JSON; the map name and description are read from it), `Preview.jpg` and any `AdditionalN.jpg` screenshots. It is modelled on how a downloaded Workshop map looks on disk, but it is **unproven**: nobody has confirmed the game accepts a hand-uploaded item, and the game writes the item's `publishedID` into the `Map` file itself. Real uploads with it ask for confirmation first. Try a brand-new private item first and check it loads in the game.
-
-### Tabletop Simulator is not supported
-
-Tabletop Simulator (app 286160) does not work with this tool. A Workshop item for it is just a save `.json` and a `.png` thumbnail (its images and models are links to Steam cloud, Google Drive, GitHub and similar, not part of the item), and the game keeps no `steamapps\workshop\content` folder for it. It publishes through its own in-game uploader (Modding > Workshop Upload / Update Workshop), which SteamCMD's content-folder upload does not replace. Use the in-game uploader for TTS mods.
-
-Only RimWorld is tested against real mods; the other presets are starting points. For other games, check the layout with **Dry run** first and
-see the game's Workshop documentation for what a mod folder must contain.
-
-## Requests: new games, bugs and features
-
-The **?** button (top right, always visible) offers **Keyboard shortcuts** and **Send a request**, which opens a short form. Pick what the request is: **Support another game** (a layout request), **Report a bug** or **Suggest a feature**. Bugs and features also ask for a one-line summary and what part of the tool they are about (windows, uploading, or SteamCMD and login). For a layout request the form fills in the game name, app ID, your helper version and the file names (never contents) of one mod folder, then opens a pre-filled new issue in **Linear** (team `AZR`) in your browser. Nothing is created until you press Create in Linear, and you can edit or delete anything first. **Copy text instead** copies the text. Only people signed in to the Linear workspace can create the issue, so if you share the program, change `TeamKey` / `NewIssueUrl` in `RequestForm.cs` to your own (or tell people to use **Copy text instead** and send it to you).
+The **?** button (top right, always visible) offers **Keyboard shortcuts** and **Send a request**, which opens a short form. Pick what the request is: **Report a bug** or **Suggest a feature**, then give a one-line summary and what part of the tool it is about (windows, uploading, or SteamCMD and login). The form adds your Modwright version, then opens a pre-filled new issue in **Linear** (team `AZR`) in your browser. Nothing is created until you press Create in Linear, and you can edit or delete anything first. **Copy text instead** copies the text. Only people signed in to the Linear workspace can create the issue, so if you share the program, change `TeamKey` / `NewIssueUrl` in `RequestForm.cs` to your own (or tell people to use **Copy text instead** and send it to you).
 
 ### Sending requests from inside the app (maintainer setup)
 
 Builds that carry a Linear key send requests straight from the app, with no browser or login. The key is baked in at build time and never committed:
 
 - **GitHub builds** (CI and releases) read the repository secrets `LINEAR_CREATE_API_KEY` (a Linear personal API key restricted to **Create issues** in one dedicated team) and `LINEAR_TEAM_UUID` (that team's ID).
-- **Optional routing:** the secrets `PROJECTID` (a Linear project ID) and `LABELIDS` (label IDs, separated by commas) pick the project and the labels every request gets. `LABELMAP` adds one label for the kind of request and one for the area, as `Name=label ID` pairs separated by commas, using the names `Layout`, `Bug`, `Feature`, `UI`, `Upload` and `SteamCMD` (any left out just add no label). Without these, requests go into the team alone.
+- **Optional routing:** the secrets `PROJECTID` (a Linear project ID) and `LABELIDS` (label IDs, separated by commas) pick the project and the labels every request gets. `LABELMAP` adds one label for the kind of request and one for the area, as `Name=label ID` pairs separated by commas, using the names `Bug`, `Feature`, `UI`, `Upload` and `SteamCMD` (any left out just add no label). Without these, requests go into the team alone.
 - **Local builds** read the same names from a git-ignored `request.key` file in the project folder, one `NAME=value` per line. Environment variables with those names win over the file.
 
 If Linear refuses the project or labels, for example because one was removed, the request is filed into the team alone instead, so it is never lost.
@@ -792,8 +698,8 @@ The key is stored masked, but anyone with the exe could still extract it. Keep i
 - Uploads publish immediately to subscribers. Use Dry run first when unsure.
 - Every package is searched for secrets before upload: Steam's saved login, private keys and key stores, `.env`
   files and tokens with a known shape (GitHub, Discord webhooks, Slack, AWS, Google, Linear, Anthropic) stop it, and
-  only the file and line are named, never the value. Leave such files out with the layout's Exclude list or an
-  `export-ignore` rule.
+  only the file and line are named, never the value. Leave such files out with **Leave these out** (Package >
+  Preview package...) or an `export-ignore` rule.
 - Install SteamCMD only installs a download that arrived whole and whose `steamcmd.exe` is signed by Valve.
 - An upload counts as done only when SteamCMD exits cleanly and confirms it with `Success.` (and, for a new item,
   returns its id). Otherwise the row is marked failed and the package is kept in `%TEMP%\steamcmd_helper_*` to inspect.
@@ -817,18 +723,14 @@ or the person installing or operating it. What it does connect to, and why:
   update. Nothing about you or your mods is sent.
 - **Steam** ([Valve privacy policy](https://store.steampowered.com/privacy_agreement/)): uploads go through Valve's
   SteamCMD, which you sign in to yourself. The app reads public Workshop details and changelog pages for the Workshop ids
-  in your mods folder, looks up a game's name from its app ID when you enter one, and downloads SteamCMD from Valve when
-  you ask it to install it. Only the Workshop ids and app ID are sent. At start-up, once SteamCMD is installed, it asks
+  in your mods folder, and downloads SteamCMD from Valve when you ask it to install it. Only the Workshop ids and
+  RimWorld's app ID are sent. At start-up, once SteamCMD is installed, it asks
   Steam for the game's public branch list through SteamCMD's anonymous login (at most every 12 hours; turn it off under
   **Options > SteamCMD**).
 - **Linear** ([privacy policy](https://linear.app/privacy)): only when you press **Send** in the request form (or
   **Report it** after a crash and then Send). It sends exactly the text shown in the form.
 - **Discord** ([privacy policy](https://discord.com/privacy)): only when you add a webhook link for a mods folder; after
   an upload it posts the mod's name, Workshop link and change note there.
-- **Thunderstore** ([privacy policy](https://thunderstore.io/privacy-policy/)): only when you publish to it; it receives
-  the mod's package and your team's token, and the app reads the package's public page to see which version is there.
-  For Sun Haven in The Drop Pod, **Download missing** and **Check for updates** read the public package details of the
-  plugins involved and download the packages you get or update. Nothing about you is sent.
 
 ## Accessibility
 
@@ -846,7 +748,7 @@ dotnet test tests/SteamCmdHelper.Tests
 The tests compile the non-UI source files directly, so they run on Windows, Linux or macOS.
 
 On Windows there are also click-through tests that start the real app and use it through UI Automation (FlaUI): a
-portable copy in a temp folder, with a fake RimWorld and Sun Haven, so nothing of yours is touched. Build the app first
+portable copy in a temp folder, with a fake RimWorld, so nothing of yours is touched. Build the app first
 (or set `MODWRIGHT_EXE` to an exe), then:
 
 ```
