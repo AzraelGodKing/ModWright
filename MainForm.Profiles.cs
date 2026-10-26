@@ -78,12 +78,6 @@ public sealed partial class MainForm
         _afterCmd.Text = hasRepo ? _s.AfterFor(_s.RepoPath) : "";
         _buildCmd.Enabled = _packageRef.Enabled = _afterCmd.Enabled = hasRepo && !_busy;
         _ghReleases.Checked = hasRepo && _s.GitHubReleasesFor(_s.RepoPath);
-        _tsTeam.Text = hasRepo ? _s.ThunderstoreTeamFor(_s.RepoPath) : "";
-        _tsCommunity.Text = hasRepo ? _s.ThunderstoreCommunityFor(_s.RepoPath) : "";
-        _tsCategories.Text = hasRepo ? _s.ThunderstoreCategoriesFor(_s.RepoPath) : "";
-        _tsAfter.Checked = hasRepo && _s.ThunderstoreAfterUpload(_s.RepoPath);
-        _tsToken.Text = ThunderstoreToken.Unprotect(_s.ThunderstoreToken);
-        _tsTeam.Enabled = _tsCommunity.Enabled = _tsCategories.Enabled = _tsAfter.Enabled = hasRepo && !_busy;
         _webhook.Enabled = _ghReleases.Enabled = _webhookTest.Enabled = hasRepo && !_busy;
         _populating = false;
     }
@@ -143,15 +137,6 @@ public sealed partial class MainForm
         }
     }
 
-    void SaveThunderstore()
-    {
-        if (_populating) return;
-        if (Directory.Exists(_s.RepoPath))
-            _s.SetThunderstore(_s.RepoPath, _tsTeam.Text, _tsCommunity.Text, _tsCategories.Text, _tsAfter.Checked);
-        _s.ThunderstoreToken = ThunderstoreToken.Protect(_tsToken.Text.Trim());
-        _s.Save();
-    }
-
     /// <summary>"Later...": schedules the ticked mods to upload at a time picked in the window, or lists the scheduled uploads.</summary>
     void UploadLater()
     {
@@ -167,74 +152,6 @@ public sealed partial class MainForm
     {
         var ticked = Selected().ToList();
         return ticked.Count > 1 ? ticked : SelectedMod() is { } m ? new() { m } : ticked;
-    }
-
-    /// <summary>
-    /// Publishes mods to Thunderstore: each is packaged as for Steam (nothing goes to Steam), checked against what
-    /// Thunderstore accepts, zipped with the version to upload in its manifest, and sent unless Thunderstore already has that version.
-    /// </summary>
-    async Task PublishThunderstoreAsync(List<ModInfo> mods)
-    {
-        if (mods.Count == 0) return;
-        SaveThunderstore();
-        var target = _s.ThunderstoreFor(_s.RepoPath);
-        var token = ThunderstoreToken.Unprotect(_s.ThunderstoreToken);
-        if (target == null || token.Length == 0)
-        {
-            Append("Thunderstore: set the team, community and token in Options > Uploading > Thunderstore first.", LogKind.Warn);
-            ShowOptions(target == null ? _tsTeam : _tsToken);
-            return;
-        }
-        var wasBusy = _busy;
-        _cts ??= new CancellationTokenSource();
-        var ct = _cts.Token;
-        if (!wasBusy) SetBusy(true);
-        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("SteamCmdHelper");
-        try
-        {
-            foreach (var m in mods)
-            {
-                var zip = Path.Combine(Path.GetTempPath(), $"steamcmd_helper_thunderstore_{Guid.NewGuid():N}.zip");
-                string version = "", name = Thunderstore.NameOf(m.Dir) ?? m.Folder;
-                List<string>? problems = null;
-                var pub = new Publisher(_s.RepoPath, _cfg, _s.EffectiveSteamCmd, _s.Account) { GitRef = _s.RefFor(_s.RepoPath) is { Length: > 0 } r ? r : null };
-                pub.StageReady += (_, stage, v) =>
-                {
-                    try
-                    {
-                        var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(stage, Thunderstore.ManifestFile)))!;
-                        version = Thunderstore.VersionFor(v, manifest);
-                        problems = Thunderstore.Check(stage, version);
-                        if (problems.Count == 0) Thunderstore.Zip(stage, zip, version);
-                    }
-                    catch (Exception e) { problems = new() { e.Message }; }
-                };
-                Append($"{m.Name}: packaging for Thunderstore...", LogKind.Note);
-                var res = await Task.Run(() => pub.RunAsync(m, false, ct));
-                try
-                {
-                    if (problems == null) { Append($"{m.Name}: not published to Thunderstore, the package could not be built: {res.Message}", LogKind.Error); continue; }
-                    if (problems.Count > 0) { Append($"{m.Name}: not published to Thunderstore: the package {string.Join("; ", problems)}.", LogKind.Error); continue; }
-                    if (await Thunderstore.LatestAsync(http, target.Team, name, ct) == version)
-                    {
-                        Append($"{m.Name}: Thunderstore already has {version}.", LogKind.Note);
-                        continue;
-                    }
-                    var error = await Thunderstore.PublishAsync(http, token, target, zip, ct, line => Append($"{m.Name}: {line}", LogKind.Note));
-                    Append(error == null
-                        ? $"{m.Name}: published {version} to Thunderstore: {Thunderstore.PackageUrl(target.Community, target.Team, name)}"
-                        : $"{m.Name}: not published to Thunderstore: {error}", error == null ? LogKind.Ok : LogKind.Error);
-                }
-                finally { try { File.Delete(zip); } catch { } }
-            }
-        }
-        catch (OperationCanceledException) { Append("Cancelled.", LogKind.Warn); }
-        catch (HttpRequestException e) { Append("Could not reach Thunderstore: " + e.Message, LogKind.Error); }
-        finally
-        {
-            if (!wasBusy) { SetBusy(false); _cts?.Dispose(); _cts = null; }
-        }
     }
 
     /// <summary>Packages one mod without uploading and shows what the package holds.</summary>

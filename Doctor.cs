@@ -103,8 +103,6 @@ public static class Doctor
                 else
                     Add(CheckLevel.Ok, "Steam restart", $"after an upload, Steam is restarted and signs back in as {steam.RememberedAccount}.");
             }
-            if (s.ThunderstoreAfterUpload(repo) && string.IsNullOrEmpty(s.ThunderstoreToken))
-                Add(CheckLevel.Fail, "Thunderstore", "publishing after each upload is on, but no token is set (Options > Uploading > Thunderstore).");
             if (s.BuildFor(repo) is { Length: > 0 } build) Add(CheckLevel.Ok, "Build step", build);
         }
 

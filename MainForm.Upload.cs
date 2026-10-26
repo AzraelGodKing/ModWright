@@ -239,11 +239,6 @@ public sealed partial class MainForm
         if (!dry && !test) await AnnounceAsync(results, NoteSent, uploadedCommit);
         if (!dry && !test && _s.AfterFor(_s.RepoPath) is { Length: > 0 } after)
             await AfterUpload.RunAsync(_s.RepoPath, after, results, _cfg.AppId, uploadedCommit, NoteSent, l => BeginInvoke(() => Append(l, Display.KindOf(l))), CancellationToken.None);
-        if (!dry && !test && _s.ThunderstoreAfterUpload(_s.RepoPath))
-        {
-            var sent = results.Where(r => r.Status == BatchStatus.Uploaded && Thunderstore.Has(r.Mod.Dir)).Select(r => r.Mod).ToList();
-            if (sent.Count > 0) await PublishThunderstoreAsync(sent);
-        }
         SaveRunLog(logFrom, started, RunLogs.Label(dry ? "dry run" : test ? "test upload" : "upload", picked.Select(m => m.Name).ToList()));
         await RefreshAllAsync();
         if (!allOk)

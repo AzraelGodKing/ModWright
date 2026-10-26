@@ -100,8 +100,6 @@ public sealed partial class MainForm
             UpdateProjectCard();
         };
         _ghReleases.CheckedChanged += (_, _) => { if (!_populating) SaveAnnounce(); };
-        foreach (var box in new[] { _tsTeam, _tsCommunity, _tsCategories, _tsToken }) box.Leave += (_, _) => SaveThunderstore();
-        _tsAfter.CheckedChanged += (_, _) => SaveThunderstore();
         _tagUploads.CheckedChanged += (_, _) => { if (!_populating) { _s.TagUploads = _tagUploads.Checked; _s.Save(); } };
         _commitIds.CheckedChanged += (_, _) => { if (!_populating) { _s.CommitNewIds = _commitIds.Checked; _s.Save(); } };
         _uploadCredit.CheckedChanged += (_, _) => { if (!_populating) { _s.UploadCredit = _uploadCredit.Checked; _s.Save(); } };
@@ -583,7 +581,6 @@ public sealed partial class MainForm
         var bulk = ticked.DropDownItems.Add("Workshop &pages...", null, async (_, _) => await EditTickedPagesAsync());
         var bulkVersion = ticked.DropDownItems.Add("Change the versi&on...", null, (_, _) => ChangeTickedVersions());
         var gameVersion = ticked.DropDownItems.Add("Add a &game version...", null, (_, _) => AddGameVersion());
-        var thunder = menu.Items.Add("Publish to Th&understore", null, async (_, _) => await PublishThunderstoreAsync(TickedOrSelected().Where(x => Thunderstore.Has(x.Dir)).ToList()));
         var refreshLaunchPad = AddLaunchPadMenu(menu, package);
 
         menu.Items.Add(new ToolStripSeparator());
@@ -597,7 +594,6 @@ public sealed partial class MainForm
             bulk.Available = bulkVersion.Available = Selected().Count() > 1;
             gameVersion.Available = RimWorldLint.Applies(_cfg);
             ticked.Available = bulk.Available || gameVersion.Available;
-            thunder.Available = TickedOrSelected().Any(x => Thunderstore.Has(x.Dir));
             changelog.Enabled = ChangelogOf(SelectedMod()) != null;
             entry.Available = SelectedMod() is { } m && ModScanner.NeedsChangelogEntry(m, _cfg);
             shrink.Available = SelectedMod() is { PreviewOk: false, PreviewPath.Length: > 0 };
@@ -815,17 +811,7 @@ public sealed partial class MainForm
                 Row(Lbl("&Then run"), _afterCmd),
                 Hint("Run in the mods folder once for each mod that uploaded, for anything else you do after a release. It gets " +
                      string.Join(", ", AfterUpload.Variables) + " (the change note is in that file). A failure is only a warning: the upload already went through. " +
-                     "Kept in your settings, never in the repo.")),
-            Card("Thunderstore", new Control[] { FolderTag() },
-                Row(Lbl("T&eam"), _tsTeam, Lbl("C&ommunity"), _tsCommunity),
-                Row(Lbl("Categor&ies"), _tsCategories),
-                Row(Lbl("To&ken"), _tsToken),
-                _tsAfter,
-                Hint("For BepInEx games (Sun Haven, Valheim, Lethal Company and others): a mod with Thunderstore's manifest.json, icon.png (256 x 256) and " +
-                     "README.md in its folder can be published there too, from the same package as Steam, with the version to upload written into the manifest. " +
-                     "Publish to Thunderstore is on the right-click menu. The team, community (the part after /c/ in the site's address) and categories are " +
-                     "for this mods folder. The token is a service account token (thunderstore.io > Teams > Service accounts); it is kept encrypted for your " +
-                     "Windows user, so an exported settings file does not carry a usable copy.")));
+                     "Kept in your settings, never in the repo.")));
 
         // ---- Workshop page: the text that goes to Steam with an upload
         _uploadCredit.Checked = _s.UploadCredit;
