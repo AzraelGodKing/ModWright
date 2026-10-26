@@ -94,24 +94,13 @@ public sealed class NewModTests : IDisposable
     [Fact]
     public void Other_layouts_get_the_files_their_layout_names()
     {
-        var cfg = ProjectConfig.GetPreset("Generic");
+        var cfg = new ProjectConfig();
         cfg.ModMarker = "mod.json";
         var dir = NewMod.Create(_repo.Root, cfg, new NewModOptions { Name = "Thing", Folder = "Thing" });
         Assert.True(File.Exists(Path.Combine(dir, cfg.SteamDescriptionFile)));
         Assert.True(File.Exists(Path.Combine(dir, cfg.Changelog)));
         Assert.False(Directory.Exists(Path.Combine(dir, "About")));
         Assert.Equal("mod.json", NewMod.MissingMarker(dir, cfg));
-    }
-
-    [Fact]
-    public void A_Paradox_mod_gets_a_descriptor_the_scan_reads()
-    {
-        var cfg = ProjectConfig.GetPreset(ProjectConfig.ParadoxName);
-        var dir = NewMod.Create(_repo.Root, cfg, new NewModOptions { Name = "Big \"Map\"", Folder = "BigMap" });
-        Assert.Null(NewMod.MissingMarker(dir, cfg));
-        var mod = Assert.Single(ModScanner.Scan(_repo.Root, cfg));
-        Assert.Equal("Big 'Map'", mod.Name);
-        Assert.Equal("1.0.0", mod.Version);
     }
 }
 

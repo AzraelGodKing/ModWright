@@ -11,7 +11,7 @@ static class TestConfig
 
     public static ProjectConfig RimWorld(Action<ProjectConfig>? change = null)
     {
-        var c = ProjectConfig.GetPreset("RimWorld");
+        var c = ProjectConfig.RimWorld();
         change?.Invoke(c);
         return c;
     }

@@ -143,12 +143,12 @@ public sealed class PackageSizeTests
         Directory.CreateDirectory(repo);
         try
         {
-            var cfg = ProjectConfig.GetPreset("RimWorld");
+            var cfg = ProjectConfig.RimWorld();
             cfg.LeaveOut = new[] { "*.psd" };
             cfg.Save(repo);
             var again = ProjectConfig.Load(repo);
             Assert.Equal(new[] { "*.psd" }, again.LeaveOut);
-            Assert.Equal("RimWorld", again.PresetName());
+            Assert.Equal("RimWorld", again.Preset);
         }
         finally { try { Directory.Delete(repo, true); } catch { } }
     }

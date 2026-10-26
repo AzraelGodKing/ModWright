@@ -91,8 +91,7 @@ public sealed class PackageSafetyTests : IDisposable
     public void Layouts_require_their_marker_file()
     {
         Assert.Contains("About/About.xml", TestConfig.RimWorld().RequiredInPackage());
-        Assert.Contains("descriptor.mod", ProjectConfig.GetPreset(ProjectConfig.ParadoxName).RequiredInPackage());
-        Assert.Empty(ProjectConfig.GetPreset("Generic").RequiredInPackage());
+        Assert.Empty(new ProjectConfig().RequiredInPackage());
     }
 
     [Fact]

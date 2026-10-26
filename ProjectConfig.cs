@@ -4,32 +4,18 @@ using System.Text.Json.Serialization;
 namespace SteamCmdHelper;
 
 /// <summary>
-/// Describes how a mods repo is laid out, so the helper works for any Steam Workshop game.
-///
-/// Built-in layouts (<see cref="PresetNames"/>) live in this program and are locked: the repo's
-/// ".steamhelper.json" only records WHICH one is used (plus the app id for Generic), so editing that file
-/// cannot change them. A "Custom" layout is the one kind stored in full in the file and editable.
-/// Without a file the layout is auto-detected (RimWorld if the mods have About/About.xml, else Generic).
+/// Describes how a mods repo is laid out. Modwright is for RimWorld, so there is one layout, built into the program
+/// (<see cref="RimWorld"/>): the repo's ".steamhelper.json" only records its name and the mods folder's own
+/// "Leave these out" patterns, so editing that file cannot change the layout.
 /// All paths are relative to each mod's own folder and use forward slashes.
 /// </summary>
 public sealed class ProjectConfig
 {
     public const string FileName = ".steamhelper.json";
-    public const string CustomName = "Custom";
-    public const string ParadoxName = "Paradox (descriptor.mod)";
-    public static readonly string[] PresetNames = { "Generic", "RimWorld", ParadoxName, "Golf With Your Friends" };
+    public const string RimWorldName = "RimWorld";
+    public const string RimWorldAppId = "294100";
 
-    /// <summary>Presets that have not been proven against the real game. Real uploads ask for confirmation first.</summary>
-    public static readonly string[] ExperimentalPresets = { ParadoxName, "Golf With Your Friends" };
-
-    /// <summary>Steam app ids of the Paradox games whose mods carry a descriptor.mod, for the app ID box's hint.</summary>
-    public static readonly (string AppId, string Game)[] ParadoxGames =
-    {
-        ("281990", "Stellaris"), ("394360", "Hearts of Iron IV"), ("236850", "Europa Universalis IV"),
-        ("1158310", "Crusader Kings III"), ("203770", "Crusader Kings II"), ("859580", "Imperator: Rome"),
-    };
-
-    /// <summary>Which layout is in use: a built-in name, or "Custom". Empty in old files = worked out from the fields.</summary>
+    /// <summary>The layout's name, as the layout file records it.</summary>
     public string Preset { get; set; } = "";
 
     /// <summary>Steam app id of the game (RimWorld = 294100). Required before anything can be uploaded.</summary>
@@ -38,13 +24,13 @@ public sealed class ProjectConfig
     /// <summary>Shown in the window; purely a label (filled in automatically from Steam when possible).</summary>
     public string GameName { get; set; } = "";
 
-    // ---- everything below is only read from the file for Custom layouts; built-ins come from this program ----
+    // ---- the layout itself: always the built-in RimWorld one, never read from the file ----
 
     /// <summary>Folder inside the repo that holds the mods. Empty = the repo root.</summary>
     public string ModsFolder { get; set; } = "";
 
     /// <summary>
-    /// A subfolder counts as a mod when this file exists inside it (e.g. "About/About.xml", "mod.info", "Map").
+    /// A subfolder counts as a mod when this file exists inside it (e.g. "About/About.xml").
     /// Empty = every subfolder counts as a mod.
     /// </summary>
     public string ModMarker { get; set; } = "";
@@ -89,8 +75,7 @@ public sealed class ProjectConfig
     public string WorkshopIdFile { get; set; } = "workshop_id.txt";
 
     /// <summary>
-    /// When set, the id is one value inside <see cref="WorkshopIdFile"/> (read like <see cref="NameKey"/>, e.g.
-    /// "remote_file_id" in a Paradox descriptor.mod) and a new item's id is written back to that key.
+    /// When set, the id is one value inside <see cref="WorkshopIdFile"/> (read like <see cref="NameKey"/>) and a new item's id is written back to that key.
     /// </summary>
     public string WorkshopIdKey { get; set; } = "";
 
@@ -171,14 +156,6 @@ public sealed class ProjectConfig
     [JsonIgnore] public string? Error { get; set; }
     [JsonIgnore] public bool AppIdValid => !string.IsNullOrWhiteSpace(AppId) && AppId.All(char.IsDigit);
 
-    /// <summary>True for the layouts built into the program. These cannot be edited.</summary>
-    [JsonIgnore] public bool IsBuiltIn => PresetNames.Contains(PresetName());
-
-    /// <summary>True when the layout itself names the game, so the app id is fixed too.</summary>
-    [JsonIgnore] public bool AppIdLocked => IsBuiltIn && GetPreset(PresetName()).AppId.Length > 0;
-
-    [JsonIgnore] public bool Experimental => ExperimentalPresets.Contains(PresetName());
-
     static readonly JsonSerializerOptions Opts = new()
     {
         WriteIndented = true,
@@ -187,187 +164,69 @@ public sealed class ProjectConfig
         PropertyNameCaseInsensitive = true
     };
 
-    // ------------------------------------------------------------ built-in layouts
+    // ------------------------------------------------------------ the RimWorld layout
 
-    public static ProjectConfig GetPreset(string name) => name switch
+    public static ProjectConfig RimWorld() => new()
     {
-        "RimWorld" => new ProjectConfig
-        {
-            Preset = "RimWorld",
-            AppId = "294100",
-            GameName = "RimWorld",
-            ModMarker = "About/About.xml",
-            NameKey = "ModMetaData/name",
-            VersionKey = "ModMetaData/modVersion",
-            ManifestFile = "About/Manifest.xml",
-            DescriptionKey = "ModMetaData/description",
-            Changelog = "About/changelog.txt",
-            ChangelogByVersion = true,
-            WorkshopIdFile = "About/PublishedFileId.txt",
-            Preview = "About/Preview.png",
-            SteamDescriptionFile = "About/steam_description.txt",
-            BuiltFiles = new[] { "Assemblies/*.dll", "*/Assemblies/*.dll" },
-            Exclude = new[] { ".git", ".vs", "obj", "bin", "Source", "Tools", "*.md", "*.pdb" },
-            // The tags RimWorld's own uploader sets: "Mod" and each supported version, which the Workshop filters by.
-            Tags = new[] { "Mod" },
-            VersionTagsKey = "ModMetaData/supportedVersions/li",
-            GameModsFolder = "Mods",
-            GalleryFolder = "Gallery",
-            Source = "built-in RimWorld layout"
-        },
-        // Modelled on a downloaded Workshop item: a folder holding "Map" (JSON course file), Preview.jpg and optional Additional0.jpg...
-        // Unverified: nobody has confirmed the game accepts a hand-uploaded item, and the game's own Map file carries a publishedID.
-        "Golf With Your Friends" => new ProjectConfig
-        {
-            Preset = "Golf With Your Friends",
-            AppId = "431240",
-            GameName = "Golf With Your Friends",
-            ModMarker = "Map",
-            NameKey = "\"levelName\"\\s*:\\s*\"([^\"]*)\"",
-            DescriptionKey = "\"description\"\\s*:\\s*\"([^\"]*)\"",
-            ChangelogRequired = false,
-            Preview = "Preview.jpg",
-            Source = "built-in Golf With Your Friends layout (experimental)"
-        },
-        // Paradox games (Stellaris, Hearts of Iron IV, Europa Universalis IV, Crusader Kings III, ...): the mod folder holds a
-        // descriptor.mod with name, version and, once published, remote_file_id; thumbnail.png is the preview. The app id
-        // depends on the game, so it is typed in like Generic. Experimental: the games' own launcher normally uploads.
-        ParadoxName => new ProjectConfig
-        {
-            Preset = ParadoxName,
-            ModMarker = "descriptor.mod",
-            NameKey = "name",
-            VersionKey = "version",
-            ChangelogRequired = false,
-            WorkshopIdFile = "descriptor.mod",
-            WorkshopIdKey = "remote_file_id",
-            Preview = "thumbnail.png",
-            Source = "built-in Paradox layout (experimental)"
-        },
-        _ => new ProjectConfig { Preset = "Generic", Source = "built-in Generic layout" }
+        Preset = RimWorldName,
+        AppId = RimWorldAppId,
+        GameName = "RimWorld",
+        ModMarker = "About/About.xml",
+        NameKey = "ModMetaData/name",
+        VersionKey = "ModMetaData/modVersion",
+        ManifestFile = "About/Manifest.xml",
+        DescriptionKey = "ModMetaData/description",
+        Changelog = "About/changelog.txt",
+        ChangelogByVersion = true,
+        WorkshopIdFile = "About/PublishedFileId.txt",
+        Preview = "About/Preview.png",
+        SteamDescriptionFile = "About/steam_description.txt",
+        BuiltFiles = new[] { "Assemblies/*.dll", "*/Assemblies/*.dll" },
+        Exclude = new[] { ".git", ".vs", "obj", "bin", "Source", "Tools", "*.md", "*.pdb" },
+        // The tags RimWorld's own uploader sets: "Mod" and each supported version, which the Workshop filters by.
+        Tags = new[] { "Mod" },
+        VersionTagsKey = "ModMetaData/supportedVersions/li",
+        GameModsFolder = "Mods",
+        GalleryFolder = "Gallery",
+        Source = "RimWorld layout"
     };
-
-    /// <summary>Switches to a built-in layout (replacing every layout field). The app id is only replaced when the layout names a game.</summary>
-    public void ApplyPreset(string name)
-    {
-        var p = GetPreset(name);
-        Preset = p.Preset;
-        if (p.AppId.Length > 0) { AppId = p.AppId; GameName = p.GameName; }
-        ModsFolder = p.ModsFolder; ModMarker = p.ModMarker;
-        NameKey = p.NameKey; VersionKey = p.VersionKey; ManifestFile = p.ManifestFile; DescriptionKey = p.DescriptionKey;
-        Changelog = p.Changelog; ChangelogRequired = p.ChangelogRequired;
-        ChangelogFirstLineIsVersion = p.ChangelogFirstLineIsVersion; ChangelogByVersion = p.ChangelogByVersion;
-        WorkshopIdFile = p.WorkshopIdFile; WorkshopIdKey = p.WorkshopIdKey; Preview = p.Preview; SteamDescriptionFile = p.SteamDescriptionFile;
-        BuiltFiles = p.BuiltFiles; RequiredFiles = p.RequiredFiles; UseGitArchive = p.UseGitArchive; Exclude = p.Exclude;
-        Tags = p.Tags; VersionTagsKey = p.VersionTagsKey; GameModsFolder = p.GameModsFolder; GalleryFolder = p.GalleryFolder;
-        Source = p.Source;
-    }
-
-    /// <summary>Turns the current layout into an editable Custom one (keeping its fields as a starting point).</summary>
-    public void MakeCustom() { Preset = CustomName; Source = FileName + " (custom layout)"; }
-
-    /// <summary>The layout in use: a built-in name or "Custom". Old files without a Preset field are matched against the built-ins.</summary>
-    public string PresetName()
-    {
-        if (Preset == CustomName || PresetNames.Contains(Preset)) return Preset;
-        foreach (var n in PresetNames)
-        {
-            var p = GetPreset(n);
-            if (p.ModMarker == ModMarker && p.Changelog == Changelog && p.WorkshopIdFile == WorkshopIdFile && p.WorkshopIdKey == WorkshopIdKey
-                && p.NameKey == NameKey && p.VersionKey == VersionKey && p.ModsFolder == ModsFolder
-                && p.ChangelogRequired == ChangelogRequired && (p.AppId.Length == 0 || p.AppId == AppId)) return n;
-        }
-        return CustomName;
-    }
 
     // ------------------------------------------------------------ load / save
 
     public static string PathFor(string repo) => Path.Combine(repo, FileName);
 
+    /// <summary>
+    /// The RimWorld layout, with the mods folder's own "Leave these out" patterns from its layout file. A file written for
+    /// another game (Generic, Custom, Paradox... from before 2.0.0) is not used: <see cref="Error"/> says so.
+    /// </summary>
     public static ProjectConfig Load(string repo)
     {
+        var c = RimWorld();
         var path = PathFor(repo);
-        if (!File.Exists(path)) return Detect(repo);
+        if (!File.Exists(path)) return c;
         try
         {
-            var c = JsonSerializer.Deserialize<ProjectConfig>(File.ReadAllText(path), Opts) ?? new ProjectConfig();
-            var name = c.PresetName();
-            if (PresetNames.Contains(name))
-            {
-                // Built-in layouts are locked: whatever else the file says about the layout is ignored.
-                var appId = c.AppId; var game = c.GameName; var leaveOut = c.LeaveOut;
-                c.ApplyPreset(name);
-                if (GetPreset(name).AppId.Length == 0) { c.AppId = appId; c.GameName = game; }
-                c.LeaveOut = leaveOut;
-            }
-            else
-            {
-                c.Preset = CustomName;
-                c.Source = FileName + " (custom layout)";
-            }
-            return c;
+            var file = JsonSerializer.Deserialize<ProjectConfig>(File.ReadAllText(path), Opts) ?? new ProjectConfig();
+            c.LeaveOut = file.LeaveOut;
+            var other = file.Preset.Length > 0 ? !file.Preset.Equals(RimWorldName, StringComparison.OrdinalIgnoreCase)
+                : file.AppId.Length > 0 && file.AppId != RimWorldAppId;
+            if (other)
+                c.Error = $"{FileName} is set up for {(file.Preset.Length > 0 ? "the " + file.Preset + " layout" : "app " + file.AppId)}, but Modwright is for RimWorld mods only, so the RimWorld layout is used.";
         }
         catch (Exception e)
         {
-            var c = Detect(repo);
-            c.Error = FileName + " could not be read (" + e.Message + "); using the auto-detected layout.";
-            return c;
+            c.Error = FileName + " could not be read (" + e.Message + "); using the RimWorld layout.";
         }
+        return c;
     }
 
-    /// <summary>No layout file: RimWorld if the folders look like RimWorld mods, otherwise the generic layout.</summary>
-    static ProjectConfig Detect(string repo)
-    {
-        try
-        {
-            if (Directory.Exists(repo) && Directory.GetDirectories(repo).Any(d => File.Exists(Path.Combine(d, "About", "About.xml"))))
-            {
-                var rw = GetPreset("RimWorld");
-                rw.Source = "auto-detected built-in RimWorld layout";
-                return rw;
-            }
-            if (Directory.Exists(repo) && Directory.GetDirectories(repo).Any(d => File.Exists(Path.Combine(d, "descriptor.mod"))))
-            {
-                var px = GetPreset(ParadoxName);
-                px.Source = "auto-detected built-in Paradox layout (experimental)";
-                return px;
-            }
-        }
-        catch { }
-        var g = GetPreset("Generic");
-        g.Source = "built-in Generic layout (no " + FileName + ")";
-        return g;
-    }
-
-    /// <summary>
-    /// Writes the layout file, replacing any existing one. Built-in layouts save only their name (and the app id when the
-    /// layout does not fix it); a Custom layout saves every field.
-    /// </summary>
+    /// <summary>Writes the layout file, replacing any existing one: the layout's name and the folder's "Leave these out" patterns.</summary>
     public string Save(string repo)
     {
         var path = PathFor(repo);
-        var name = PresetName();
-        if (PresetNames.Contains(name))
-        {
-            var lean = new Dictionary<string, object> { ["Preset"] = name };
-            if (GetPreset(name).AppId.Length == 0) { lean["AppId"] = AppId; lean["GameName"] = GameName; }
-            if (LeaveOut is { Length: > 0 } leave) lean["LeaveOut"] = leave;
-            File.WriteAllText(path, JsonSerializer.Serialize(lean, Opts));
-        }
-        else
-        {
-            Preset = CustomName;
-            File.WriteAllText(path, JsonSerializer.Serialize(this, Opts));
-        }
-        return path;
-    }
-
-    /// <summary>Makes sure a Custom layout file exists (writing the current fields as a starting point) and returns its path.</summary>
-    public string EnsureFile(string repo)
-    {
-        if (IsBuiltIn) throw new InvalidOperationException("Built-in layouts cannot be edited. Choose Custom first.");
-        var path = PathFor(repo);
-        if (!File.Exists(path)) Save(repo);
+        var lean = new Dictionary<string, object> { ["Preset"] = RimWorldName };
+        if (LeaveOut is { Length: > 0 } leave) lean["LeaveOut"] = leave;
+        File.WriteAllText(path, JsonSerializer.Serialize(lean, Opts));
         return path;
     }
 

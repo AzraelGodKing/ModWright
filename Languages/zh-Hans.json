@@ -113,7 +113,7 @@
     "Check for a newer version at start-up": "启动时检查新版本",
     "Check now": "立即检查",
     "Check what Steam &hands out": "检查 Steam 分发的内容(&H)",
-    "Checked when you upload a mod that is on Steam and has a description file (steam_description.txt for Generic). Public and unlisted items are compared with their page on Steam; other items with what this PC last sent. The new description goes out with the upload, like a change made in Workshop page...": "当你上传已在 Steam 上且带有描述文件（Generic 为 steam_description.txt）的模组时进行检查。公开和不公开列出的物品会与其 Steam 页面比较；其他物品则与本机上次发送的内容比较。新描述会随上传一起发送，就像在“创意工坊页面...”中所做的更改一样。",
+    "Checked when you upload a mod that is on Steam and has a description file (About/steam_description.txt). Public and unlisted items are compared with their page on Steam; other items with what this PC last sent. The new description goes out with the upload, like a change made in Workshop page...": "当你上传已在 Steam 上且带有描述文件（About/steam_description.txt）的模组时进行检查。公开和不公开列出的物品会与其 Steam 页面比较；其他物品则与本机上次发送的内容比较。新描述会随上传一起发送，就像在“创意工坊页面...”中所做的更改一样。",
     "Choose the folder that holds your mods, one sub-folder per mod.\nYou can also drop the folder onto this window.": "选择存放模组的文件夹，每个模组一个子文件夹。\n你也可以把文件夹拖放到此窗口上。",
     "Choose...": "选择...",
     "Clean up": "清理",

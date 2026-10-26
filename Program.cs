@@ -2,7 +2,7 @@ namespace SteamCmdHelper;
 
 static class Program
 {
-    /// <summary>Headless check of the locked built-in layouts and the editable Custom layout.</summary>
+    /// <summary>Headless check of the layout file: it holds only the layout's name, and nothing in it changes the layout.</summary>
     static string LayoutTest()
     {
         var sb = new System.Text.StringBuilder();
@@ -10,33 +10,19 @@ static class Program
         Directory.CreateDirectory(dir);
         var file = ProjectConfig.PathFor(dir);
         void Show(string label, ProjectConfig c) =>
-            sb.AppendLine($"{label}: preset={c.PresetName()} builtIn={c.IsBuiltIn} appIdLocked={c.AppIdLocked} app={c.AppId} marker='{c.ModMarker}' changelog='{c.Changelog}'");
+            sb.AppendLine($"{label}: preset={c.Preset} app={c.AppId} marker='{c.ModMarker}' changelog='{c.Changelog}' error={c.Error ?? "none"}");
 
-        // 1. choosing a built-in layout writes only its name
-        var c1 = new ProjectConfig(); c1.ApplyPreset("RimWorld"); c1.Save(dir);
-        sb.AppendLine("1) file after choosing RimWorld: " + File.ReadAllText(file).Replace("\r", "").Replace("\n", " "));
+        // 1. saving writes only the layout's name
+        ProjectConfig.RimWorld().Save(dir);
+        sb.AppendLine("1) file after saving: " + File.ReadAllText(file).Replace("\r", "").Replace("\n", " "));
 
-        // 2. editing the file does not change a built-in layout
+        // 2. editing the file does not change the layout
         File.WriteAllText(file, "{ \"Preset\": \"RimWorld\", \"AppId\": \"1\", \"ModMarker\": \"hacked.txt\", \"Changelog\": \"nope.md\" }");
-        Show("2) tampered RimWorld file", ProjectConfig.Load(dir));
+        Show("2) tampered file", ProjectConfig.Load(dir));
 
-        // 3. Generic keeps the app id the user typed
-        var c3 = new ProjectConfig(); c3.ApplyPreset("Generic"); c3.AppId = "123456"; c3.Save(dir);
-        sb.AppendLine("3) file for Generic + app id: " + File.ReadAllText(file).Replace("\r", "").Replace("\n", " "));
-        Show("3) reloaded", ProjectConfig.Load(dir));
-
-        // 4. Custom is stored in full and editable
-        var c4 = ProjectConfig.Load(dir); c4.MakeCustom(); c4.ModMarker = "mod.json"; c4.Save(dir);
-        Show("4) custom after save", ProjectConfig.Load(dir));
-        var len = File.ReadAllText(file).Length;
-        sb.AppendLine("4) custom file length=" + len + " (full layout stored)");
-        File.WriteAllText(file, File.ReadAllText(file).Replace("mod.json", "other.json"));
-        Show("4) custom after hand edit", ProjectConfig.Load(dir));
-
-        // 5. an old file without a Preset field that equals RimWorld becomes the locked RimWorld layout
-        File.WriteAllText(file, "{ \"AppId\": \"294100\", \"ModMarker\": \"About/About.xml\", \"NameXPath\": \"ModMetaData/name\", \"VersionXPath\": \"ModMetaData/modVersion\", \"Changelog\": \"About/changelog.txt\", \"ChangelogFirstLineIsVersion\": true, \"WorkshopIdFile\": \"About/PublishedFileId.txt\" }");
-        Show("5) old 1.1.0 file", ProjectConfig.Load(dir));
-        sb.AppendLine("5) EnsureFile on built-in throws: " + Throws(() => ProjectConfig.Load(dir).EnsureFile(dir)));
+        // 3. a file from before 2.0.0 for another game is not used
+        File.WriteAllText(file, "{ \"Preset\": \"Generic\", \"AppId\": \"123456\" }");
+        Show("3) Generic file", ProjectConfig.Load(dir));
 
         try { Directory.Delete(dir, true); } catch { }
         return sb.ToString();
@@ -109,13 +95,9 @@ static class Program
         Mod("FasterHauling", "Faster Hauling", "2.1.3", "2000000002", "2.1.3", Color.FromArgb(98, 170, 110), built: false);
         Mod("QuietNights", "Quiet Nights", "0.9.0", null, "0.9.0", Color.FromArgb(170, 110, 200));
         Mod("BrokenThing", "Broken Thing", "1.1.0", "2000000004", "1.0.0", null);
-        var cfg = new ProjectConfig();
-        cfg.ApplyPreset("RimWorld");
-        cfg.Save(root);
+        ProjectConfig.RimWorld().Save(root);
         return root;
     }
-
-    static bool Throws(Action a) { try { a(); return false; } catch { return true; } }
 
     [System.Runtime.InteropServices.DllImport("kernel32.dll")]
     static extern bool AttachConsole(int processId);

@@ -51,17 +51,6 @@ public sealed partial class MainForm
         RefreshAll();
     }
 
-    void EditLayout()
-    {
-        SaveFields();
-        if (!Directory.Exists(_s.RepoPath)) { Nudge(_repo, _projectNote, "Pick the mods folder first; the layout file lives in it."); return; }
-        if (_cfg.IsBuiltIn) { Nudge(_preset, _projectNote, "Built-in layouts are locked. Choose \"Custom\" in the Layout box to make your own."); return; }
-        var path = _cfg.EnsureFile(_s.RepoPath);
-        Append($"Opened {path}. Save it, then press Refresh.", LogKind.Note);
-        try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
-        catch (Exception e) { Append("Could not open the file: " + e.Message, LogKind.Error); }
-    }
-
     /// <summary>What reading a mods folder found: everything <see cref="RefreshAll"/> shows that needs the disk or git.</summary>
     sealed record FolderScan(string Repo, ProjectConfig Cfg, string? Branch, List<ModInfo> Mods,
         Dictionary<string, string> Uploaded, Dictionary<string, UploadEntry> History, string Stamp, bool IsGit);
@@ -200,25 +189,24 @@ public sealed partial class MainForm
     }
 
     /// <summary>
-    /// Once the mods folder, app ID and mods are all there, the Project card folds into one line ("RimWorld mods ·
-    /// RimWorld (294100) · RimWorld layout") with Change... to open it again.
+    /// Once the mods folder and its mods are there, the Project card folds into one line ("RimWorld mods ·
+    /// RimWorld (294100) · main") with Change... to open it again.
     /// </summary>
     void UpdateProjectCard()
     {
-        var complete = Directory.Exists(_s.RepoPath) && _cfg.AppIdValid && _rows.Count > 0 && _cfg.Error == null;
+        var complete = Directory.Exists(_s.RepoPath) && _rows.Count > 0 && _cfg.Error == null;
         var open = !complete || _projectOpen;
         SuspendLayout();
         foreach (var r in _projectRows) r.Visible = open;
         _projectToggle.Visible = complete;
         _projectToggle.Text = open ? "Done" : "Change...";
-        _projectToggle.AccessibleName = open ? "Hide the project settings" : "Change the mods folder, app ID or layout";
+        _projectToggle.AccessibleName = open ? "Hide the project settings" : "Change the mods folder";
         _projectSummary.Visible = complete && !open;
         if (complete)
         {
-            var game = _cfg.GameName.Length > 0 ? $"{_cfg.GameName} ({_cfg.AppId})" : "app " + _cfg.AppId;
-            _projectSummary.Text = string.Join("   ·   ", new[] { Path.GetFileName(_s.RepoPath.TrimEnd('\\', '/')), game, _cfg.PresetName() + " layout", _branch.Text,
+            _projectSummary.Text = string.Join("   ·   ", new[] { Path.GetFileName(_s.RepoPath.TrimEnd('\\', '/')), $"{_cfg.GameName} ({_cfg.AppId})", _branch.Text,
                 _s.RefFor(_s.RepoPath) is { Length: > 0 } from ? "uploads from " + from : "" }.Where(t => t.Length > 0));
-            Tip(_projectSummary, _s.RepoPath + "\n" + _game.Text + "\nClick to change the mods folder, app ID or layout.");
+            Tip(_projectSummary, _s.RepoPath + "\n" + _game.Text + "\nClick to change the mods folder.");
         }
         ResumeLayout(true);
     }

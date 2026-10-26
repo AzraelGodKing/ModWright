@@ -129,9 +129,9 @@ public sealed partial class MainForm
     /// </summary>
     async Task CheckGameBuildsAsync(bool list)
     {
-        if (_busy || !_cfg.AppIdValid || !SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd))
+        if (_busy || !SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd))
         {
-            if (list) Append(_busy ? "Busy; try again when the current job ends." : !_cfg.AppIdValid ? "Set the game's app ID first." : "Install SteamCMD first.", LogKind.Warn);
+            if (list) Append(_busy ? "Busy; try again when the current job ends." : "Install SteamCMD first.", LogKind.Warn);
             return;
         }
         if (!list && !GameBuilds.Due(_cfg.AppId, DateTimeOffset.UtcNow)) return;
@@ -204,7 +204,6 @@ public sealed partial class MainForm
     async Task TryInGameBetaAsync(ModInfo? m)
     {
         if (_busy) return;
-        if (!_cfg.AppIdValid) { Append("Set the game's app ID first.", LogKind.Warn); return; }
         if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { Append("Install SteamCMD first (Options > SteamCMD > Install SteamCMD).", LogKind.Warn); return; }
         var appId = _cfg.AppId;
         if (_branches == null)

@@ -103,6 +103,6 @@ public sealed class RimWorldLintTests : IDisposable
     public void Only_rimworld_gets_these_checks()
     {
         Assert.True(RimWorldLint.Applies(_cfg));
-        Assert.False(RimWorldLint.Applies(ProjectConfig.GetPreset("Generic")));
+        Assert.False(RimWorldLint.Applies(new ProjectConfig()));
     }
 }

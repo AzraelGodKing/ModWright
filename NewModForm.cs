@@ -29,7 +29,7 @@ public sealed class NewModForm : Form
         var intro = new Label
         {
             AutoSize = true, MaximumSize = new Size(560, 0), Margin = new Padding(0, 0, 0, 8), UseMnemonic = false,
-            Text = $"Makes a new mod folder in {modsRoot} with the files the {cfg.PresetName()} layout needs" +
+            Text = $"Makes a new mod folder in {modsRoot} with the files the {cfg.GameName} layout needs" +
                    (rimworld ? " (About.xml with a packageId, a preview image, a changelog entry and the description), ready to upload." : ", ready to fill in."),
         };
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(12) };
