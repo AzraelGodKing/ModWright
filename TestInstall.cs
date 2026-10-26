@@ -90,7 +90,6 @@ public static class TestInstall
         IReadOnlyList<ModInfo> mods, Action<string> say, CancellationToken ct)
     {
         var problems = new List<string>();
-        if (string.IsNullOrWhiteSpace(cfg.GameModsFolder)) { problems.Add("This layout does not say where the game loads mods from, so no mods were added."); return problems; }
         var modsDir = Path.Combine(folder, ProjectConfig.Norm(cfg.GameModsFolder));
         Directory.CreateDirectory(modsDir);
 

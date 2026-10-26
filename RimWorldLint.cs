@@ -12,9 +12,6 @@ namespace SteamCmdHelper;
 /// </summary>
 public static class RimWorldLint
 {
-    /// <summary>The checks run for the RimWorld layout and any layout for RimWorld's app id.</summary>
-    public static bool Applies(ProjectConfig cfg) => cfg.AppId == "294100" && cfg.ModMarker.Replace('\\', '/').Equals("About/About.xml", StringComparison.OrdinalIgnoreCase);
-
     static readonly Regex VersionFolder = new(@"^\d+\.\d+$");
 
     /// <summary>Folders RimWorld never reads and the RimWorld layout leaves out of the package.</summary>

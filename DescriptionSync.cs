@@ -100,7 +100,7 @@ public static class DescriptionSync
         {
             if (WorkshopPage.Get(m.Dir, pagesPath)?.Description != null) continue;
             var file = Path.Combine(m.Dir, ProjectConfig.Norm(cfg.SteamDescriptionFile));
-            if (string.IsNullOrWhiteSpace(cfg.SteamDescriptionFile) || !File.Exists(file)) continue;
+            if (!File.Exists(file)) continue;
             string text;
             try { text = await File.ReadAllTextAsync(file, ct); } catch (IOException) { continue; }
             if (Normalize(text).Length == 0) continue;

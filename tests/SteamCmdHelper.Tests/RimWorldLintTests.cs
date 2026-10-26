@@ -6,7 +6,7 @@ namespace SteamCmdHelper.Tests;
 public sealed class RimWorldLintTests : IDisposable
 {
     readonly TempRepo _repo = new();
-    readonly ProjectConfig _cfg = TestConfig.RimWorld(c => c.UseGitArchive = false);
+    readonly ProjectConfig _cfg = TestConfig.RimWorld();
 
     public void Dispose() => _repo.Dispose();
 
@@ -97,12 +97,5 @@ public sealed class RimWorldLintTests : IDisposable
         var mods = ModScanner.Scan(_repo.Root, _cfg);
         Assert.Contains(mods[0].Warnings, w => w.Contains("packageId Test.Alpha is also used by Beta"));
         Assert.Contains(mods[1].Warnings, w => w.Contains("also used by Alpha"));
-    }
-
-    [Fact]
-    public void Only_rimworld_gets_these_checks()
-    {
-        Assert.True(RimWorldLint.Applies(_cfg));
-        Assert.False(RimWorldLint.Applies(new ProjectConfig()));
     }
 }

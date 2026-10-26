@@ -165,7 +165,7 @@ public sealed class Publisher
     /// <summary>Whether the mods folder is a git repo, asked of git once per publisher instead of once per mod.</summary>
     bool IsGit => _isGit ??= ModScanner.IsGitRepo(_repo);
 
-    bool FromRef => GitRef != null && _cfg.UseGitArchive && IsGit;
+    bool FromRef => GitRef != null && IsGit;
 
     /// <summary>A mod that is packaged, checked and has its build file written, ready for SteamCMD.</summary>
     sealed class Prepared
@@ -328,9 +328,8 @@ public sealed class Publisher
         var typed = NoteOverride?.Invoke(m);
         var notes = typed ?? NotesFor(m, _cfg);
         var version = m.Version;
-        if (!_cfg.AppIdValid) return (new PublishResult(false, "The Steam app ID is not set. Enter the game's app ID in the window first."), null);
-        if (GitRef != null && !FromRef) Say($"Note: \"{GitRef}\" is a git ref, but this layout does not package with git, so the working folder is uploaded.");
-        if (_cfg.ChangelogByVersion && notes.Length == 0 && typed == null && !FromRef)
+        if (GitRef != null && !FromRef) Say($"Note: \"{GitRef}\" is a git ref, but the mods folder is not a git repo, so the working folder is uploaded.");
+        if (notes.Length == 0 && typed == null && !FromRef)
             return (new PublishResult(false, $"{_cfg.Changelog} has no entry for version {(m.Version.Length > 0 ? m.Version : "(unknown)")}."), null);
         var ahead = TakeAhead(m);
         if (ahead == null) SweepStale(_tempRoot, StaleAfter);
@@ -353,7 +352,7 @@ public sealed class Publisher
             {
                 version = ModScanner.VersionIn(stage, _cfg) ?? m.Version;
                 if (typed == null) notes = NotesFor(new ModInfo { Dir = stage, Version = version }, _cfg);
-                if (_cfg.ChangelogByVersion && notes.Length == 0 && typed == null)
+                if (notes.Length == 0 && typed == null)
                     return (new PublishResult(false, $"{_cfg.Changelog} at {GitRef} has no entry for version {(version.Length > 0 ? version : "(unknown)")}."), null);
                 Say($"Packaged {m.Name} from {GitRef} (version {(version.Length > 0 ? version : "unknown")}).");
             }
@@ -367,7 +366,7 @@ public sealed class Publisher
             if (last != null) report = report with { Diff = PackageDiffs.Compare(last, report.Files) };
             // git archive only has what git tracks, so anything ignored (a built .dll above all) would silently stay behind.
             // From another commit the working folder is a different version, so there is nothing to compare with.
-            var gitPackaging = _cfg.UseGitArchive && IsGit;
+            var gitPackaging = IsGit;
             if (gitPackaging && !FromRef) report = report with { LeftOut = PackageCheck.LeftOut(m.Dir, report.Files, PackageExclude) };
             Packaged?.Invoke(m, report);
             if (report.Files.Count == 0) return (new PublishResult(false, "The package is empty, so the upload would remove every file from the item on Steam."), null);
@@ -394,7 +393,7 @@ public sealed class Publisher
             }
 
             // Read from the package, so an upload from another git ref gets that commit's supported versions.
-            var tags = WorkshopTags.LayoutHasTags(_cfg) ? WorkshopTags.For(stage, _cfg) : Array.Empty<string>();
+            var tags = WorkshopTags.For(stage, _cfg);
             var required = Dependencies.FindInFolder(stage, _cfg, m.WorkshopId).ToArray();
 
             // A test item gets no page changes: they are meant for the real item's next upload.
@@ -409,7 +408,7 @@ public sealed class Publisher
                 var desc = page?.Description ?? ReadDescription(m);
                 if (page?.Description == null && desc.Length > 0) desc = DescriptionSync.WithFooter(desc, DescriptionFooter, m.Name, "", _cfg.GameName);
                 if (desc.Length < 20) return (new PublishResult(false, $"No description found. Add {_cfg.SteamDescriptionFile}."), null);
-                var preview = page?.Preview ?? (string.IsNullOrWhiteSpace(_cfg.Preview) ? null : Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Preview)));
+                var preview = page?.Preview ?? Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Preview));
                 extra = WorkshopPage.VdfLines(page?.Title ?? m.Name, desc, null, preview) + WorkshopPage.VdfLines(null, null, visibility);
             }
             else
@@ -632,7 +631,7 @@ public sealed class Publisher
     public static string NotesFor(ModInfo m, ProjectConfig cfg)
     {
         var clPath = Path.Combine(m.Dir, ProjectConfig.Norm(cfg.Changelog));
-        try { return File.Exists(clPath) ? ModScanner.ReadChangelog(clPath, cfg, m.Version).notes : ""; }
+        try { return File.Exists(clPath) ? ModScanner.ReadChangelog(clPath, m.Version) : ""; }
         catch (IOException) { return ""; }
     }
 
@@ -645,10 +644,7 @@ public sealed class Publisher
         }
         var idFile = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.WorkshopIdFile));
         Directory.CreateDirectory(Path.GetDirectoryName(idFile)!);
-        var text = id;
-        if (!string.IsNullOrWhiteSpace(_cfg.WorkshopIdKey))
-            text = ModScanner.WriteKey(File.Exists(idFile) ? await File.ReadAllTextAsync(idFile, ct) : "", _cfg.WorkshopIdKey, id);
-        await File.WriteAllTextAsync(idFile, text, new UTF8Encoding(false), ct);
+        await File.WriteAllTextAsync(idFile, id, new UTF8Encoding(false), ct);
     }
 
     /// <summary>Removes staging folders older than <paramref name="age"/> left behind by failed uploads or a crash.</summary>
@@ -721,7 +717,7 @@ public sealed class Publisher
 
     async Task PackageAsync(ModInfo m, string stageRoot, string stage, CancellationToken ct)
     {
-        if (_cfg.UseGitArchive && IsGit)
+        if (IsGit)
         {
             var zip = Path.Combine(stageRoot, "package.zip");
             var commit = GitRef ?? "HEAD";
@@ -742,7 +738,7 @@ public sealed class Publisher
 
         // Build outputs usually are not tracked by git, so take them from the working tree. From another commit, ones
         // that commit has are kept; the working tree's would belong to different code.
-        foreach (var glob in _cfg.BuiltFiles ?? Array.Empty<string>())
+        foreach (var glob in _cfg.BuiltFiles)
         {
             if (FromRef && ModScanner.MatchGlob(stage, glob).Count > 0) continue;
             if (FromRef && ModScanner.MatchGlob(m.Dir, glob).Count > 0)
@@ -758,7 +754,7 @@ public sealed class Publisher
     }
 
     /// <summary>The layout's Exclude list, the mods folder's LeaveOut list and the gallery folder.</summary>
-    string[] PackageExclude => (_cfg.Exclude ?? Array.Empty<string>()).Concat(_cfg.LeaveOut ?? Array.Empty<string>())
+    string[] PackageExclude => _cfg.Exclude.Concat(_cfg.LeaveOut ?? Array.Empty<string>())
         .Concat((_cfg.GalleryFolder ?? "").Trim() is { Length: > 0 } g ? new[] { g } : Array.Empty<string>()).ToArray();
 
     /// <summary>Removes files and folders matching <paramref name="patterns"/> from a staged package (git packaging has no Exclude of its own).</summary>
@@ -789,7 +785,6 @@ public sealed class Publisher
     {
         var f = Path.Combine(m.Dir, ProjectConfig.Norm(cfg.SteamDescriptionFile));
         if (File.Exists(f)) return File.ReadAllText(f).Trim();
-        if (string.IsNullOrWhiteSpace(cfg.ModMarker)) return "";
         var marker = Path.Combine(m.Dir, ProjectConfig.Norm(cfg.ModMarker));
         try { return ModScanner.ReadMeta(marker, cfg.DescriptionKey) ?? ""; }
         catch { return ""; }

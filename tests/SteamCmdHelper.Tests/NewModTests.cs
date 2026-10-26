@@ -7,7 +7,7 @@ namespace SteamCmdHelper.Tests;
 public sealed class NewModTests : IDisposable
 {
     readonly TempRepo _repo = new();
-    readonly ProjectConfig _cfg = TestConfig.RimWorld(c => c.UseGitArchive = false);
+    readonly ProjectConfig _cfg = TestConfig.RimWorld();
 
     public void Dispose() => _repo.Dispose();
 
@@ -89,18 +89,6 @@ public sealed class NewModTests : IDisposable
         Assert.Equal(640, (png[16] << 24) | (png[17] << 16) | (png[18] << 8) | png[19]);
         Assert.Equal(360, (png[20] << 24) | (png[21] << 16) | (png[22] << 8) | png[23]);
         Assert.True(png.Length < 10_000);
-    }
-
-    [Fact]
-    public void Other_layouts_get_the_files_their_layout_names()
-    {
-        var cfg = new ProjectConfig();
-        cfg.ModMarker = "mod.json";
-        var dir = NewMod.Create(_repo.Root, cfg, new NewModOptions { Name = "Thing", Folder = "Thing" });
-        Assert.True(File.Exists(Path.Combine(dir, cfg.SteamDescriptionFile)));
-        Assert.True(File.Exists(Path.Combine(dir, cfg.Changelog)));
-        Assert.False(Directory.Exists(Path.Combine(dir, "About")));
-        Assert.Equal("mod.json", NewMod.MissingMarker(dir, cfg));
     }
 }
 

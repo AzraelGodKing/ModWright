@@ -101,16 +101,6 @@ public class ModListColumnsTests : IDisposable
         Assert.Equal("1.2.3", ScanOne().Version);
     }
 
-    [Fact]
-    public void Editing_is_refused_when_the_layout_has_no_xml_version()
-    {
-        var generic = new ProjectConfig();
-        _repo.Write("Gamma/readme.txt", "hi");
-        var m = Assert.Single(ModScanner.Scan(_repo.Root, generic));
-
-        Assert.NotNull(ModScanner.SetVersion(m, generic, "1.0.0"));
-    }
-
     // ------------------------------------------------------------ preview and status columns
 
     [Fact]
@@ -131,15 +121,6 @@ public class ModListColumnsTests : IDisposable
 
         _repo.Write("Alpha/About/Preview.png", new string('x', (int)ModScanner.MaxPreviewBytes + 1));
         Assert.False(ScanOne().PreviewOk);
-    }
-
-    [Fact]
-    public void Preview_is_not_applicable_when_the_layout_has_none()
-    {
-        _cfg.Preview = "";
-        _repo.AddMod("Alpha");
-
-        Assert.Null(ScanOne().PreviewOk);
     }
 
     [Fact]

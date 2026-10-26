@@ -6,7 +6,7 @@ namespace SteamCmdHelper.Tests;
 public sealed class GalleryAndLanguagesTests : IDisposable
 {
     readonly TempRepo _repo = new();
-    readonly ProjectConfig _cfg = TestConfig.RimWorld(c => c.UseGitArchive = false);
+    readonly ProjectConfig _cfg = TestConfig.RimWorld();
     string Rec(string name) => Path.Combine(_repo.Root, "_store", name);
 
     public void Dispose() => _repo.Dispose();

@@ -153,11 +153,10 @@ public static class WorkshopExtras
         .Select(m => m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value)
         .Distinct().ToArray();
 
-    /// <summary>The gallery for a mod (null when the layout has no gallery folder or the mod has none).</summary>
+    /// <summary>The gallery for a mod (null when it has no gallery folder).</summary>
     public static GalleryRequest? GalleryFor(string modDir, ProjectConfig cfg, IReadOnlyDictionary<string, string> sentHashes)
     {
-        if (string.IsNullOrWhiteSpace(cfg.GalleryFolder)) return null;
-        var dir = Path.Combine(modDir, cfg.GalleryFolder.Trim());
+        var dir = Path.Combine(modDir, cfg.GalleryFolder);
         if (!Directory.Exists(dir)) return null;
         var g = new GalleryRequest();
         foreach (var f in Directory.GetFiles(dir).Where(f => GalleryTypes.Contains(Path.GetExtension(f).ToLowerInvariant())).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
@@ -194,7 +193,6 @@ public static class WorkshopExtras
     public static List<LanguagePage>? LanguagesFor(string modDir, ProjectConfig cfg, IReadOnlyDictionary<string, string> sentHashes, out List<LanguagePage> all)
     {
         all = new List<LanguagePage>();
-        if (string.IsNullOrWhiteSpace(cfg.SteamDescriptionFile)) return null;
         var main = Path.Combine(modDir, ProjectConfig.Norm(cfg.SteamDescriptionFile));
         var dir = Path.GetDirectoryName(main)!;
         var stem = Path.GetFileNameWithoutExtension(main);

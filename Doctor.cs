@@ -77,16 +77,13 @@ public static class Doctor
         if (cfg != null)
         {
             var isGit = ModScanner.IsGitRepo(repo);
-            if (cfg.UseGitArchive)
-            {
-                if (!probes.ToolRuns("git")) Add(CheckLevel.Fail, "git", "this layout packages with git, but git is not on PATH. Install Git for Windows.");
-                else Add(CheckLevel.Ok, "git", isGit ? "found; the mods folder is a git repo." : "found; the mods folder is not a git repo, so the working folder is uploaded as it is.");
-            }
+            if (!probes.ToolRuns("git")) Add(CheckLevel.Fail, "git", "mods are packaged with git, but git is not on PATH. Install Git for Windows.");
+            else Add(CheckLevel.Ok, "git", isGit ? "found; the mods folder is a git repo." : "found; the mods folder is not a git repo, so the working folder is uploaded as it is.");
             if (s.GitHubReleasesFor(repo))
                 Add(probes.ToolRuns("gh") ? CheckLevel.Ok : CheckLevel.Fail, "gh (GitHub releases)", probes.ToolRuns("gh") ? "found." : "GitHub releases are on for this folder, but the gh tool is not on PATH (cli.github.com, then gh auth login).");
             if (s.WebhookFor(repo) is { Length: > 0 } hook && !Announce.IsDiscordWebhook(hook))
                 Add(CheckLevel.Fail, "Discord webhook", "the link set for this folder is not a Discord webhook link.");
-            var viaClient = (s.UpdateTags && WorkshopTags.LayoutHasTags(cfg)) || s.UpdateRequired || s.UpdatePageExtras;
+            var viaClient = s.UpdateTags || s.UpdateRequired || s.UpdatePageExtras;
             if (viaClient)
                 Add(probes.SteamRunning() ? CheckLevel.Ok : CheckLevel.Warn, "Steam client",
                     probes.SteamRunning() ? "running (tags, required items, gallery and translations go through it)."

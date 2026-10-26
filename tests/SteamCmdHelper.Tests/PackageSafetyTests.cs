@@ -28,7 +28,7 @@ public sealed class PackageSafetyTests : IDisposable
 
     static bool CanFakeSteamCmd => !OperatingSystem.IsWindows();
 
-    static ProjectConfig CopyConfig() => TestConfig.RimWorld(c => { c.UseGitArchive = false; c.BuiltFiles = Array.Empty<string>(); });
+    static ProjectConfig CopyConfig() => TestConfig.RimWorld(c => { c.BuiltFiles = Array.Empty<string>(); });
 
     ModInfo Mod() => new() { Dir = _modDir, Folder = "MyMod", Name = "My Mod", Version = "1.0.0", WorkshopId = "2001112223" };
 
@@ -88,21 +88,17 @@ public sealed class PackageSafetyTests : IDisposable
     }
 
     [Fact]
-    public void Layouts_require_their_marker_file()
-    {
-        Assert.Contains("About/About.xml", TestConfig.RimWorld().RequiredInPackage());
-        Assert.Empty(new ProjectConfig().RequiredInPackage());
-    }
+    public void The_package_must_hold_about_xml() => Assert.Equal(new[] { "About/About.xml" }, TestConfig.RimWorld().RequiredInPackage());
 
     [Fact]
     public async Task Package_without_a_required_file_is_refused()
     {
         var cfg = CopyConfig();
-        cfg.RequiredFiles = new[] { "Assemblies/*.dll" };
+        cfg.Exclude = new[] { "About.xml" };
         var pub = new Publisher(_repo, cfg, "steamcmd", "modder", _temp);
         var r = await pub.RunAsync(Mod(), upload: false, CancellationToken.None);
         Assert.False(r.Ok);
-        Assert.Contains("Assemblies/*.dll", r.Message);
+        Assert.Contains("About/About.xml", r.Message);
         Assert.Contains("Exclude", r.Message);
     }
 

@@ -572,7 +572,7 @@ public sealed partial class MainForm
         var ticked = Sub("&Ticked mods");
         var bulk = ticked.DropDownItems.Add("Workshop &pages...", null, async (_, _) => await EditTickedPagesAsync());
         var bulkVersion = ticked.DropDownItems.Add("Change the versi&on...", null, (_, _) => ChangeTickedVersions());
-        var gameVersion = ticked.DropDownItems.Add("Add a &game version...", null, (_, _) => AddGameVersion());
+        ticked.DropDownItems.Add("Add a &game version...", null, (_, _) => AddGameVersion());
         var refreshLaunchPad = AddLaunchPadMenu(menu, package);
 
         menu.Items.Add(new ToolStripSeparator());
@@ -581,11 +581,8 @@ public sealed partial class MainForm
         {
             var onSteamNow = SelectedMod()?.OnSteam == true;
             steamCopy.Enabled = download.Enabled = onSteam.Enabled = copyId.Enabled = copyLink.Enabled = onSteamNow;
-            tags.Available = WorkshopTags.LayoutHasTags(_cfg);
             tags.Enabled = required.Enabled = onSteamNow;
             bulk.Available = bulkVersion.Available = Selected().Count() > 1;
-            gameVersion.Available = RimWorldLint.Applies(_cfg);
-            ticked.Available = bulk.Available || gameVersion.Available;
             changelog.Enabled = ChangelogOf(SelectedMod()) != null;
             entry.Available = SelectedMod() is { } m && ModScanner.NeedsChangelogEntry(m, _cfg);
             shrink.Available = SelectedMod() is { PreviewOk: false, PreviewPath.Length: > 0 };
@@ -601,13 +598,13 @@ public sealed partial class MainForm
         return menu;
     }
 
-    /// <summary>"New mod...": makes a ready-to-upload mod folder for the current layout, then selects it.</summary>
+    /// <summary>"New mod...": makes a ready-to-upload mod folder, then selects it.</summary>
     async Task NewModAsync()
     {
         if (_busy) return;
         if (!Directory.Exists(_s.RepoPath)) { BrowseRepo(); if (!Directory.Exists(_s.RepoPath)) return; }
-        var root = ModScanner.ModsRoot(_s.RepoPath, _cfg);
-        using var f = new NewModForm(root, _cfg, _s.ModAuthor, NewMod.NewestVersion(root));
+        var root = _s.RepoPath;
+        using var f = new NewModForm(root, _s.ModAuthor, NewMod.NewestVersion(root));
         if (f.ShowDialog(this) != DialogResult.OK) return;
         string dir;
         try
@@ -618,8 +615,7 @@ public sealed partial class MainForm
         catch (Exception e) { Append("Could not make the new mod: " + e.Message, LogKind.Error); return; }
         if (f.Result.Author.Length > 0) { _s.ModAuthor = f.Result.Author; _s.Save(); }
         Append($"Made {f.Result.Name} in {dir}." + (f.Result.CSharp ? " Build the project in Source to put the DLL in the version folder." : "") +
-               " Replace the placeholder preview image before the first upload." +
-               (NewMod.MissingMarker(dir, _cfg) is { } marker ? $" Add {marker} to it so the list shows it." : ""), LogKind.Ok);
+               " Replace the placeholder preview image before the first upload.", LogKind.Ok);
         await RefreshAllAsync();
         foreach (ListViewItem it in _list.Items)
             if (it.Tag is ModInfo m && string.Equals(m.Dir, dir, StringComparison.OrdinalIgnoreCase))
@@ -640,7 +636,6 @@ public sealed partial class MainForm
     {
         if (_busy || m.WorkshopId == null) return;
         var tags = WorkshopTags.For(m.Dir, _cfg);
-        if (tags.Length == 0) { Append($"{m.Name}: the layout gives this mod no Workshop tags.", LogKind.Warn); return; }
         Append($"{m.Name}: setting Workshop tags {WorkshopTags.Describe(tags)} through the Steam client...", LogKind.Note);
         _cts = new CancellationTokenSource();
         SetBusy(true);
@@ -665,7 +660,7 @@ public sealed partial class MainForm
         if (req == null || req.Required == null && req.Gallery == null && req.Languages == null)
         {
             Append($"{m.Name}: nothing to send. Required items come from Workshop links in its metadata" +
-                   (string.IsNullOrWhiteSpace(_cfg.GalleryFolder) ? "" : $", the gallery from its {_cfg.GalleryFolder} folder") +
+                   $", the gallery from its {_cfg.GalleryFolder} folder" +
                    $", and translations from files like {Path.GetFileNameWithoutExtension(_cfg.SteamDescriptionFile)}.german{Path.GetExtension(_cfg.SteamDescriptionFile)} (unchanged ones are not sent again).", LogKind.Note);
             return;
         }
@@ -703,7 +698,7 @@ public sealed partial class MainForm
 
     string? ChangelogOf(ModInfo? m)
     {
-        if (m == null || string.IsNullOrWhiteSpace(_cfg.Changelog)) return null;
+        if (m == null) return null;
         var p = Path.Combine(m.Dir, ProjectConfig.Norm(_cfg.Changelog));
         return File.Exists(p) ? p : null;
     }

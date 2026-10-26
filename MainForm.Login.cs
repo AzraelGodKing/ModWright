@@ -77,7 +77,6 @@ public sealed partial class MainForm
     /// </summary>
     async Task<bool> OwnershipOkAsync()
     {
-        if (!_cfg.AppIdValid) return true;
         var key = $"{_s.Account}|{_cfg.AppId}".ToLowerInvariant();
         if (_s.OwnershipChecked.Contains(key)) return true;
         bool? owns;
@@ -96,7 +95,7 @@ public sealed partial class MainForm
             Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
     }
 
-    string GameLabel() => _cfg.GameName.Length > 0 ? _cfg.GameName : "app " + _cfg.AppId;
+    string GameLabel() => _cfg.GameName;
 
     /// <summary>Writes a log line from any thread.</summary>
     void Log(string line)

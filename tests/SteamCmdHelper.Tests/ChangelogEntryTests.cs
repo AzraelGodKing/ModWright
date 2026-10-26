@@ -89,13 +89,4 @@ public class ChangelogEntryTests : IDisposable
         Assert.NotNull(ModScanner.AddChangelogEntry(m, _cfg, "1.2.3", "again"));
         Assert.Equal("1.2.3\n- Fixed the thing that was broken.", Changelog);
     }
-
-    [Fact]
-    public void Layouts_without_per_version_entries_never_ask()
-    {
-        _repo.AddMod("Alpha", changelog: null);
-        var generic = TestConfig.RimWorld(c => c.ChangelogByVersion = false);
-
-        Assert.False(ModScanner.NeedsChangelogEntry(Assert.Single(ModScanner.Scan(_repo.Root, generic)), generic));
-    }
 }

@@ -43,9 +43,9 @@ public sealed class UploadControlTests : IDisposable
         Assert.True(p.ExitCode == 0, p.StandardError.ReadToEnd());
     }
 
-    static ProjectConfig Cfg(bool git) => TestConfig.RimWorld(c => { c.UseGitArchive = git; c.BuiltFiles = Array.Empty<string>(); });
+    static ProjectConfig Cfg() => TestConfig.RimWorld(c => { c.BuiltFiles = Array.Empty<string>(); });
 
-    ModInfo Mod(string? id = "2001112223") => ModScanner.Scan(_repo, Cfg(false)).Single() is var m && id == null ? Without(m) : ModScanner.Scan(_repo, Cfg(false)).Single();
+    ModInfo Mod(string? id = "2001112223") => ModScanner.Scan(_repo, Cfg()).Single() is var m && id == null ? Without(m) : ModScanner.Scan(_repo, Cfg()).Single();
 
     static ModInfo Without(ModInfo m) { m.WorkshopId = null; return m; }
 
@@ -116,8 +116,8 @@ public sealed class UploadControlTests : IDisposable
         Git("commit", "-q", "-am", "1.1.0");
 
         var steam = FakeSteamCmd();
-        var pub = new Publisher(_repo, Cfg(true), steam, "modder", _temp) { GitRef = "MyMod-v1.0.0" };
-        var mod = ModScanner.Scan(_repo, Cfg(true)).Single();
+        var pub = new Publisher(_repo, Cfg(), steam, "modder", _temp) { GitRef = "MyMod-v1.0.0" };
+        var mod = ModScanner.Scan(_repo, Cfg()).Single();
         mod.WorkshopId = "2001112223";
         Assert.Equal("1.1.0", mod.Version);
 
@@ -149,7 +149,7 @@ public sealed class UploadControlTests : IDisposable
         if (!OnUnix) return;
         File.WriteAllText(Path.Combine(_modDir, "About", "PublishedFileId.txt"), "2001112223");
         var steam = FakeSteamCmd(newId: "3000000001");
-        var pub = new Publisher(_repo, Cfg(false), steam, "modder", _temp) { TestItems = true, PageEdits = _ => new WorkshopPageEdit { Visibility = 0 } };
+        var pub = new Publisher(_repo, Cfg(), steam, "modder", _temp) { TestItems = true, PageEdits = _ => new WorkshopPageEdit { Visibility = 0 } };
         var batch = await new BatchUpload(pub, Path.Combine(_root, "rec.json")).RunAsync(new[] { Mod() }, true, CancellationToken.None);
 
         Assert.Equal(BatchStatus.Created, batch[0].Status);
@@ -188,7 +188,7 @@ public sealed class UploadControlTests : IDisposable
         if (!OnUnix) return;
         File.WriteAllText(Path.Combine(_modDir, "About", "PublishedFileId.txt"), "2001112223");
         var steam = FakeSteamCmd(first: "ERROR! Failed to update workshop item (Timeout).");
-        var pub = new Publisher(_repo, Cfg(false), steam, "modder", _temp);
+        var pub = new Publisher(_repo, Cfg(), steam, "modder", _temp);
         var retried = 0;
         var batch = new BatchUpload(pub, Path.Combine(_root, "rec.json")) { RetryAfter = TimeSpan.Zero };
         batch.Retrying += (_, _, _) => retried++;
@@ -204,7 +204,7 @@ public sealed class UploadControlTests : IDisposable
         if (!OnUnix) return;
         File.WriteAllText(Path.Combine(_modDir, "About", "PublishedFileId.txt"), "2001112223");
         var steam = FakeSteamCmd(first: "ERROR! Failed to update workshop item (Timeout).");
-        var results = await new BatchUpload(new Publisher(_repo, Cfg(false), steam, "modder", _temp)).RunAsync(new[] { Mod() }, true, CancellationToken.None);
+        var results = await new BatchUpload(new Publisher(_repo, Cfg(), steam, "modder", _temp)).RunAsync(new[] { Mod() }, true, CancellationToken.None);
         Assert.Equal(BatchStatus.Failed, results[0].Status);
         Assert.Equal(1, Runs);
     }

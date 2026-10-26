@@ -439,7 +439,7 @@ public static class Cli
         {
             var raw = Publisher.NotesFor(m, cfg);
             say($"--- {m.Name} v{m.Version} ---");
-            if (raw.Length == 0 && cfg.ChangelogByVersion) { say($"{cfg.Changelog} has no entry for version {m.Version}, so the upload would stop."); ok = false; continue; }
+            if (raw.Length == 0) { say($"{cfg.Changelog} has no entry for version {m.Version}, so the upload would stop."); ok = false; continue; }
             var sent = shaper.AsSent(m, raw);
             say(sent);
             say($"({sent.Length} of {ConfirmLimit} characters)");
@@ -490,7 +490,6 @@ public static class Cli
     /// <summary>"game-version": adds a RimWorld version to the named mods (or every mod with --all).</summary>
     static int AddGameVersion(CliOptions o, ProjectConfig cfg, List<ModInfo> mods, Action<string> say)
     {
-        if (!RimWorldLint.Applies(cfg)) { say("Error: game-version is for RimWorld mods (About/About.xml with supportedVersions)."); return ExitUsage; }
         var version = o.Mods[0];
         var picked = new List<ModInfo>();
         if (o.All) picked.AddRange(mods);
@@ -587,7 +586,7 @@ public static class Cli
         if (o.Command == "list" && o.Json) { Say(ListJson(repo, cfg, mods)); return ExitOk; }
         if (o.Command == "list" && (o.Markdown || o.Csv)) { output.Write(Reports.ModList(mods, o.Markdown ? Reports.Markdown : Reports.Csv)); return ExitOk; }
         if (cfg.Error != null) Say("Warning: " + cfg.Error);
-        Say($"Repo: {repo}  |  {(cfg.GameName.Length > 0 ? cfg.GameName : "app " + cfg.AppId)}  |  layout: {cfg.Source}");
+        Say($"Repo: {repo}  |  {cfg.GameName}  |  layout: {cfg.Source}");
         // Kept beside the uploaded-versions record, so tests that pass their own record keep their history too.
         var historyFile = recordPath == null ? UploadHistory.DefaultFile : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(recordPath))!, "history.json");
 
@@ -678,25 +677,19 @@ public static class Cli
         if (picked.Count == 0 && o.Changed) { Say("Nothing to upload: every mod on Steam is up to date."); return End(ExitOk); }
         if (picked.Count == 0) { Say("Nothing to upload."); return End(ExitUsage, "Nothing to upload."); }
 
-        if (!cfg.AppIdValid) { Say("Error: the Steam app ID is not set. Set it in the window or in " + ProjectConfig.FileName + "."); return End(ExitUsage, "The Steam app ID is not set."); }
         var gitRef = o.Ref ?? (string.IsNullOrWhiteSpace(defaultRef) ? null : defaultRef);
         var isGit = ModScanner.IsGitRepo(repo);
-        if (gitRef != null && cfg.UseGitArchive && isGit && !GitOps.RefExists(repo, gitRef))
+        if (gitRef != null && isGit && !GitOps.RefExists(repo, gitRef))
         {
             Say($"Error: \"{gitRef}\" is not a branch, tag or commit in {repo}.");
             return End(ExitUsage, $"\"{gitRef}\" is not a branch, tag or commit.");
         }
-        if (isGit && cfg.UseGitArchive && gitRef == null && !o.Test)
+        if (isGit && gitRef == null && !o.Test)
             foreach (var w in GitOps.SyncWarnings(GitOps.Sync(repo), !o.DryRun && o.Announce && gitHubReleases)) Say("Warning: " + w);
         if ((o.Tag || o.CommitIds || o.NoteFromGit) && !isGit)
         {
             Say("Error: --tag, --commit-ids and --note-from-git need the mods folder to be a git repo.");
             return End(ExitUsage, "The mods folder is not a git repo.");
-        }
-        if (o.Tag && !cfg.UseGitArchive)
-        {
-            Say("Error: --tag needs git packaging; this layout copies the working folder, so no commit matches what is uploaded.");
-            return End(ExitUsage, "--tag needs git packaging.");
         }
 
         // ---- the change notes, when not the changelog's
@@ -736,8 +729,8 @@ public static class Cli
                 return End(ExitSteam, $"No saved Steam login for {account}.");
             }
             Say("Logged in.");
-            if (ownership != null && cfg.AppIdValid && await ownership(account, cfg.AppId, ct) == false)
-                Say($"Warning: Steam's license list for {account} does not include {(cfg.GameName.Length > 0 ? cfg.GameName : "app " + cfg.AppId)}. Steam only takes Workshop uploads from accounts that own the game (Family Sharing does not count).");
+            if (ownership != null && await ownership(account, cfg.AppId, ct) == false)
+                Say($"Warning: Steam's license list for {account} does not include {cfg.GameName}. Steam only takes Workshop uploads from accounts that own the game (Family Sharing does not count).");
         }
 
         var sentDescriptions = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(historyFile))!, "descriptions.json");
@@ -778,7 +771,7 @@ public static class Cli
         var batch = new BatchUpload(pub, recordPath) { RetryAfter = retryAfter, OneSession = oneSession || o.OneSession };
         batch.Retrying += (m, why, wait) => Say($"    Steam was busy or could not be reached ({why}). Trying {m.Folder} again in {wait.TotalSeconds:0} seconds...");
         batch.Starting += (m, i, n) => Say($"--- {m.Name} v{m.Version} ({i + 1} of {n}) ---");
-        var uploadedCommit = isGit && cfg.UseGitArchive ? ModScanner.Git(repo, $"rev-parse {gitRef ?? "HEAD"}^{{commit}}").Trim() : "";
+        var uploadedCommit = isGit ? ModScanner.Git(repo, $"rev-parse {gitRef ?? "HEAD"}^{{commit}}").Trim() : "";
         var results = await batch.RunAsync(picked, !o.DryRun, ct);
         if (!o.DryRun && !o.Test) foreach (var r in results.Where(r => r.Status is BatchStatus.Uploaded or BatchStatus.Created)) WorkshopPage.Clear(r.Mod.Dir);
 
@@ -815,7 +808,6 @@ public static class Cli
     /// <summary>The checks every command that runs SteamCMD with the saved login needs; null when all is well.</summary>
     static int? NeedsSteam(ProjectConfig cfg, string steamCmd, string account, bool needsAccount, Action<string> say)
     {
-        if (!cfg.AppIdValid) { say("Error: the Steam app ID is not set. Set it in the window or in " + ProjectConfig.FileName + "."); return ExitUsage; }
         if (!SteamLogin.SteamCmdInstalled(steamCmd)) { say("Error: SteamCMD is not installed at " + steamCmd + ". Install it from the window (Options) or pass --steamcmd."); return ExitSteam; }
         if (needsAccount && string.IsNullOrWhiteSpace(account)) { say("Error: no Steam account. Pass --account <name> or set it in the window. This needs the saved login of an account that owns the game."); return ExitSteam; }
         return null;
@@ -839,7 +831,7 @@ public static class Cli
     static async Task<int> GameBuildsAsync(ProjectConfig cfg, string steamCmd, string seenFile, Action<string> say, CancellationToken ct)
     {
         if (NeedsSteam(cfg, steamCmd, "", false, say) is { } bad) return bad;
-        say($"Asking Steam for the branches of {(cfg.GameName.Length > 0 ? cfg.GameName : "app " + cfg.AppId)} (anonymous login)...");
+        say($"Asking Steam for the branches of {cfg.GameName} (anonymous login)...");
         var branches = await GameBuilds.FetchAsync(steamCmd, cfg.AppId, ct);
         if (branches == null) { say("Error: SteamCMD did not return the game's branches. Steam may be down, or the game hides them."); return ExitSteam; }
         foreach (var b in branches) say("  " + GameBuilds.Describe(b));
@@ -914,7 +906,7 @@ public static class Cli
         var folder = Path.GetFullPath(o.To!);
         if (TestInstall.FolderProblem(folder, cfg.AppId) is { } why) { say("Error: " + why); return ExitUsage; }
         var branch = string.IsNullOrWhiteSpace(o.Branch) ? "public" : o.Branch.Trim();
-        say($"Installing {(cfg.GameName.Length > 0 ? cfg.GameName : "app " + cfg.AppId)} ({branch} branch) into {folder}. This downloads the whole game the first time.");
+        say($"Installing {cfg.GameName} ({branch} branch) into {folder}. This downloads the whole game the first time.");
         var lastPct = -10.0;
         var (ok, msg) = await TestInstall.InstallGameAsync(steamCmd, account, cfg.AppId, folder, branch, o.BetaPassword, l => say("    " + l),
             (state, pct) => { if (pct >= lastPct + 10 || pct >= 100) { lastPct = pct; say($"    {state} {pct:0}%"); } }, ct);

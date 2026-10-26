@@ -104,17 +104,16 @@ public sealed partial class MainForm
     void DrawPreview(Graphics g, Rectangle cell, ModInfo m)
     {
         const TextFormatFlags Center = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine;
-        if (m.PreviewOk == null) { TextRenderer.DrawText(g, "-", _list.Font, cell, Theme.Of(Tone.Muted), Center); return; }
         var thumb = m.PreviewPath.Length > 0 ? Thumbnail(m.PreviewPath, cell.Height - U(6), cell.Width - U(10)) : null;
         if (thumb == null)
         {
-            TextRenderer.DrawText(g, m.PreviewOk == true ? "✔" : "✖", _list.Font, cell, Theme.Of(m.PreviewOk == true ? Tone.Ok : Tone.Error), Center);
+            TextRenderer.DrawText(g, m.PreviewOk ? "✔" : "✖", _list.Font, cell, Theme.Of(m.PreviewOk ? Tone.Ok : Tone.Error), Center);
             return;
         }
         var r = new Rectangle(cell.Left + (cell.Width - thumb.Width) / 2, cell.Top + (cell.Height - thumb.Height) / 2, thumb.Width, thumb.Height);
         g.DrawImage(thumb, r);
         // Over Steam's 1 MB limit: a red frame (the tooltip says why).
-        using var pen = new Pen(m.PreviewOk == true ? Theme.Current.Border : Theme.Of(Tone.Error), m.PreviewOk == true ? 1 : 2);
+        using var pen = new Pen(m.PreviewOk ? Theme.Current.Border : Theme.Of(Tone.Error), m.PreviewOk ? 1 : 2);
         g.DrawRectangle(pen, r.X, r.Y, r.Width - 1, r.Height - 1);
     }
 
@@ -285,7 +284,7 @@ public sealed partial class MainForm
         f.Controls.Add(split);
 
         // Roll back: package the commit an old upload came from and send it again, marked as a roll-back.
-        var canRollBack = _cfg.UseGitArchive && RepoIsGit;
+        var canRollBack = RepoIsGit;
         var again = new Button { Text = "&Upload this version again...", AutoSize = true, Padding = new Padding(8, 2, 8, 2), Enabled = false };
         Tip(again, canRollBack ? "Re-upload the selected version from git, to roll back a bad update"
             : "Rolling back needs a git repo and git packaging, to get the old files back");
@@ -396,7 +395,7 @@ public sealed partial class MainForm
         if (_busy) return;
         var mods = TickedOrSelected();
         if (mods.Count == 0) return;
-        var suggested = GameVersions.Next(NewMod.NewestVersion(ModScanner.ModsRoot(_s.RepoPath, _cfg)));
+        var suggested = GameVersions.Next(NewMod.NewestVersion(_s.RepoPath));
         var version = Prompt($"Game version to add to {(mods.Count == 1 ? mods[0].Name : mods.Count + " mods")}:", suggested);
         if (string.IsNullOrWhiteSpace(version)) return;
         var copy = true;
@@ -452,7 +451,7 @@ public sealed partial class MainForm
     async Task<Dictionary<string, long>?> CountCommentsAsync(bool quiet)
     {
         var mods = _mods.Where(m => m.OnSteam).ToList();
-        if (mods.Count == 0 || !_cfg.AppIdValid) return null;
+        if (mods.Count == 0) return null;
         var r = await WorkshopExtras.ApplyOnSteamAsync(new ExtrasRequest { AppId = _cfg.AppId, CountComments = mods.Select(m => m.WorkshopId!).ToArray() }, CancellationToken.None);
         if (!r.Ok || r.Comments == null)
         {
@@ -787,7 +786,7 @@ public sealed partial class MainForm
         var n = _rows.Count(i => i.Checked);
         var hidden = _rows.Count(i => i.Checked && i.ListView == null);
         _go.Text = n == 0 ? "Upload selected" : $"Upload {n} mod{(n == 1 ? "" : "s")}" + (hidden > 0 ? $" ({hidden} hidden)" : "");
-        _go.Enabled = !_busy && n > 0 && _cfg.AppIdValid;
+        _go.Enabled = !_busy && n > 0;
         _retry.Text = $"Retr&y failed ({_retrySet.Count})";
         _retry.Visible = !_busy && _retrySet.Count > 0 && _mods.Any(m => _retrySet.Contains(m.Dir));
     }

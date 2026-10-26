@@ -19,9 +19,9 @@ public sealed class NewModOptions
 }
 
 /// <summary>
-/// Makes a ready-to-upload mod folder for the current layout, so a new mod starts with every file the checks ask for:
-/// for RimWorld an About.xml with a packageId, a preview of the right size, a changelog entry and the description file,
-/// and optionally a C# project with Harmony; for other layouts the description, preview and changelog the layout names.
+/// Makes a ready-to-upload mod folder, so a new mod starts with every file the checks ask for: an About.xml with a
+/// packageId, a preview of the right size, a changelog entry and the description file, and optionally a C# project
+/// with Harmony.
 /// </summary>
 public static class NewMod
 {
@@ -80,34 +80,22 @@ public static class NewMod
         Directory.CreateDirectory(dir);
         void Write(string rel, string text)
         {
-            if (string.IsNullOrWhiteSpace(rel)) return;
             var path = Path.Combine(dir, ProjectConfig.Norm(rel));
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, text.Replace("\r\n", "\n"), new UTF8Encoding(false));
         }
         var description = o.Description.Trim().Length > 0 ? o.Description.Trim() : o.Name.Trim() + ".";
 
-        if (RimWorldLint.Applies(cfg))
-        {
-            var versions = o.Versions.Length > 0 ? o.Versions : new[] { "1.6" };
-            Write(cfg.ModMarker, AboutXml(o, versions, description));
-            if (o.CSharp) WriteCSharp(dir, o, versions[^1]);
-        }
-        if (!string.IsNullOrWhiteSpace(cfg.Changelog))
-            Write(cfg.Changelog, cfg.ChangelogByVersion || cfg.ChangelogFirstLineIsVersion ? "1.0.0\n- First release.\n" : "- First release.\n");
+        var versions = o.Versions.Length > 0 ? o.Versions : new[] { "1.6" };
+        Write(cfg.ModMarker, AboutXml(o, versions, description));
+        if (o.CSharp) WriteCSharp(dir, o, versions[^1]);
+        Write(cfg.Changelog, "1.0.0\n- First release.\n");
         Write(cfg.SteamDescriptionFile, description + "\n");
-        if (!string.IsNullOrWhiteSpace(cfg.Preview) && Path.GetExtension(cfg.Preview).Equals(".png", StringComparison.OrdinalIgnoreCase))
-        {
-            var preview = Path.Combine(dir, ProjectConfig.Norm(cfg.Preview));
-            Directory.CreateDirectory(Path.GetDirectoryName(preview)!);
-            File.WriteAllBytes(preview, Png(640, 360, 35, 52, 72));
-        }
+        var preview = Path.Combine(dir, ProjectConfig.Norm(cfg.Preview));
+        Directory.CreateDirectory(Path.GetDirectoryName(preview)!);
+        File.WriteAllBytes(preview, Png(640, 360, 35, 52, 72));
         return dir;
     }
-
-    /// <summary>The layout's mod marker when "New mod..." could not write it (the mod is not listed until it exists), else null.</summary>
-    public static string? MissingMarker(string dir, ProjectConfig cfg) =>
-        !string.IsNullOrWhiteSpace(cfg.ModMarker) && !File.Exists(Path.Combine(dir, ProjectConfig.Norm(cfg.ModMarker))) ? cfg.ModMarker : null;
 
     static string X(string s) => SecurityElement.Escape(s) ?? "";
 
