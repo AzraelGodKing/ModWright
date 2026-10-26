@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using FlaUI.Core;
-using FlaUI.Core.Input;
-using FlaUI.Core.WindowsAPI;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Conditions;
 using FlaUI.Core.Definitions;
@@ -35,32 +33,6 @@ public sealed class DropPodClickTests
             Click(window, cf, "Save to game");
             WaitUntil(() => File.ReadAllText(setup.ModsConfig).Contains("test.modb"), "test.modb in ModsConfig.xml");
             WaitUntil(() => !Texts(problems).Any(t => t.Contains("Test Mod B")), "the problem gone");
-        });
-    }
-
-    [Fact]
-    public void Switching_to_Sun_Haven_lists_its_plugins_and_saving_moves_the_dependency_in()
-    {
-        using var setup = new FakeSetup();
-        Run(setup, (window, cf) =>
-        {
-            var game = WaitFor(() => window.FindFirstDescendant(cf.ByName("Game").And(cf.ByControlType(ControlType.ComboBox)))?.AsComboBox(), "the game picker");
-            try { game.Select("Sun Haven"); }
-            catch (Exception e)
-            {
-                // The drop-down's items aren't always reachable through UI Automation; the keyboard always works.
-                _out.WriteLine("Select failed, using the keyboard: " + e.Message);
-                game.Focus();
-                Keyboard.Press(VirtualKeyShort.DOWN);
-            }
-            var mods = WaitFor(() => window.FindFirstDescendant(cf.ByName("Installed mods; ticked mods are active, in load order")), "the mod list");
-            WaitUntil(() => mods.FindAllChildren(cf.ByControlType(ControlType.ListItem)).Select(i => i.Name).Contains("Farming"), "the Farming plugin listed");
-            var problems = WaitFor(() => window.FindFirstDescendant(cf.ByName("Problems with the active mods")), "the problems list");
-            WaitUntil(() => Texts(problems).Any(t => t.Contains("Lib") && t.Contains("not active")), "the disabled dependency in Problems");
-
-            Click(window, cf, "Activate needed mods");
-            Click(window, cf, "Save to game");
-            WaitUntil(() => Directory.Exists(Path.Combine(setup.SunHaven, "BepInEx", "plugins", "Author-Lib")), "Author-Lib moved into BepInEx\\plugins");
         });
     }
 

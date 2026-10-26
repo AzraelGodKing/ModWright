@@ -93,8 +93,6 @@ public sealed class AppSettings
     public bool StrictAboutCheck { get; set; }
     /// <summary>Drop Pod: the player's own load-order rules file (see DropPod.SortRules), or "" for none.</summary>
     public string DropPodRulesFile { get; set; } = "";
-    /// <summary>The Steam app id of the game The Drop Pod shows (RimWorld 294100, Sun Haven 1432860).</summary>
-    public string DropPodGame { get; set; } = "294100";
     /// <summary>Drop Pod: the modlist last switched to, by Steam app id.</summary>
     public Dictionary<string, string> CurrentModlists { get; set; } = new();
     /// <summary>Drop Pod: a game's install folder chosen by hand, by Steam app id; missing = find it through Steam.</summary>

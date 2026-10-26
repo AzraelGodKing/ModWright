@@ -23,8 +23,7 @@ public sealed class DropPodCli
           SteamCmdHelper droppod play [<modlist>]            start the game (after switching to the modlist)
 
         Options:
-          --game <name>          RimWorld or SunHaven (default: the game The Drop Pod shows)
-          --instance <name>      use an instance instead of the normal game (RimWorld)
+          --instance <name>      use an instance instead of the normal game
           --json                 print JSON, for scripts
 
         Exit codes: 0 done, 1 problems found or it failed, 2 bad arguments or the game not found.

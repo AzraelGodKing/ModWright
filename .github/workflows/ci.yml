@@ -72,7 +72,7 @@ jobs:
           name: SteamCmdHelper-win-x64
           path: publish/SteamCmdHelper.exe
 
-      # Click-through tests: the published exe, portable in a temp folder with a fake RimWorld and Sun Haven, driven
+      # Click-through tests: the published exe, portable in a temp folder with a fake RimWorld, driven
       # through UI Automation (FlaUI).
       - name: Click-through tests
         timeout-minutes: 10
