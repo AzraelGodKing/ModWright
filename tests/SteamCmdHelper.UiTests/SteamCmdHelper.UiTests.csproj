@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    Click-through tests: start the real Modwright.exe (portable, in a temp folder with a fake RimWorld and Sun Haven)
+    Click-through tests: start the real Modwright.exe (portable, in a temp folder with a fake RimWorld)
     and drive its window through UI Automation. Windows only; the "ui-tests" CI job runs them against the published exe
     (MODWRIGHT_EXE), else they use the Release build next to the repo.
   -->

@@ -234,15 +234,7 @@ static class Program
         var attached = !OutputToFileOrPipe() && AttachConsole(-1);
         if (attached) Console.Out.WriteLine();
         var s = AppSettings.Load();
-        // --game picks the game (RimWorld unless The Drop Pod was last set to another); the rest goes to DropPodCli.
-        var g = Array.FindIndex(args, a => a.Equals("--game", StringComparison.OrdinalIgnoreCase));
-        DropPod.IGameModule game = DropPod.DropPodGames.For(s.DropPodGame);
-        if (g >= 0 && g + 1 < args.Length)
-        {
-            var wanted = args[g + 1].Replace(" ", "");
-            game = DropPod.DropPodGames.All.FirstOrDefault(m => m.Name.Replace(" ", "").Equals(wanted, StringComparison.OrdinalIgnoreCase) || m.AppId == wanted) ?? game;
-            args = args.Take(g).Concat(args.Skip(g + 2)).ToArray();
-        }
+        DropPod.IGameModule game = new DropPod.RimWorld.RimWorldModule();
         var steam = DropPod.SteamLibraries.Find();
         s.GameFolders.TryGetValue(game.AppId, out var gameFolder);
         s.GameDataFolders.TryGetValue(game.AppId, out var dataFolder);

@@ -44,7 +44,7 @@ public static class ModLibrary
             {
                 if (!Directory.Exists(mf.Path)) continue;
                 listed.Add(mf);
-                folders.AddRange(game.ModEntries(mf.Path).Select(d => new ModFolder(d, mf.Source)));
+                folders.AddRange(Directory.GetDirectories(mf.Path).Select(d => new ModFolder(d, mf.Source)));
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { notes.Add($"Could not list {mf.Path}: {e.Message}"); }
         }

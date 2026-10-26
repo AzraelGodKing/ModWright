@@ -4,7 +4,7 @@ namespace SteamCmdHelper.UiTests;
 
 /// <summary>
 /// A throwaway world for one run: a portable copy of the app (its settings in a "data" folder beside it), a RimWorld
-/// install with two mods, and a Sun Haven install with BepInEx and two plugins.
+/// install with two mods.
 /// </summary>
 public sealed class FakeSetup : IDisposable
 {
@@ -14,10 +14,9 @@ public sealed class FakeSetup : IDisposable
     public string Exe => Path.Combine(App, "SteamCmdHelper.exe");
     public string RimWorld => Path.Combine(Root, "RimWorld");
     public string RimWorldData => Path.Combine(Root, "RimWorldData");
-    public string SunHaven => Path.Combine(Root, "Sun Haven");
     public string ModsConfig => Path.Combine(RimWorldData, "Config", "ModsConfig.xml");
 
-    public FakeSetup(string game = "294100")
+    public FakeSetup()
     {
         CopyApp();
         File.WriteAllText(Path.Combine(App, "portable.txt"), "");
@@ -28,19 +27,13 @@ public sealed class FakeSetup : IDisposable
         About(Path.Combine(RimWorld, "Mods", "ModB"), "test.modb", "Test Mod B");
         Write(ModsConfig, "<?xml version=\"1.0\" encoding=\"utf-8\"?><ModsConfigData><version>1.5.4104 rev435</version><activeMods><li>ludeon.rimworld</li><li>test.moda</li></activeMods><knownExpansions /></ModsConfigData>");
 
-        Directory.CreateDirectory(Path.Combine(SunHaven, "BepInEx", "core"));
-        Write(Path.Combine(SunHaven, "Sun Haven.exe"), "");
-        Plugin("plugins", "Author-Farming", "Author-Lib-1.0.0");
-        Plugin("plugins-disabled", "Author-Lib");
-
         var settings = new Dictionary<string, object>
         {
             ["Sides"] = "Manager",
             ["CheckForUpdates"] = false,
             ["DropPodSaveBackups"] = false,
-            ["DropPodGame"] = game,
-            ["GameFolders"] = new Dictionary<string, string> { ["294100"] = RimWorld, ["1432860"] = SunHaven },
-            ["GameDataFolders"] = new Dictionary<string, string> { ["294100"] = RimWorldData, ["1432860"] = Path.Combine(Root, "SunHavenData") },
+            ["GameFolders"] = new Dictionary<string, string> { ["294100"] = RimWorld },
+            ["GameDataFolders"] = new Dictionary<string, string> { ["294100"] = RimWorldData },
         };
         Write(Path.Combine(App, "data", "settings.json"), JsonSerializer.Serialize(settings));
     }
@@ -76,14 +69,6 @@ public sealed class FakeSetup : IDisposable
     static void About(string mod, string id, string name, string extra = "") =>
         Write(Path.Combine(mod, "About", "About.xml"),
             $"<?xml version=\"1.0\" encoding=\"utf-8\"?><ModMetaData><packageId>{id}</packageId><name>{name}</name><author>Tester</author><supportedVersions><li>1.5</li></supportedVersions>{extra}</ModMetaData>");
-
-    void Plugin(string where, string id, params string[] deps)
-    {
-        var dir = Path.Combine(SunHaven, "BepInEx", where, id);
-        Write(Path.Combine(dir, "manifest.json"),
-            $"{{\"name\":\"{id[(id.IndexOf('-') + 1)..]}\",\"version_number\":\"1.0.0\",\"website_url\":\"\",\"description\":\"\",\"dependencies\":[{string.Join(",", deps.Select(d => $"\"{d}\""))}]}}");
-        File.WriteAllBytes(Path.Combine(dir, id + ".dll"), new byte[] { 0 });
-    }
 
     public void Dispose()
     {
