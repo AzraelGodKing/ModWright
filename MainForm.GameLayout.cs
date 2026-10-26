@@ -9,13 +9,10 @@ namespace SteamCmdHelper;
 /// <summary>The request form, the mods folder's game line, and the cards and rows the windows are built from.</summary>
 public sealed partial class MainForm
 {
-    /// <summary>The "?" button: a layout request, bug report or feature request, sent to Linear.</summary>
+    /// <summary>The "?" button: a bug report or feature request, sent to Linear.</summary>
     void OpenRequest()
     {
-        // Show one mod's file names (never contents) so the request says what a mod looks like.
-        var mod = (_list.SelectedItems.Count > 0 ? _list.SelectedItems[0].Tag : _rows.Count > 0 ? _rows[0].Tag : null) as ModInfo;
-        var names = mod != null ? RequestForm.ListFileNames(mod.Dir) : "";
-        using var f = new RequestForm(_cfg.GameName, _cfg.AppId, _cfg.Preset, names);
+        using var f = new RequestForm();
         f.ShowDialog(this);
     }
 

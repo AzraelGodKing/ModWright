@@ -12,7 +12,7 @@
 
     PROJECTID (a Linear project id) and LABELIDS (label ids separated by commas) are optional and read the same way,
     environment first, then request.key. When set, requests are filed into that project with those labels.
-    LABELMAP is optional too: "Name=label id" pairs separated by commas (Layout, Bug, Feature, UI, Upload, SteamCMD),
+    LABELMAP is optional too: "Name=label id" pairs separated by commas (Bug, Feature, UI, Upload, SteamCMD),
     which add a label for the kind of request and the area it is about.
 
     The value is stored XOR-masked in a generated source file under obj/, so it is not plain text in the exe. That

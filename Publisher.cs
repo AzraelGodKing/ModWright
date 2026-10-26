@@ -44,15 +44,8 @@ public sealed class Publisher
     /// <summary>The mods folder's shared footer, added to the description a new item is created with.</summary>
     public string? DescriptionFooter { get; init; }
 
-    /// <summary>Turns Markdown in change notes into Steam's BBCode when the layout's changelog is a .md file.</summary>
-    public bool MarkdownToSteam { get; init; }
-
-    /// <summary>The change note as Steam gets it: the template filled in, Markdown converted, without the credit line.</summary>
-    public string Shape(ModInfo m, string notes)
-    {
-        var shaped = ChangeNotes.Apply(NoteTemplate, notes, m.Name, m.Version, _cfg.GameName);
-        return MarkdownToSteam && ChangeNotes.IsMarkdown(_cfg.Changelog) ? ChangeNotes.MarkdownToBBCode(shaped) : shaped;
-    }
+    /// <summary>The change note as Steam gets it: the template filled in, without the credit line.</summary>
+    public string Shape(ModInfo m, string notes) => ChangeNotes.Apply(NoteTemplate, notes, m.Name, m.Version, _cfg.GameName);
 
     /// <summary>
     /// The change note exactly as Steam gets it: <see cref="Shape"/>, then the credit line when <see cref="Credit"/> is

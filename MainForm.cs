@@ -38,7 +38,6 @@ public sealed partial class MainForm : Form
     Button _profileSave = null!, _profileDelete = null!, _webhookTest = null!;
     readonly CheckBox _tagUploads = new() { AutoSize = true, Text = "&Tag each upload in git as <mod folder>-v<version>" };
     readonly CheckBox _uploadCredit = new() { AutoSize = true, Text = "End each change note with \"Uploaded via Modwright\" and a link to its download page" };
-    readonly CheckBox _markdownNotes = new() { AutoSize = true, Text = "Turn &Markdown in .md changelogs into Steam formatting (headings, bold, lists, links)" };
     readonly TextBox _noteTemplate = new()
     {
         Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, Width = 520, Height = 64, Font = new Font("Consolas", 9f),

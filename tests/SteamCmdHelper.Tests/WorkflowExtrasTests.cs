@@ -87,12 +87,12 @@ public sealed class WorkflowExtrasTests : IDisposable
     // ------------------------------------------------------------ the note as Steam gets it
 
     [Fact]
-    public void As_sent_applies_template_markdown_credit_and_length()
+    public void As_sent_applies_template_credit_and_length()
     {
-        var cfg = TestConfig.RimWorld(c => c.Changelog = "CHANGELOG.md");
-        var pub = new Publisher(_repo.Root, cfg, "", "") { NoteTemplate = "{version}\n{note}", MarkdownToSteam = true, Credit = true };
-        var sent = pub.AsSent(new ModInfo { Name = "M", Version = "1.2.3" }, "- **Fixed** it");
-        Assert.StartsWith("1.2.3\n[list]\n[*][b]Fixed[/b] it\n[/list]", sent);
+        var cfg = TestConfig.RimWorld();
+        var pub = new Publisher(_repo.Root, cfg, "", "") { NoteTemplate = "{version}\n{note}", Credit = true };
+        var sent = pub.AsSent(new ModInfo { Name = "M", Version = "1.2.3" }, "- [b]Fixed[/b] it");
+        Assert.StartsWith("1.2.3\n- [b]Fixed[/b] it", sent);
         Assert.EndsWith(Publisher.CreditLine, sent);
         var big = pub.AsSent(new ModInfo { Name = "M", Version = "1" }, new string('x', 9000));
         Assert.True(big.Length <= ConfirmUploadForm_MaxNote);

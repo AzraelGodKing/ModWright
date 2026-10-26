@@ -84,7 +84,7 @@ public sealed partial class MainForm
         bool commitFirst;
         var shaper = new Publisher(_s.RepoPath, _cfg, "", "")
         {
-            Credit = _s.UploadCredit, NoteTemplate = _s.TemplateFor(_s.RepoPath), MarkdownToSteam = _s.MarkdownNotes,
+            Credit = _s.UploadCredit, NoteTemplate = _s.TemplateFor(_s.RepoPath),
         };
         if (rollback == null) checkFirst.AddRange(await LaunchPadChecksAsync(picked, test));
         var checklist = test ? null : ReleaseChecklist.Items(_s.ChecklistFor(_s.RepoPath));
@@ -132,7 +132,6 @@ public sealed partial class MainForm
             Credit = _s.UploadCredit,
             NoteTemplate = _s.TemplateFor(_s.RepoPath),
             DescriptionFooter = _s.FooterFor(_s.RepoPath),
-            MarkdownToSteam = _s.MarkdownNotes,
             VerifyUploads = _s.VerifyUploads,
             PackageArchiveDir = _s.KeepPackages ? PackageArchive.DefaultDir : null,
         };
