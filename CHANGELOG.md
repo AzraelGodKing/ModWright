@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.0.0
+
+Modwright is now a RimWorld tool, through and through. Everything that was only there for other games is gone.
+
+- **The Launch Pad uploads RimWorld mods only.** The Generic, Custom, Paradox and Golf With Your Friends layouts are
+  gone, and with them the Layout box, Edit layout file, the Steam app ID box (and its step in Get set up) and
+  `--allow-experimental`. Every mods folder uses the RimWorld layout. `.steamhelper.json` now only keeps the folder's
+  Leave these out patterns; a file set up for another game is not used, and the window and Check setup say so.
+- **The Drop Pod is RimWorld-only again.** Sun Haven support, the game picker and `--game` on the droppod command
+  line are gone.
+- **No more Thunderstore.** Publish to Thunderstore, its Options card and its check in Check setup are gone.
+- **Change notes are sent as written.** The option that turned Markdown in `.md` changelogs into Steam formatting is
+  gone, since RimWorld mods keep their notes in `About/Changelog.txt`.
+- **Requests are bugs and features.** The request form no longer offers "Support another game".
+- Your settings carry over; values for the removed features are ignored.
+
 ## 1.17.0
 
 - **A new theme: PlusBacon.** Options > Appearance > Theme now also offers PlusBacon: teal (#069494) on black, with
