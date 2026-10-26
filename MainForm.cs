@@ -35,11 +35,6 @@ public sealed partial class MainForm : Form
     /// <summary>Says that Windows High Contrast is on and wins over the theme choice; hidden otherwise.</summary>
     Label _contrastNote = null!;
     readonly ComboBox _profile = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
-    readonly TextBox _tsTeam = new() { Width = 200, AccessibleName = "Thunderstore team" };
-    readonly TextBox _tsCommunity = new() { Width = 200, PlaceholderText = "e.g. sun-haven", AccessibleName = "Thunderstore community" };
-    readonly TextBox _tsCategories = new() { Width = 260, PlaceholderText = "e.g. mods, tweaks", AccessibleName = "Thunderstore categories" };
-    readonly TextBox _tsToken = new() { Width = 320, UseSystemPasswordChar = true, AccessibleName = "Thunderstore service account token" };
-    readonly CheckBox _tsAfter = new() { AutoSize = true, Text = "After each Steam upload, also publish the mods that have a Thunderstore manifest.json" };
     readonly TextBox _webhook = new() { Width = 420, PlaceholderText = "https://discord.com/api/webhooks/..." };
     readonly CheckBox _ghReleases = new() { AutoSize = true, Text = "Make a GitHub &release for each upload (needs the gh tool, logged in with \"gh auth login\")" };
     Button _profileSave = null!, _profileDelete = null!, _webhookTest = null!;
