@@ -93,8 +93,6 @@ public static class NewMod
             Write(cfg.ModMarker, AboutXml(o, versions, description));
             if (o.CSharp) WriteCSharp(dir, o, versions[^1]);
         }
-        else if (cfg.PresetName() == ProjectConfig.ParadoxName)
-            Write(cfg.ModMarker, $"version=\"1.0.0\"\ntags={{\n}}\nname=\"{o.Name.Trim().Replace("\"", "'")}\"\nsupported_version=\"*\"\n");
         if (!string.IsNullOrWhiteSpace(cfg.Changelog))
             Write(cfg.Changelog, cfg.ChangelogByVersion || cfg.ChangelogFirstLineIsVersion ? "1.0.0\n- First release.\n" : "- First release.\n");
         Write(cfg.SteamDescriptionFile, description + "\n");

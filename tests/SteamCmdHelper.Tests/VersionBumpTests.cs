@@ -42,17 +42,6 @@ public sealed class VersionBumpTests : IDisposable
     static ModInfo Mod(string dir) => new() { Dir = dir, Folder = Path.GetFileName(dir) };
 
     [Fact]
-    public void Paradox_descriptor_version_is_written()
-    {
-        var file = _repo.Write("Ships/descriptor.mod", "name=\"Ships\"\nversion=\"2.3.1\"\nsupported_version=\"3.12.*\"\n");
-        var cfg = ProjectConfig.GetPreset(ProjectConfig.ParadoxName);
-
-        Assert.Null(ModScanner.SetVersion(Mod(Path.Combine(_repo.Root, "Ships")), cfg, "2.4.0"));
-
-        Assert.Equal("name=\"Ships\"\nversion=\"2.4.0\"\nsupported_version=\"3.12.*\"\n", File.ReadAllText(file));
-    }
-
-    [Fact]
     public void Json_marker_version_is_written_at_its_path()
     {
         var file = _repo.Write("Mod/mod.json", "{ \"info\": { \"title\": \"Ünïcode\", \"version\": \"0.9.0\" }, \"other\": 1 }");

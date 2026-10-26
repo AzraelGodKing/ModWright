@@ -5,7 +5,7 @@ public sealed class CliOptions
 {
     public string Command = "help";
     public readonly List<string> Mods = new();
-    public bool All, Changed, Json, DryRun, AllowCreate, AllowExperimental, CheckOnly, Test, NoBuild;
+    public bool All, Changed, Json, DryRun, AllowCreate, CheckOnly, Test, NoBuild;
     /// <summary>upload: the steps the window offers after an upload (tag, commit new ids, Discord and GitHub release).</summary>
     public bool Tag, CommitIds, Announce;
     /// <summary>upload: draft each mod's change note from its commits since the last upload, instead of the changelog.</summary>
@@ -109,7 +109,6 @@ public static class Cli
           --steamcmd <path>      steamcmd executable (default: the one the window uses)
           --dry-run              check and package only, upload nothing
           --allow-create         allow creating new PRIVATE Workshop items for mods not on Steam yet
-          --allow-experimental   allow real uploads with an experimental layout
           --ref <branch|tag>     package this git branch, tag or commit instead of the checked-out one
                                  (default: Upload from in the window's Options)
           --test                 upload to each mod's private test item instead of the real one
@@ -165,7 +164,6 @@ public static class Cli
                 case "--json": o.Json = true; break;
                 case "--dry-run": o.DryRun = true; break;
                 case "--allow-create": o.AllowCreate = true; break;
-                case "--allow-experimental": o.AllowExperimental = true; break;
                 case "--repo": o.Repo = Value(); break;
                 case "--account": o.Account = Value(); break;
                 case "--steamcmd": o.SteamCmd = Value(); break;
@@ -690,11 +688,6 @@ public static class Cli
         }
         if (isGit && cfg.UseGitArchive && gitRef == null && !o.Test)
             foreach (var w in GitOps.SyncWarnings(GitOps.Sync(repo), !o.DryRun && o.Announce && gitHubReleases)) Say("Warning: " + w);
-        if (!o.DryRun && cfg.Experimental && !o.AllowExperimental)
-        {
-            Say($"Error: the \"{cfg.PresetName()}\" layout is experimental. Try a new private item first; add --allow-experimental to upload anyway.");
-            return End(ExitUsage, $"The \"{cfg.PresetName()}\" layout is experimental.");
-        }
         if ((o.Tag || o.CommitIds || o.NoteFromGit) && !isGit)
         {
             Say("Error: --tag, --commit-ids and --note-from-git need the mods folder to be a git repo.");

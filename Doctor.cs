@@ -56,8 +56,6 @@ public static class Doctor
                 $"{repo}: {mods.Count} mod{(mods.Count == 1 ? "" : "s")}" + (broken > 0 ? $", {broken} need fixing before upload (see their Status)" : "") + ".");
             if (cfg.Error != null) Add(CheckLevel.Fail, "Layout", cfg.Error);
             else Add(CheckLevel.Ok, "Layout", cfg.Source);
-            if (!cfg.AppIdValid) Add(CheckLevel.Fail, "Steam app ID", "not set: enter the game's app ID (the number in its store page address).");
-            else Add(CheckLevel.Ok, "Steam app ID", cfg.AppId + (cfg.GameName.Length > 0 ? $" ({cfg.GameName})" : "") + ".");
         }
 
         // ---- SteamCMD and the login

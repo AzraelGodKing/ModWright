@@ -19,7 +19,6 @@ public sealed partial class MainForm
         Theme.Style(_tip);
 
         _browse = Btn("&Browse...", (_, _) => BrowseRepo());
-        _editLayout = Btn("&Edit layout file...", (_, _) => EditLayout());
         _checkLogin = Btn("&Check login", async (_, _) => { SaveFields(); await VerifyLoginAsync(true); });
         _doLogin = Btn("Log &in...", async (_, _) => { SaveFields(); await LoginFlowAsync(); });
         _install = Btn("In&stall SteamCMD", async (_, _) => await InstallAsync());
@@ -39,7 +38,6 @@ public sealed partial class MainForm
         _retry = Btn("Retr&y failed", async (_, _) => await RetryFailedAsync());
         _retry.Visible = false;
         _emptyBrowse = Btn("Browse...", (_, _) => BrowseRepo()).Role(ThemeRole.Accent);
-        _emptyLayout = Btn("Edit layout file...", (_, _) => EditLayout());
         _emptyNew = Btn("New mod...", async (_, _) => await NewModAsync());
         _emptyClear = Btn("Clear the filter", (_, _) => { _filter.Text = ""; _hideUpToDate.Checked = false; });
         _projectToggle = SmallBtn("Change...", (_, _) => { _projectOpen = !_projectOpen; UpdateProjectCard(); if (_projectOpen) _repo.Focus(); });
@@ -74,9 +72,6 @@ public sealed partial class MainForm
         _account.Leave += (_, _) => { SaveFields(); UpdateLoginHint(); UpdateSetup(); };
         _account.TextChanged += (_, _) => ShowNote(_accountNote, null);
         _allowCreate.CheckedChanged += (_, _) => { if (!_populating) { SaveFields(); RefreshAll(); } };
-        _appId.Leave += async (_, _) => await ApplyAppIdAsync();
-        _appId.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await ApplyAppIdAsync(); } };
-        _preset.SelectionChangeCommitted += (_, _) => ApplyPresetChoice();
         _theme.SelectedIndexChanged += (_, _) => { if (_theme.SelectedIndex >= 0) SetTheme(Display.Themes[_theme.SelectedIndex].Name); };
         _textSize.SelectionChangeCommitted += (_, _) => SetTextSize();
         _logFilter.SelectedIndexChanged += (_, _) => RenderLog();
@@ -221,7 +216,7 @@ public sealed partial class MainForm
         page.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         page.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        // Shown until SteamCMD, the account, the mods folder and the app id are all set: the steps on one line, how
+        // Shown until SteamCMD, the account and the mods folder are all set: the steps on one line, how
         // many are done, the next one as a button, and a thin bar of the progress.
         var steps = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty, Tag = "fill" };
         foreach (var l in _steps)
@@ -237,15 +232,13 @@ public sealed partial class MainForm
         _setup = Card(null, null, setupRow, _setupBar);
         page.Controls.Add(_setup, 0, 0);
 
-        _preset.Items.AddRange(ProjectConfig.PresetNames.Cast<object>().Append("Custom").ToArray());
         Tip(_repo, "Your mods folders; pick one you used before, press Browse, or drop a folder onto this window");
         Tip(_browse, "Pick the folder that holds your mods (Ctrl+O)");
-        Tip(_projectToggle, "Show or hide the mods folder, app ID and layout");
-        Tip(_projectSummary, "Click to change the mods folder, app ID or layout");
+        Tip(_projectToggle, "Show or hide the mods folder");
+        Tip(_projectSummary, "Click to change the mods folder");
         _projectRows = new Control[]
         {
             Row(Lbl("Mods re&po"), _repo, _browse, _branch),
-            Row(Lbl("Steam &app ID"), _appId, Lbl("&Layout"), _preset, _editLayout),
             Row(_game),
         };
         page.Controls.Add(Card("Project", new Control[] { _projectSummary, _projectToggle }, _projectRows.Append(Row(_projectNote)).ToArray()), 0, 1);
@@ -282,7 +275,7 @@ public sealed partial class MainForm
         // The list and its empty state share one spot; only one of them is visible.
         var emptyBox = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Anchor = AnchorStyles.None };
         var emptyButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Anchor = AnchorStyles.None, Margin = new Padding(0, 6, 0, 0) };
-        foreach (var b in new[] { _emptyBrowse, _emptyNew, _emptyLayout, _emptyClear }) { b.Margin = new Padding(4, 0, 4, 0); emptyButtons.Controls.Add(b); }
+        foreach (var b in new[] { _emptyBrowse, _emptyNew, _emptyClear }) { b.Margin = new Padding(4, 0, 4, 0); emptyButtons.Controls.Add(b); }
         _emptyTitle.Margin = new Padding(0, 0, 0, 2);
         emptyBox.Controls.AddRange(new Control[] { _emptyTitle, _emptyText, emptyButtons });
         var center = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
@@ -839,7 +832,7 @@ public sealed partial class MainForm
                      "and their row tooltip. Right-click a mod > On Steam > Stats and comments for charts of subscribers, favourites and visitors over time.")),
             Card("Description", null,
                 Row(Lbl("When a mod's &description file differs from Steam"), _descSync),
-                Hint("Checked when you upload a mod that is on Steam and has a description file (steam_description.txt for Generic). " +
+                Hint("Checked when you upload a mod that is on Steam and has a description file (About/steam_description.txt). " +
                      "Public and unlisted items are compared with their page on Steam; other items with what this PC last sent. " +
                      "The new description goes out with the upload, like a change made in Workshop page..."),
                 Row(Lbl("&Footer"), _descFooter),
@@ -940,7 +933,7 @@ public sealed partial class MainForm
                 _autoUpdate,
                 _updateReady),
             Card("Setup check", null,
-                Hint("Goes through everything an upload needs (the mods folder, its layout and app ID, SteamCMD and the saved login, git, gh, " +
+                Hint("Goes through everything an upload needs (the mods folder and its layout, SteamCMD and the saved login, git, gh, " +
                      "the Steam client, free disk space) and says what to fix. Nothing is changed."),
                 Row(Btn("Check &setup", async (b, _) => await CheckSetupAsync((Control)b!)))),
             Card("Your data", null,

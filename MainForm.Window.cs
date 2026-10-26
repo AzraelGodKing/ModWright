@@ -159,7 +159,7 @@ public sealed partial class MainForm
         _detail.Visible = !empty; // nothing to select; the empty state needs the room
         PlaceDetails();
         if (!empty) return;
-        _emptyLayout.Visible = _emptyClear.Visible = _emptyNew.Visible = false;
+        _emptyClear.Visible = _emptyNew.Visible = false;
         _emptyBrowse.Visible = true;
         if (!Directory.Exists(_s.RepoPath))
         {
@@ -169,11 +169,8 @@ public sealed partial class MainForm
         else if (_rows.Count == 0)
         {
             _emptyTitle.Text = "No mods found in this folder";
-            _emptyText.Text = string.IsNullOrWhiteSpace(_cfg.ModMarker)
-                ? "Pick the folder that contains one sub-folder per mod, or edit the layout file to point at them."
-                : $"Each mod folder needs {_cfg.ModMarker}. Pick the folder that contains the mod folders, or choose a different Layout above.";
-            _emptyLayout.Visible = !_cfg.IsBuiltIn;
-            _emptyNew.Visible = !string.IsNullOrWhiteSpace(_cfg.ModMarker);
+            _emptyText.Text = $"Each mod folder needs {_cfg.ModMarker}. Pick the folder that contains the mod folders, or make a new mod.";
+            _emptyNew.Visible = true;
         }
         else
         {
@@ -195,7 +192,6 @@ public sealed partial class MainForm
         Step(1, _s.Account.Length > 0, "Steam account: " + _s.Account, "Set your Steam account", () => { ShowOptions(_account); _account.Focus(); Flash(_account); });
         Step(2, hasRepo && _rows.Count > 0, $"{_rows.Count} mod{(_rows.Count == 1 ? "" : "s")} found",
             hasRepo ? "Point at the folder with your mods" : "Pick your mods folder", BrowseRepo);
-        Step(3, _cfg.AppIdValid, "App ID " + _cfg.AppId, "Enter the game's app ID", () => { _projectOpen = true; UpdateProjectCard(); _appId.Focus(); Flash(_appId); });
         var done = _stepActions.Count(a => a == null);
         _setupCount.Text = Display.StepsDone(done, _steps.Length);
         _setupBar.Value = done * 100 / _steps.Length;

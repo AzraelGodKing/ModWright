@@ -14,8 +14,6 @@ public sealed partial class MainForm : Form
     readonly ComboBox _repo = new() { Tag = "fill", DropDownStyle = ComboBoxStyle.DropDownList };
     readonly TextBox _account = new() { Width = 220 };
     readonly Label _branch = new Label { AutoSize = true, AutoEllipsis = true, MaximumSize = new Size(240, 0) }.Role(ThemeRole.Muted);
-    readonly TextBox _appId = new() { Width = 90 };
-    readonly ComboBox _preset = new() { Width = 150, DropDownStyle = ComboBoxStyle.DropDownList };
     readonly Label _game = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill" }.Role(ThemeRole.Keep);
     /// <summary>Says what to do when something can't be done yet ("pick the mods folder first"); hidden when empty.</summary>
     readonly Label _projectNote = new Label { AutoSize = false, AutoEllipsis = true, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Tag = "fill", Visible = false }.Role(ThemeRole.Keep);
@@ -125,7 +123,7 @@ public sealed partial class MainForm : Form
     readonly Label _setupCount = new Label { AutoSize = true }.Role(ThemeRole.Muted);
     Button _setupNext = null!;
     readonly FlatProgressBar _setupBar = new() { Dock = DockStyle.Top, Height = 4, Margin = new Padding(0, 6, 0, 0), AccessibleName = "Setup progress" };
-    readonly Action?[] _stepActions = new Action?[4];
+    readonly Action?[] _stepActions = new Action?[3];
 
     /// <summary>The long notes on the Options tab; they wrap to the width of their card.</summary>
     readonly List<Label> _hints = new();
@@ -136,12 +134,12 @@ public sealed partial class MainForm : Form
     readonly Label _emptyText = new Label { AutoSize = true, MaximumSize = new Size(520, 0), TextAlign = ContentAlignment.MiddleCenter, Anchor = AnchorStyles.None }.Role(ThemeRole.Muted);
 
     // "Get set up": the steps a new user still has to do, each a link that does it.
-    readonly LinkLabel[] _steps = Enumerable.Range(0, 4).Select(_ => new LinkLabel { AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(0, 2, 24, 2) }.Role(ThemeRole.Keep)).ToArray();
+    readonly LinkLabel[] _steps = Enumerable.Range(0, 3).Select(_ => new LinkLabel { AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(0, 2, 24, 2) }.Role(ThemeRole.Keep)).ToArray();
 
     Button _changed = null!;
     Button _groups = null!;
     Button _help = null!, _checkUpdateNow = null!, _editPage = null!, _browse = null!, _refresh = null!, _all = null!, _none = null!, _go = null!, _later = null!, _cancel = null!, _retry = null!,
-        _checkLogin = null!, _doLogin = null!, _install = null!, _editLayout = null!, _emptyBrowse = null!, _emptyLayout = null!, _emptyClear = null!, _emptyNew = null!;
+        _checkLogin = null!, _doLogin = null!, _install = null!, _emptyBrowse = null!, _emptyClear = null!, _emptyNew = null!;
     NavButton _navUpload = null!, _navDropPod = null!, _navOptions = null!;
     Control _uploadPage = null!, _dropPodPage = null!, _optionsPage = null!, _setup = null!, _progress = null!;
     Tone _loginTone = Tone.Muted;

@@ -6,7 +6,7 @@ using Microsoft.Win32;
 
 namespace SteamCmdHelper;
 
-/// <summary>The request form, and a mods folder's game (app ID) and packaging layout.</summary>
+/// <summary>The request form, the mods folder's game line, and the cards and rows the windows are built from.</summary>
 public sealed partial class MainForm
 {
     /// <summary>The "?" button: a layout request, bug report or feature request, sent to Linear.</summary>
@@ -15,97 +15,16 @@ public sealed partial class MainForm
         // Show one mod's file names (never contents) so the request says what a mod looks like.
         var mod = (_list.SelectedItems.Count > 0 ? _list.SelectedItems[0].Tag : _rows.Count > 0 ? _rows[0].Tag : null) as ModInfo;
         var names = mod != null ? RequestForm.ListFileNames(mod.Dir) : "";
-        using var f = new RequestForm(_cfg.GameName, _cfg.AppId, _cfg.PresetName(), names);
+        using var f = new RequestForm(_cfg.GameName, _cfg.AppId, _cfg.Preset, names);
         f.ShowDialog(this);
     }
 
-    /// <summary>The user typed an app id: validate it, look the game name up on Steam, and save it to the layout file.</summary>
-    async Task ApplyAppIdAsync()
-    {
-        if (_populating || _busy) return;
-        if (_cfg.AppIdLocked) { _appId.Text = _cfg.AppId; return; }
-        var id = _appId.Text.Trim();
-        if (id == _cfg.AppId) return;
-        if (id.Length > 0 && !id.All(char.IsDigit)) { Nudge(_appId, _projectNote, "The app ID is a number, e.g. 294100 for RimWorld (it is in the game's Steam store URL)."); return; }
-        if (!Directory.Exists(_s.RepoPath)) { _appId.Text = _cfg.AppId; Nudge(_repo, _projectNote, "Pick the mods folder first; the app ID is saved in it."); return; }
-
-        ShowNote(_projectNote, null);
-        _cfg.AppId = id;
-        _cfg.GameName = "";
-        if (id.Length > 0) _cfg.GameName = await LookupGameNameAsync(id) ?? "";
-        SaveLayout(id.Length > 0 ? $"App ID set to {id}{(_cfg.GameName.Length > 0 ? " (" + _cfg.GameName + ")" : "")}." : "App ID cleared.");
-        ShowGame();
-        UpdateSetup();
-        UpdateGoButton();
-    }
-
-    void ApplyPresetChoice()
-    {
-        var name = _preset.SelectedItem as string ?? "";
-        if (!Directory.Exists(_s.RepoPath)) { ShowGame(); Nudge(_repo, _projectNote, "Pick the mods folder first; the layout is saved in it."); return; }
-        ShowNote(_projectNote, null);
-        if (name == ProjectConfig.CustomName)
-        {
-            if (_cfg.PresetName() == ProjectConfig.CustomName) { ShowGame(); return; }
-            _cfg.MakeCustom(); // keeps the current built-in layout's fields as the starting point
-            SaveLayout("Layout set to Custom (editable).");
-            ShowGame();
-            return;
-        }
-        _cfg.ApplyPreset(name);
-        SaveLayout($"Layout set to {name} (built in, locked).");
-        RefreshAll();
-    }
-
-    void SaveLayout(string what)
-    {
-        try { _cfg.Save(_s.RepoPath); Append(what + " Saved to " + ProjectConfig.FileName + " in the repo.", LogKind.Note); }
-        catch (Exception e) { Append("Could not save " + ProjectConfig.FileName + ": " + e.Message, LogKind.Error); }
-    }
-
-    static async Task<string?> LookupGameNameAsync(string appId)
-    {
-        try
-        {
-            var json = await Http.GetStringAsync($"https://store.steampowered.com/api/appdetails?appids={appId}&filters=basic");
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty(appId, out var e)) return null;
-            if (!e.TryGetProperty("success", out var ok) || !ok.GetBoolean()) return null;
-            return e.GetProperty("data").GetProperty("name").GetString();
-        }
-        catch { return null; }
-    }
-
+    /// <summary>The line under the mods folder: the game and the layout, or why the layout file was not used.</summary>
     void ShowGame()
     {
-        _populating = true;
-        _appId.Text = _cfg.AppId;
-        var preset = _cfg.PresetName();
-        _preset.SelectedItem = preset;
-        _populating = false;
-        if (!_cfg.AppIdValid)
-        {
-            _game.Text = preset == ProjectConfig.ParadoxName
-                ? "Enter the game's Steam app ID: " + string.Join(", ", ProjectConfig.ParadoxGames.Select(g => $"{g.Game} {g.AppId}")) + "."
-                : "Enter the game's Steam app ID (the number in its store URL) before uploading.";
-            _game.ForeColor = Theme.Of(Tone.Warn);
-        }
-        else
-        {
-            _game.Text = $"{(_cfg.GameName.Length > 0 ? _cfg.GameName : "App " + _cfg.AppId)}  -  layout: {_cfg.Source}"
-                         + (_cfg.IsBuiltIn ? " (locked; choose Custom to make your own)" : "");
-            _game.ForeColor = Theme.Of(Tone.Muted);
-        }
+        _game.Text = $"{_cfg.GameName} (app {_cfg.AppId})  -  {_cfg.Source}: mods with {_cfg.ModMarker}";
+        _game.ForeColor = Theme.Of(Tone.Muted);
         Tip(_game, _game.Text); // full text when it is cut off with "..."
-        ApplyLocks();
-    }
-
-    /// <summary>Built-in layouts are read-only: no editing the layout file, and no changing the app id when the layout fixes it.</summary>
-    void ApplyLocks()
-    {
-        _editLayout.Enabled = !_busy && !_cfg.IsBuiltIn;
-        _appId.Enabled = !_busy && !_cfg.AppIdLocked;
-        Tip(_editLayout, _cfg.IsBuiltIn ? "Built-in layouts are locked; choose Custom in the Layout box to edit one" : "Open the layout file (" + ProjectConfig.FileName + ") in your editor");
     }
 
     static Label Lbl(string t) => new() { Text = t, AutoSize = true };

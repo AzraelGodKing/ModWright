@@ -40,7 +40,6 @@ public sealed partial class MainForm
         SaveFields();
         var picked = only ?? Selected().ToList();
         if (picked.Count == 0) return;
-        if (!_cfg.AppIdValid) { Nudge(_appId, _projectNote, "Enter the game's Steam app ID first (the number in its store page URL)."); return; }
         if (!SteamLogin.SteamCmdInstalled(_s.EffectiveSteamCmd)) { Nudge(_install, _accountNote, "SteamCMD is not installed yet. Press Install SteamCMD below."); return; }
 
         var dry = _dry.Checked;
@@ -97,15 +96,6 @@ public sealed partial class MainForm
         }
 
         if (commitFirst && !CommitBeforeUpload(picked.Where(m => m.Dirty).ToList())) return;
-
-        if (!dry && _cfg.Experimental)
-        {
-            var warn = MessageBox.Show(this,
-                $"The \"{_cfg.PresetName()}\" layout is experimental: it has not been proven against the real game, and the game may expect its own in-game uploader's packaging.\n\n" +
-                "Updating an EXISTING item replaces its content on Steam. Try a brand-new private item first (tick Create new items), and check it in the game before updating anything real.\n\nContinue?",
-                Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
-            if (warn != DialogResult.Yes) return;
-        }
 
         if (_s.BuildFor(_s.RepoPath) is { Length: > 0 } build)
         {

@@ -104,7 +104,7 @@ public class ModListColumnsTests : IDisposable
     [Fact]
     public void Editing_is_refused_when_the_layout_has_no_xml_version()
     {
-        var generic = ProjectConfig.GetPreset("Generic");
+        var generic = new ProjectConfig();
         _repo.Write("Gamma/readme.txt", "hi");
         var m = Assert.Single(ModScanner.Scan(_repo.Root, generic));
 

@@ -61,7 +61,7 @@ public sealed class SetupAndScheduleTests : IDisposable
         Assert.True(tried);
         var mods = Assert.Single(checks, c => c.Name == "Mods folder");
         Assert.Contains("2 mods, 1 need fixing", mods.Detail);
-        Assert.Contains(checks, c => c.Name == "Steam app ID" && c.Level == CheckLevel.Ok);
+        Assert.Contains(checks, c => c.Name == "Layout" && c.Level == CheckLevel.Ok);
         Assert.Contains(checks, c => c.Name == "Steam login" && c.Level == CheckLevel.Ok);
         Assert.DoesNotContain(checks, c => c.Level == CheckLevel.Fail);
     }

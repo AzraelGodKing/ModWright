@@ -36,7 +36,7 @@ public sealed class WorkshopTagsTests : IDisposable
     [Fact]
     public void Layouts_without_tags_leave_them_alone()
     {
-        var generic = ProjectConfig.GetPreset("Generic");
+        var generic = new ProjectConfig();
         Assert.False(WorkshopTags.LayoutHasTags(generic));
         Assert.Empty(WorkshopTags.For(_repo.AddMod("Alpha"), generic));
         Assert.True(WorkshopTags.LayoutHasTags(TestConfig.RimWorld()));
