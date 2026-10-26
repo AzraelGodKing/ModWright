@@ -6,11 +6,11 @@ using System.Text.Json;
 namespace SteamCmdHelper;
 
 /// <summary>
-/// Creates a "game layout request" issue in Linear straight from the app, using a key that can ONLY create issues
+/// Creates a bug report or feature request issue in Linear straight from the app, using a key that can ONLY create issues
 /// in one team. The key is never stored in git: it is baked into the program at build time from the
 /// LINEAR_CREATE_API_KEY / LINEAR_TEAM_UUID secrets, or a git-ignored request.key for local builds (see RequestKey.targets).
 /// The optional PROJECTID / LABELIDS secrets (or request.key lines) pick the project and the labels every request gets;
-/// LABELMAP ("Bug=id, Feature=id, Layout=id, UI=id, ...") adds a label per request kind and area.
+/// LABELMAP ("Bug=id, Feature=id, UI=id, ...") adds a label per request kind and area.
 /// Without it the request form falls back to a pre-filled link / copy-to-clipboard.
 /// </summary>
 public static class RequestSender
@@ -43,9 +43,9 @@ public static class RequestSender
     }
 
     /// <summary>What a request is about. Each kind (and each area) maps to a Linear label through the label map.</summary>
-    public enum RequestKind { Layout, Bug, Feature }
+    public enum RequestKind { Bug, Feature }
 
-    /// <summary>The areas a bug or feature request can be about, as (label-map key, text shown in the form).</summary>
+    /// <summary>The areas a request can be about, as (label-map key, text shown in the form).</summary>
     public static readonly (string key, string text)[] Areas =
     {
         ("UI", "Windows and layout (UI)"),
@@ -56,9 +56,8 @@ public static class RequestSender
     /// <summary>The label-map key for a request kind.</summary>
     public static string KindKey(RequestKind kind) => kind switch
     {
-        RequestKind.Bug => "Bug",
         RequestKind.Feature => "Feature",
-        _ => "Layout",
+        _ => "Bug",
     };
 
     static readonly System.Text.RegularExpressions.Regex LabelMapPattern = new(
@@ -74,7 +73,7 @@ public static class RequestSender
         return map;
     }
 
-    /// <summary>"Layout Request", "Bug report" and "Feature request" all mean the plain kind name.</summary>
+    /// <summary>"Bug report" and "Feature request" mean the plain kind name.</summary>
     static string MapKey(string name)
     {
         var key = name.Replace(" ", "").Trim();
@@ -140,7 +139,7 @@ public static class RequestSender
     }
 
     /// <summary>Creates the issue. Returns (true, "REQ-12") on success or (false, reason).</summary>
-    public static Task<(bool ok, string message)> SendAsync(string title, string description, RequestKind kind = RequestKind.Layout,
+    public static Task<(bool ok, string message)> SendAsync(string title, string description, RequestKind kind = RequestKind.Bug,
         string? area = null, string? endpointOverride = null, CancellationToken ct = default)
     {
         var creds = Credentials();

@@ -2,39 +2,12 @@ using Xunit;
 
 namespace SteamCmdHelper.Tests;
 
-/// <summary>Markdown to Steam BBCode, the change note template, and the version checks around change notes.</summary>
+/// <summary>The change note template, and the version checks around change notes.</summary>
 public sealed class ChangeNoteShapeTests : IDisposable
 {
     readonly TempRepo _repo = new();
 
     public void Dispose() => _repo.Dispose();
-
-    [Fact]
-    public void Headings_lists_and_emphasis_become_BBCode()
-    {
-        var md = "## Fixes\n- **Crash** on load\n- *Slow* saves\n\n1. first\n2. second\n\nSee [the wiki](https://example.com/a_b_c) or `snake_case_name`.";
-        Assert.Equal(
-            "[h2]Fixes[/h2]\n[list]\n[*][b]Crash[/b] on load\n[*][i]Slow[/i] saves\n[/list]\n[olist]\n[*]first\n[*]second\n[/olist]\n" +
-            "See [url=https://example.com/a_b_c]the wiki[/url] or snake_case_name.",
-            ChangeNotes.MarkdownToBBCode(md));
-    }
-
-    [Fact]
-    public void Code_blocks_quotes_and_rules_are_converted()
-    {
-        Assert.Equal("[code]\n**not bold**\n[/code]", ChangeNotes.MarkdownToBBCode("```\n**not bold**\n```"));
-        Assert.Equal("[quote]\nquoted\n[/quote]\nafter", ChangeNotes.MarkdownToBBCode("> quoted\nafter"));
-        Assert.Equal("a\n[hr][/hr]\nb", ChangeNotes.MarkdownToBBCode("a\n---\nb"));
-        Assert.Equal("[strike]gone[/strike]", ChangeNotes.MarkdownToBBCode("~~gone~~"));
-        Assert.Equal("[h3]deep[/h3]", ChangeNotes.MarkdownToBBCode("#### deep"));
-    }
-
-    [Fact]
-    public void Plain_text_and_existing_BBCode_are_left_alone()
-    {
-        Assert.Equal("1.2.0\nFixed a_thing in my_mod.", ChangeNotes.MarkdownToBBCode("1.2.0\nFixed a_thing in my_mod."));
-        Assert.Equal("[b]already[/b]", ChangeNotes.MarkdownToBBCode("[b]already[/b]"));
-    }
 
     [Fact]
     public void Template_fills_its_placeholders_once()
@@ -44,17 +17,6 @@ public sealed class ChangeNoteShapeTests : IDisposable
             ChangeNotes.Apply("{version} ({date})\n{note}\n\nThanks for playing {name}!", "- Fixed {name}", "My Mod", "1.2.0", "RimWorld", today));
         Assert.Equal("Update for RimWorld\n\nthe note", ChangeNotes.Apply("Update for {game}", "the note", "M", "1", "RimWorld", today));
         Assert.Equal("the note", ChangeNotes.Apply("  ", "the note", "M", "1", "G", today));
-    }
-
-    [Fact]
-    public void Markdown_is_converted_only_for_md_changelogs()
-    {
-        var cfg = new ProjectConfig { Changelog = "CHANGELOG.md", AppId = "1" };
-        var m = new ModInfo { Name = "M", Version = "1.0" };
-        Assert.Equal("[b]x[/b]", new Publisher("r", cfg, "s", "a") { MarkdownToSteam = true }.Shape(m, "**x**"));
-        Assert.Equal("**x**", new Publisher("r", cfg, "s", "a") { MarkdownToSteam = false }.Shape(m, "**x**"));
-        cfg.Changelog = "About/changelog.txt";
-        Assert.Equal("**x**", new Publisher("r", cfg, "s", "a") { MarkdownToSteam = true }.Shape(m, "**x**"));
     }
 
     [Fact]

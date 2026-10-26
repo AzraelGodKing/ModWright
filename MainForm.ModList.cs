@@ -799,7 +799,7 @@ public sealed partial class MainForm
     void SetBusy(bool busy)
     {
         _busy = busy;
-        foreach (var c in new Control[] { _browse, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _theme, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _markdownNotes, _noteTemplate, _descFooter, _checklist, _checklistMust, _testItems, _changed, _groups, _afterCmd, _pushTags, _keepPackages, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _steamBack, _restartSteam, _watchBuilds, _strictAbout })
+        foreach (var c in new Control[] { _browse, _refresh, _all, _none, _checkLogin, _doLogin, _install, _repo, _account, _dry, _allowCreate, _theme, _textSize, _checkUpdateNow, _profile, _profileSave, _webhook, _webhookTest, _ghReleases, _uploadCredit, _noteTemplate, _descFooter, _checklist, _checklistMust, _testItems, _changed, _groups, _afterCmd, _pushTags, _keepPackages, _buildCmd, _packageRef, _autoRetry, _updateTags, _updateRequired, _updatePageExtras, _oneSession, _verifyUploads, _steamBack, _restartSteam, _watchBuilds, _strictAbout })
             c.Enabled = !busy;
         _cancel.Visible = busy;
         _cancel.Enabled = busy;

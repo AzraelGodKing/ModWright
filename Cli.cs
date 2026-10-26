@@ -523,7 +523,7 @@ public static class Cli
     /// <param name="recordPath">Where uploaded versions are remembered; null for the per-user file.</param>
     /// <param name="tempRoot">Where packages are staged; null for the system temp folder.</param>
     /// <param name="credit">End change notes with <see cref="Publisher.CreditLine"/> (the app passes its Options setting).</param>
-    /// <param name="noteTemplate">The mods folder's change note template; <paramref name="markdown"/> converts .md notes to BBCode.</param>
+    /// <param name="noteTemplate">The mods folder's change note template.</param>
     /// <param name="syncDescriptions">Send each mod's changed description file with its upload (Options: Always send it).</param>
     /// <param name="buildCommand">The mods folder's build step, run before packaging unless --no-build.</param>
     /// <param name="defaultRef">The branch or tag to upload from when --ref is not given; null for the checked-out commit.</param>
@@ -542,7 +542,7 @@ public static class Cli
     /// back online afterwards (<see cref="SteamRestart.Prepare"/>); null leaves the Steam client alone.</param>
     public static async Task<int> RunAsync(CliOptions o, string repo, string steamCmd, string account, TextWriter output,
         CancellationToken ct, string? recordPath = null, string? tempRoot = null, bool credit = false,
-        string? noteTemplate = null, bool markdown = false, bool syncDescriptions = false,
+        string? noteTemplate = null, bool syncDescriptions = false,
         string? buildCommand = null, string? defaultRef = null, TimeSpan? retryAfter = null,
         string webhook = "", bool gitHubReleases = false, TextWriter? json = null,
         Func<string, string, string[], CancellationToken, Task<TagResult>>? tagUpdater = null,
@@ -595,7 +595,7 @@ public static class Cli
         if (o.Command == "game-version") return AddGameVersion(o, cfg, mods, Say);
         if (o.Command == "note")
         {
-            var shaper = new Publisher(repo, cfg, steamCmd, account) { Credit = credit, NoteTemplate = noteTemplate, MarkdownToSteam = markdown };
+            var shaper = new Publisher(repo, cfg, steamCmd, account) { Credit = credit, NoteTemplate = noteTemplate };
             return ShowNotes(o, cfg, mods, shaper, Say);
         }
         if (o.Command == "lint") return Lint(o, mods, Say);
@@ -769,7 +769,6 @@ public static class Cli
             Credit = credit,
             NoteTemplate = noteTemplate,
             DescriptionFooter = descriptionFooter,
-            MarkdownToSteam = markdown,
             GitRef = gitRef,
             TestItems = o.Test,
             VerifyUploads = verifyUploads || o.Verify,

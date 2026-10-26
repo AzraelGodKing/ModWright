@@ -45,8 +45,6 @@ public sealed class AppSettings
     public bool TagUploads { get; set; }
     /// <summary>End each change note sent to Steam with "Uploaded via Modwright" and a link to the newest release.</summary>
     public bool UploadCredit { get; set; } = true;
-    /// <summary>Turn Markdown in .md changelogs into the BBCode Steam's change notes use.</summary>
-    public bool MarkdownNotes { get; set; } = true;
     /// <summary>A template around each change note sent to Steam (see ChangeNotes.Apply), per mods folder.</summary>
     public Dictionary<string, string> NoteTemplates { get; set; } = new();
     /// <summary>When a mod's description file differs from its Workshop page: "Ask", "Always" (send it) or "Never".</summary>

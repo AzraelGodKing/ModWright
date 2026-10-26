@@ -103,7 +103,6 @@ public class RequestSenderTests
         var map = RequestSender.ParseLabelMap($"Layout={LayoutId},Bug={BugId},Feature={FeatureId},UI={UiId},Upload={UploadId}");
         var always = new RequestSender.Route(Project, new[] { Labels[0] });
 
-        Assert.Equal(new[] { Labels[0], LayoutId }, RequestSender.RouteFor(always, map, RequestSender.RequestKind.Layout, null).LabelIds);
         Assert.Equal(new[] { Labels[0], BugId, UiId }, RequestSender.RouteFor(always, map, RequestSender.RequestKind.Bug, "UI").LabelIds);
         Assert.Equal(new[] { Labels[0], FeatureId, UploadId }, RequestSender.RouteFor(always, map, RequestSender.RequestKind.Feature, "Upload").LabelIds);
         // An area missing from the map adds nothing; the project is kept.
@@ -123,8 +122,8 @@ public class RequestSenderTests
     [Fact]
     public void RouteFor_does_not_repeat_a_label()
     {
-        var map = RequestSender.ParseLabelMap($"Layout={Labels[0]}");
-        Assert.Equal(Labels, RequestSender.RouteFor(Routed, map, RequestSender.RequestKind.Layout, null).LabelIds);
+        var map = RequestSender.ParseLabelMap($"Bug={Labels[0]}");
+        Assert.Equal(Labels, RequestSender.RouteFor(Routed, map, RequestSender.RequestKind.Bug, null).LabelIds);
     }
 
     const string Created = "{\"data\":{\"issueCreate\":{\"success\":true,\"issue\":{\"identifier\":\"AZR-9\"}}}}";

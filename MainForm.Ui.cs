@@ -98,7 +98,6 @@ public sealed partial class MainForm
         _tagUploads.CheckedChanged += (_, _) => { if (!_populating) { _s.TagUploads = _tagUploads.Checked; _s.Save(); } };
         _commitIds.CheckedChanged += (_, _) => { if (!_populating) { _s.CommitNewIds = _commitIds.Checked; _s.Save(); } };
         _uploadCredit.CheckedChanged += (_, _) => { if (!_populating) { _s.UploadCredit = _uploadCredit.Checked; _s.Save(); } };
-        _markdownNotes.CheckedChanged += (_, _) => { if (!_populating) { _s.MarkdownNotes = _markdownNotes.Checked; _s.Save(); } };
         _noteTemplate.Leave += (_, _) =>
         {
             if (_populating || !Directory.Exists(_s.RepoPath)) return;
@@ -808,7 +807,6 @@ public sealed partial class MainForm
 
         // ---- Workshop page: the text that goes to Steam with an upload
         _uploadCredit.Checked = _s.UploadCredit;
-        _markdownNotes.Checked = _s.MarkdownNotes;
         _countComments.Checked = _s.CountCommentsAtStartup;
         _countComments.CheckedChanged += (_, _) => { _s.CountCommentsAtStartup = _countComments.Checked; _s.Save(); };
         _descSync.Items.AddRange(new object[] { "Ask before sending it", "Always send it", "Never send it" });
@@ -821,7 +819,6 @@ public sealed partial class MainForm
         AddSection("Workshop page", "The change note and description that go to each mod's Steam page with an upload.",
             Card("Change notes", null,
                 _uploadCredit,
-                _markdownNotes,
                 Row(Lbl("&Template"), _noteTemplate),
                 Hint("The template is for the current mods folder: {note} is the changelog entry, and {name}, {version}, {date} and {game} fill themselves in " +
                      "(e.g. \"{version} ({date})\" on the first line, then {note}). Without {note} the entry goes after it. For RimWorld, start with {version}, " +

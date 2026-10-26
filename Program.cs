@@ -147,7 +147,7 @@ static class Program
         try
         {
             return Cli.RunAsync(o, settings.RepoPath, settings.EffectiveSteamCmd, settings.Account, TextWriter.Synchronized(output), cts.Token, credit: settings.UploadCredit,
-                noteTemplate: settings.TemplateFor(settings.RepoPath), markdown: settings.MarkdownNotes,
+                noteTemplate: settings.TemplateFor(settings.RepoPath),
                 syncDescriptions: settings.DescriptionSync == DescriptionSync.Always,
                 buildCommand: settings.BuildFor(settings.RepoPath), defaultRef: settings.RefFor(settings.RepoPath),
                 retryAfter: settings.AutoRetry ? TimeSpan.FromSeconds(30) : null,
@@ -292,15 +292,15 @@ static class Program
                 await ctx.Response.OutputStream.WriteAsync(reply);
                 ctx.Response.Close();
             });
-            var (ok, msg) = RequestSender.SendAsync("Game layout request: Test \"Q\"", "line1\nline2 \\ x", endpointOverride: prefix).GetAwaiter().GetResult();
+            var (ok, msg) = RequestSender.SendAsync("Bug: Test \"Q\"", "line1\nline2 \\ x", endpointOverride: prefix).GetAwaiter().GetResult();
             served.Wait(5000);
             File.AppendAllText(outFile, $"available={RequestSender.Available} ok={ok} msg={msg}\r\n");
             return 0;
         }
         if (Array.IndexOf(args, "--urltest") is var ut and >= 0 && ut + 1 < args.Length)
         {
-            var (u1, c1) = RequestForm.BuildIssueUrl("Test & Game", "123", "Custom", "line1\r\nline2 = \"x\" & y");
-            var (u2, c2) = RequestForm.BuildIssueUrl("Big Game", "456", "Generic", string.Join("\r\n", Enumerable.Range(0, 3000).Select(n => "folder/sub/file_" + n + ".json")));
+            var (u1, c1) = RequestForm.BuildIssueUrl("line1\r\nline2 = \"x\" & y", RequestSender.RequestKind.Bug, "Test & Thing");
+            var (u2, c2) = RequestForm.BuildIssueUrl(string.Join("\r\n", Enumerable.Range(0, 3000).Select(n => "folder/sub/file_" + n + ".json")), RequestSender.RequestKind.Feature, "Big");
             File.WriteAllText(args[ut + 1], $"short: len={u1.Length} cut={c1}\r\n{u1}\r\nlong: len={u2.Length} cut={c2}\r\n{u2.Substring(0, 160)}...\r\n");
             return 0;
         }
@@ -377,11 +377,11 @@ static class Program
                 }
                 Snap(new WhatsNewForm("Updated from 1.3.8 to 1.4.0. Here is what changed:", WhatsNew.Between(WhatsNew.BuiltIn(), "1.3.7", UpdateCheck.CurrentVersion)), Path.Combine(args[sh + 1], $"whatsnew{suffix}.png"));
                 Snap(new ShortcutsForm(), Path.Combine(args[sh + 1], $"shortcuts{suffix}.png"));
-                Snap(new RequestForm("RimWorld", "294100", "RimWorld", "About/About.xml\r\nAbout/Preview.png\r\nAssemblies/Mod.dll"), Path.Combine(args[sh + 1], $"request{suffix}.png"));
+                Snap(new RequestForm(), Path.Combine(args[sh + 1], $"request{suffix}.png"));
                 RequestForm Feature()
                 {
-                    var f = new RequestForm("RimWorld", "294100", "RimWorld", "");
-                    f.Prefill(RequestSender.RequestKind.Feature, "", RequestForm.Template(RequestSender.RequestKind.Feature, ""));
+                    var f = new RequestForm();
+                    f.Prefill(RequestSender.RequestKind.Feature, "", RequestForm.Template(RequestSender.RequestKind.Feature));
                     return f;
                 }
                 Snap(Feature(), Path.Combine(args[sh + 1], $"request-feature{suffix}.png"));
@@ -511,7 +511,7 @@ static class Program
             var picked = owner != null && owner.IsHandleCreated && !owner.InvokeRequired ? TaskDialog.ShowDialog(owner, page) : TaskDialog.ShowDialog(page);
             if (picked == report)
             {
-                using var f = new RequestForm("", "", "", "");
+                using var f = new RequestForm();
                 f.Prefill(RequestSender.RequestKind.Bug, CrashReport.Summary(e),
                     "What were you doing when it happened:\n\n\nCrash report (edit out anything you don't want to share):\n" + text);
                 f.ShowDialog(owner);
