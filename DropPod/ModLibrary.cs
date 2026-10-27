@@ -24,9 +24,12 @@ public sealed class LibraryScan
         return d;
     }
 
-    /// <summary>Ids that more than one mod folder claims.</summary>
-    public List<IGrouping<string, ModManifest>> Duplicates() =>
-        Mods.Where(m => m.Id.Length > 0).GroupBy(m => m.Key).Where(g => g.Count() > 1).ToList();
+    /// <summary>Ids that more than one mod folder claims, leaving out the keys in <paramref name="ignored"/>.</summary>
+    public List<IGrouping<string, ModManifest>> Duplicates(IEnumerable<string>? ignored = null)
+    {
+        var skip = (ignored ?? Enumerable.Empty<string>()).ToHashSet(StringComparer.Ordinal);
+        return Mods.Where(m => m.Id.Length > 0).GroupBy(m => m.Key).Where(g => g.Count() > 1 && !skip.Contains(g.Key)).ToList();
+    }
 }
 
 /// <summary>Reads every mod folder a game has, in parallel, without ever failing on one bad mod.</summary>

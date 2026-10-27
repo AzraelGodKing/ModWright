@@ -46,6 +46,25 @@ public sealed class ProblemsTests : IDisposable
     }
 
     [Fact]
+    public void Installed_twice_can_be_ignored_for_one_mod()
+    {
+        // A mod author's own mod: the working copy in Mods and their Workshop subscription.
+        _rw.Local("Mine", About("Mine", "me.mine"));
+        _rw.FromWorkshop("111", About("Mine", "me.mine"));
+        _rw.Local("Other", About("Other", "x.other"));
+        _rw.FromWorkshop("222", About("Other", "x.other"));
+        var scan = Scan();
+        var active = new[] { "ludeon.rimworld", "me.mine", "x.other" };
+
+        var p = Problems.Find(scan, active, _game, ignoreDuplicates: new[] { "me.mine" });
+
+        Assert.DoesNotContain(p, x => x.Kind == ProblemKind.Duplicate && x.Mod == "me.mine");
+        Assert.Contains(p, x => x.Kind == ProblemKind.Duplicate && x.Mod == "x.other");
+        Assert.Equal("x.other", Assert.Single(scan.Duplicates(new[] { "me.mine" })).Key);
+        Assert.Equal(2, scan.Duplicates().Count);
+    }
+
+    [Fact]
     public void A_clean_list_has_no_problems_and_rules_notes_show()
     {
         _rw.FromWorkshop("2009463077", About("Harmony", "brrainz.harmony", "<loadBefore><li>Ludeon.RimWorld</li></loadBefore>"));

@@ -105,6 +105,8 @@ public sealed class AppSettings
     public string DropPodLaunchArgs { get; set; } = "";
     /// <summary>Drop Pod: width of the details panel beside the mod list; 0 = the default.</summary>
     public int DropPodDetailsWidth { get; set; }
+    /// <summary>Drop Pod: mods (by key) whose "installed more than once" warning is hidden, such as your own mod in the Mods folder and from the Workshop.</summary>
+    public List<string> DropPodIgnoreDuplicates { get; set; } = new();
     /// <summary>Drop Pod: offer to back up the newest save before starting with mods it wasn't played with.</summary>
     public bool DropPodSaveBackups { get; set; } = true;
     /// <summary>Discord webhook to announce uploads to, per mods folder. Kept here, not in the repo, because the link is a secret.</summary>

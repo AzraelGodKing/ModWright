@@ -155,7 +155,7 @@ public sealed class DropPodCli
         if (_settings.DropPodRulesFile.Length > 0)
             try { rules = SortRules.Parse(File.ReadAllText(_settings.DropPodRulesFile)); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException or FormatException or JsonException) { }
-        var found = Problems.Find(lib, active, _game, rules);
+        var found = Problems.Find(lib, active, _game, rules, _settings.DropPodIgnoreDuplicates);
         if (json) Say(JsonSerializer.Serialize(found.Select(p => new { kind = p.Kind.ToString(), level = p.Level.ToString(), mod = p.Mod, other = p.Other, message = p.Message, workshopId = p.WorkshopId })));
         else if (found.Count == 0) Say($"No problems with the {active.Count} active mods.");
         else foreach (var p in found) Say($"{p.Level,-7}  {p.Message}");
