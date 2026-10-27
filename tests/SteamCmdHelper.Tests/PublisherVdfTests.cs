@@ -128,7 +128,7 @@ public sealed class PublisherVdfTests : IDisposable
 
         Assert.Equal("1.2.3\n- Fixed a thing\n\n" + Publisher.CreditLine, VdfValue(await CapturedVdf(mod, credit: true), "changenote"));
         Assert.Equal("1.2.3\n- Fixed a thing", VdfValue(await CapturedVdf(mod), "changenote"));
-        Assert.Contains("[url=https://github.com/AzraelGodKing/SteamCMDHelper/releases/latest]", Publisher.CreditLine);
+        Assert.Contains("[url=https://github.com/AzraelGodKing/ModWright/releases/latest]", Publisher.CreditLine);
     }
 
     [Fact]

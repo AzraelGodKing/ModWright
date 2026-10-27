@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.1
+
+- **Update checks find new versions again.** Modwright still looked for releases under the project's old name,
+  SteamCMDHelper, which now belongs to a different repository, so it never saw 2.1.0. It now looks at
+  github.com/AzraelGodKing/ModWright. Copies older than 2.1.1 still look in the wrong place, so download 2.1.1 once
+  from the releases page; later updates arrive in the app again. The Workshop credit link, the GitHub Actions upload
+  workflow and the Scoop bucket point at the new name too.
+
 ## 2.1.0
 
 - **Ignore "installed more than once" for your own mods.** In The Drop Pod, right-click a mod (or its problem) and

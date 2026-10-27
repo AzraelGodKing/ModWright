@@ -5,9 +5,9 @@ PackageLocale: en-US
 Publisher: AzraelGodKing
 PublisherUrl: https://github.com/AzraelGodKing
 PackageName: SteamCMD Helper
-PackageUrl: https://github.com/AzraelGodKing/SteamCMDHelper
+PackageUrl: https://github.com/AzraelGodKing/ModWright
 License: MIT
-LicenseUrl: https://github.com/AzraelGodKing/SteamCMDHelper/blob/main/LICENSE
+LicenseUrl: https://github.com/AzraelGodKing/ModWright/blob/main/LICENSE
 ShortDescription: Upload Steam Workshop mod updates without remembering SteamCMD commands.
 Description: |-
   A Windows app for uploading Steam Workshop mods with SteamCMD: tick the mods, press Upload. It shows each mod's
@@ -18,6 +18,6 @@ Tags:
   - steamcmd
   - workshop
   - modding
-ReleaseNotesUrl: https://github.com/AzraelGodKing/SteamCMDHelper/releases/tag/v1.0.0
+ReleaseNotesUrl: https://github.com/AzraelGodKing/ModWright/releases/tag/v1.0.0
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0

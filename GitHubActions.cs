@@ -49,7 +49,7 @@ public static class GitHubActions
               - name: Get Modwright
                 env:
                   GH_TOKEN: ${{ github.token }}
-                run: gh release download --repo AzraelGodKing/SteamCMDHelper --pattern "*-win-x64.exe" --output "$env:RUNNER_TEMP\SteamCmdHelper.exe"
+                run: gh release download --repo AzraelGodKing/ModWright --pattern "*-win-x64.exe" --output "$env:RUNNER_TEMP\SteamCmdHelper.exe"
 
               - name: Get SteamCMD
                 run: |
