@@ -21,6 +21,8 @@ public static class AboutLint
     public static List<LintFinding> Check(ModManifest m)
     {
         var f = new List<LintFinding>();
+        // The game's own content (Core, the expansions) is Ludeon's to write, not something a player or author fixes.
+        if (RimWorldIds.IsOfficial(m.Key)) return f;
         void Warn(string rule, string msg) => f.Add(new LintFinding(rule, LintLevel.Warn, msg));
 
         var versions = m.SupportedVersions.Select(GameVersion.Short).ToList();
