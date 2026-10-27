@@ -63,7 +63,7 @@ winget install AzraelGodKing.SteamCMDHelper
 ```
 
 ```
-scoop bucket add steamcmdhelper https://github.com/AzraelGodKing/SteamCMDHelper
+scoop bucket add steamcmdhelper https://github.com/AzraelGodKing/ModWright
 scoop install steamcmdhelper
 ```
 

@@ -18,7 +18,11 @@ public sealed record ReleaseInfo(string Version, string PageUrl, string? Downloa
 /// </summary>
 public static class UpdateCheck
 {
-    public const string Repo = "AzraelGodKing/SteamCMDHelper";
+    /// <summary>
+    /// The repository's current name. Never rely on GitHub's redirect from an old name: the old name SteamCMDHelper
+    /// was taken by another repository, so it no longer leads here.
+    /// </summary>
+    public const string Repo = "AzraelGodKing/ModWright";
     public const string LatestUrl = "https://api.github.com/repos/" + Repo + "/releases/latest";
     public const string ReleasesPage = "https://github.com/" + Repo + "/releases";
 

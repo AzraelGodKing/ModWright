@@ -8,7 +8,7 @@ public class UpdateCheckTests
     const string Release = """
         {
           "tag_name": "v1.2.0",
-          "html_url": "https://github.com/AzraelGodKing/SteamCMDHelper/releases/tag/v1.2.0",
+          "html_url": "https://github.com/AzraelGodKing/ModWright/releases/tag/v1.2.0",
           "draft": false,
           "prerelease": false,
           "assets": [
@@ -26,7 +26,7 @@ public class UpdateCheckTests
 
         Assert.NotNull(r);
         Assert.Equal("1.2.0", r!.Version);
-        Assert.Equal("https://github.com/AzraelGodKing/SteamCMDHelper/releases/tag/v1.2.0", r.PageUrl);
+        Assert.Equal("https://github.com/AzraelGodKing/ModWright/releases/tag/v1.2.0", r.PageUrl);
         Assert.Equal("https://example.test/app.exe", r.DownloadUrl);
     }
 
