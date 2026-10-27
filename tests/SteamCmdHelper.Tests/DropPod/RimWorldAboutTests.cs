@@ -156,6 +156,42 @@ public sealed class RimWorldAboutTests
     {
         Assert.Equal("a.b", RimWorldIds.WithoutSteamSuffix("a.b_steam"));
         Assert.True(RimWorldIds.IsOfficial("ludeon.rimworld.biotech"));
-        Assert.False(RimWorldIds.IsOfficial("ludeon.rimworldish"));
+        Assert.True(RimWorldIds.IsOfficial("Ludeon.RimWorld.SomeFutureExpansion"));
+        Assert.True(RimWorldIds.IsOfficial("ludeon.othergame"));
+        Assert.False(RimWorldIds.IsOfficial("ludeonfan.mod"));
+        Assert.False(RimWorldIds.IsOfficial("kat.ludeon"));
+    }
+
+    [Theory]
+    [InlineData("Core", "ludeon.rimworld")]
+    [InlineData("Royalty", "ludeon.rimworld.royalty")]
+    [InlineData("Odyssey", "ludeon.rimworld.odyssey")]
+    public void Game_data_folders_without_about_xml_are_read_with_the_games_id(string folder, string key)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "droppod_official_" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(root, folder);
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(dir, "Defs"));
+            var m = RimWorldAbout.ReadFolder(dir, ModSource.Official)!;
+            Assert.Equal(key, m.Key);
+            Assert.Equal(folder, m.DisplayName);
+            Assert.Empty(m.Issues);
+            Assert.Empty(AboutLint.Check(m));
+            Assert.Null(RimWorldAbout.ReadFolder(dir, ModSource.Local)); // a mod folder without one is still not a mod
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void Ludeon_content_gets_no_about_xml_warnings()
+    {
+        // Ludeon's own About.xml files leave out what a mod author is asked for (supportedVersions, sometimes more).
+        var m = RimWorldAbout.Parse("<ModMetaData><packageId>Ludeon.RimWorld.Anomaly</packageId></ModMetaData>", "Anomaly", ModSource.Official);
+        Assert.Empty(m.Issues);
+        Assert.Empty(AboutLint.Check(m));
+        Assert.Equal("Ludeon Studios", Assert.Single(m.Authors));
+        var mod = RimWorldAbout.Parse("<ModMetaData><packageId>Kat.Thing</packageId></ModMetaData>");
+        Assert.Contains("about-no-versions", AboutLint.Check(mod).Select(f => f.Rule));
     }
 }

@@ -15,11 +15,15 @@ public static class RimWorldAbout
     public const string PreviewPath = "About/Preview.png";
     public const string PublishedIdPath = "About/PublishedFileId.txt";
 
-    /// <summary>Reads the mod in <paramref name="folder"/>; null when it has no About.xml (not a mod).</summary>
+    /// <summary>
+    /// Reads the mod in <paramref name="folder"/>; null when it has no About.xml (not a mod), except for the game's own
+    /// Data folders (Core and the expansions), which the game loads with or without one.
+    /// </summary>
     public static ModManifest? ReadFolder(string folder, ModSource source)
     {
         var about = SafeFiles.Find(folder, AboutPath);
-        if (about == null) return null;
+        if (about == null)
+            return source == ModSource.Official ? Finish(new ModManifest { Folder = folder, Source = source }) : null;
         string text;
         try { text = File.ReadAllText(about); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -85,11 +89,20 @@ public static class RimWorldAbout
         return m;
     }
 
-    static void Finish(ModManifest m)
+    static ModManifest Finish(ModManifest m)
     {
+        // The game names its Data folders' content itself (Core is Ludeon.RimWorld, Royalty is Ludeon.RimWorld.Royalty),
+        // and Ludeon's own content never needs the fields a mod author is asked for.
+        if (m.Id.Length == 0 && m.Source == ModSource.Official) m.Id = RimWorldIds.OfficialIdOf(m.FolderName);
+        if (RimWorldIds.IsOfficial(m.Key))
+        {
+            if (m.Authors.Count == 0) m.Authors.Add("Ludeon Studios");
+            return m;
+        }
         if (m.Id.Length == 0) m.Issues.Add("About.xml has no packageId, so other mods can't refer to it and the game may refuse it.");
         else if (!RimWorldIds.IsValid(m.Id)) m.Issues.Add($"packageId \"{m.Id}\" is not valid for RimWorld (letters and digits with at least one dot).");
         if (m.Name.Length == 0) m.Issues.Add("About.xml has no name.");
+        return m;
     }
 
     static void AddAuthors(ModManifest m, string text)
@@ -176,8 +189,15 @@ public static class RimWorldIds
     /// <summary>The base game's id; every list starts with it.</summary>
     public const string Core = "ludeon.rimworld";
 
-    /// <summary>True for the base game and its expansions (ids starting "ludeon.rimworld").</summary>
-    public static bool IsOfficial(string key) => key == Core || key.StartsWith(Core + ".", StringComparison.Ordinal);
+    /// <summary>
+    /// True for Ludeon's own content: the base game, its expansions and anything Ludeon adds later (ids starting
+    /// "ludeon."), so a new expansion needs no change here.
+    /// </summary>
+    public static bool IsOfficial(string key) => ModManifest.KeyOf(key).StartsWith("ludeon.", StringComparison.Ordinal);
+
+    /// <summary>The id the game gives a folder in its Data folder: Core is Ludeon.RimWorld, Royalty Ludeon.RimWorld.Royalty.</summary>
+    public static string OfficialIdOf(string folderName) =>
+        folderName.Equals("Core", StringComparison.OrdinalIgnoreCase) ? "Ludeon.RimWorld" : "Ludeon.RimWorld." + folderName;
 
     /// <summary>
     /// The id without the "_steam" ending the game gives the Workshop copy of a mod that is also in the Mods folder, so an
