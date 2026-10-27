@@ -560,7 +560,10 @@ list when it closes.
   Workshop id can't be in a collection). Collections go through the Steam client, so Steam must be running and
   signed in with an account that owns RimWorld.
 - **Problems:** missing or inactive dependencies, mods loading before what they need, broken load rules,
-  incompatible pairs, mods for another game version, mods installed twice and unreadable About.xml files.
+  incompatible pairs, mods for another game version, mods installed twice and unreadable About.xml files. The base
+  game and DLC (any package ID starting `Ludeon.`) are never asked for About.xml fields, and are read even without an
+  About.xml. For your own mods, which sit in the Mods folder and come from the Workshop too, right-click the mod or its
+  problem and tick **Ignore "installed more than once" for this mod**; it stays off until you untick it.
   **Activate needed mods** ticks installed dependencies; **Download missing** subscribes to linked Workshop items
   through the Steam client when it is running (Steam then keeps them up to date), else fetches them with SteamCMD and
   your saved login into the Mods folder; **Check for updates** asks Steam which Workshop mods are newer, and GitHub

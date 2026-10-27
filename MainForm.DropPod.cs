@@ -194,7 +194,7 @@ public sealed partial class MainForm
         _dpGameText.ForeColor = Theme.Of(Tone.Normal);
         Tip(_dpGameText, $"Game: {i.GameFolder}\nWorkshop: {i.WorkshopFolder ?? "none"}\nConfig and saves: {i.DataFolder}");
         var notes = new List<string>(_dpScan.Notes);
-        var dupes = _dpScan.Duplicates();
+        var dupes = _dpScan.Duplicates(_s.DropPodIgnoreDuplicates);
         if (dupes.Count > 0) notes.Add($"{dupes.Count} package ID{(dupes.Count == 1 ? " is" : "s are")} installed more than once: " + string.Join(", ", dupes.Take(5).Select(g => g.First().Id)));
         if (_dpScan.Active == null) notes.Add(_dpInst != null ? "This instance has no mod list yet: tick mods and press Save to game." : "No ModsConfig.xml yet: start RimWorld once so it writes its mod list.");
         if (_dpInst is { GameFolder.Length: > 0 } gi && !Directory.Exists(gi.GameFolder)) notes.Add($"This instance's game folder {gi.GameFolder} is gone, so it uses the usual install.");
@@ -314,7 +314,7 @@ public sealed partial class MainForm
 
     void FindDropPodProblems()
     {
-        _dpFound = _dpScan == null ? new() : Problems.Find(_dpScan, _dpActive, _dpGame, DropPodRules());
+        _dpFound = _dpScan == null ? new() : Problems.Find(_dpScan, _dpActive, _dpGame, DropPodRules(), _s.DropPodIgnoreDuplicates);
         _dpProblems.BeginUpdate();
         _dpProblems.Items.Clear();
         foreach (var p in _dpFound)

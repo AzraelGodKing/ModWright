@@ -34,7 +34,8 @@ public sealed record ModProblem(ProblemKind Kind, ProblemLevel Level, string Mod
 /// </summary>
 public static class Problems
 {
-    public static List<ModProblem> Find(LibraryScan scan, IReadOnlyList<string> active, IGameModule game, SortRules? rules = null)
+    /// <param name="ignoreDuplicates">Mod keys whose "installed more than once" is not reported (the player said it's fine).</param>
+    public static List<ModProblem> Find(LibraryScan scan, IReadOnlyList<string> active, IGameModule game, SortRules? rules = null, IEnumerable<string>? ignoreDuplicates = null)
     {
         var list = new List<ModProblem>();
         var version = scan.Install.Version;
@@ -80,7 +81,7 @@ public static class Problems
                 list.Add(new ModProblem(ProblemKind.RulesNote, ProblemLevel.Info, key, $"{m.DisplayName}: {note}"));
         }
 
-        foreach (var g in scan.Duplicates())
+        foreach (var g in scan.Duplicates(ignoreDuplicates))
         {
             var used = byId[g.Key];
             var others = g.Where(m => m != used).Select(m => m.Folder);

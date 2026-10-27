@@ -51,6 +51,7 @@ public sealed partial class MainForm
             else if (e.Control && e.KeyCode == Keys.Y) { DropPodUndo(redo: true); e.Handled = e.SuppressKeyPress = true; }
         };
         _dpList.MouseUp += (_, e) => { if (e.Button == MouseButtons.Right) ShowDropPodRowMenu(e.Location); };
+        _dpProblems.MouseUp += (_, e) => { if (e.Button == MouseButtons.Right) ShowDropPodProblemMenu(e.Location); };
         return _dpSplit;
     }
 
@@ -220,12 +221,44 @@ public sealed partial class MainForm
         var menu = new ContextMenuStrip();
         menu.Items.Add("Why is this mod here?", null, (_, _) => ExplainSelected()).Enabled = active && m != null;
         menu.Items.Add("Note and colour...", null, (_, _) => EditNote());
+        AddIgnoreDuplicateItem(menu, row.Name);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Open its folder", null, (_, _) => OpenFolder(m?.Folder)).Enabled = m != null;
         menu.Items.Add("Open its Workshop page", null, (_, _) => OpenUrl(SteamCollections.Url(m!.WorkshopId!))).Enabled = m?.WorkshopId != null;
         menu.Items.Add("Open its change notes on Steam", null, (_, _) => OpenUrl(UpdateNotes.Url(m!.WorkshopId!))).Enabled = m?.WorkshopId != null;
         Theme.StyleMenu(menu);
         menu.Show(_dpList, at);
+    }
+
+    /// <summary>Right-click on a problem: the same "installed more than once" switch as on the mod's row.</summary>
+    void ShowDropPodProblemMenu(Point at)
+    {
+        if (_dpProblems.SelectedItems.Count == 0 || _dpProblems.SelectedItems[0].Tag is not ModProblem p || p.Kind != ProblemKind.Duplicate) return;
+        var menu = new ContextMenuStrip();
+        AddIgnoreDuplicateItem(menu, p.Mod);
+        Theme.StyleMenu(menu);
+        menu.Show(_dpProblems, at);
+    }
+
+    /// <summary>
+    /// "Ignore installed twice": for a mod you make, the copy in the Mods folder and your own Workshop subscription are
+    /// both meant to be there, so the warning can be switched off for it and stays off. Only offered for mods that are
+    /// installed more than once (or already ignored, to switch it back on).
+    /// </summary>
+    void AddIgnoreDuplicateItem(ContextMenuStrip menu, string key)
+    {
+        var ignored = _s.DropPodIgnoreDuplicates.Contains(key);
+        if (!ignored && _dpScan?.Duplicates().Any(g => g.Key == key) != true) return;
+        var item = new ToolStripMenuItem("Ignore \"installed more than once\" for this mod") { Checked = ignored };
+        item.Click += (_, _) =>
+        {
+            if (ignored) _s.DropPodIgnoreDuplicates.Remove(key);
+            else _s.DropPodIgnoreDuplicates.Add(key);
+            _s.Save();
+            ShowDropPodGame(null);
+            FindDropPodProblems();
+        };
+        menu.Items.Add(item);
     }
 
     void ShowDropPodTools()
