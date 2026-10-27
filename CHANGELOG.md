@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.0
+
+- **Ignore "installed more than once" for your own mods.** In The Drop Pod, right-click a mod (or its problem) and
+  tick **Ignore "installed more than once" for this mod**. Handy for a mod you make, with your working copy in the Mods
+  folder and your Workshop subscription. It is remembered, and unticking it brings the warning back.
+- **No About.xml warnings for the base game and DLC.** Core, Royalty, Ideology, Biotech, Anomaly and Odyssey are the
+  game's own content: anything with a package ID starting `Ludeon.` skips the About.xml checks, so a future expansion
+  needs no update. A folder in the game's Data folder is also read without an About.xml, named the way the game names
+  it (Core is `Ludeon.RimWorld`, the rest `Ludeon.RimWorld.<folder>`).
+
 ## 2.0.0
 
 Modwright is now a RimWorld tool, through and through. Everything that was only there for other games is gone.
